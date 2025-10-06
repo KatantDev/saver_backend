@@ -1,0 +1,65 @@
+# English translations for Sounds.
+# Copyright (C) 2025 ORGANIZATION
+# This file is distributed under the same license as the Sounds project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Sounds 0.0.1\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2025-10-05 22:14+1000\n"
+"PO-Revision-Date: 2025-10-05 11:52+1000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: saver_backend/services/telegram/bot_controller.py:181
+#: saver_backend/telegram_bot/handlers/start.py:66
+msgid "welcome message"
+msgstr ""
+"<b>🎬 This bot is created to download videos from:</b> YouTube | TikTok | Instagram | VKontakte\n"
+"\n"
+"<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>This bot is completely free.</b>.\n"
+"To use it - just subscribe to two of our channels:"
+
+#: saver_backend/telegram_bot/handlers/download.py:28
+msgid "unknown url"
+msgstr ""
+"This URL is not supported for downloading.\n"
+"But we are already working on its support."
+
+#: saver_backend/telegram_bot/handlers/start.py:91
+#: saver_backend/telegram_bot/handlers/subscribe.py:36
+msgid "information message"
+msgstr ""
+"<b>🎬 This bot is created to download videos from:</b> YouTube | TikTok | Instagram | VKontakte\n"
+"\n"
+"<tg-emoji emoji-id=\"5906762234633130643\">🔗</tg-emoji> Simply send a link to the video - and the bot will immediately send a file for download.\n"
+"\n"
+"<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Also works in inline mode:</b> open any chat, enter @saver and insert the link."
+
+#: saver_backend/telegram_bot/handlers/start.py:95
+msgid "not subscribed to channels"
+msgstr "⚠️ You are not subscribed to channels"
+
+#: saver_backend/telegram_bot/handlers/subscribe.py:19
+msgid "left from channels"
+msgstr ""
+"🎬 We found out that you are <b>not subscribed</b> to our channels\n"
+"\n"
+"<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>This bot is completely free.</b>.\n"
+"To use it - just subscribe to two of our channels:"
+
+#: saver_backend/telegram_bot/keyboards/inline.py:44
+msgid "subscribe to channel"
+msgstr "➕ Subscribe to @{channel}"
+
+#: saver_backend/telegram_bot/keyboards/inline.py:47
+msgid "check subscriptions"
+msgstr "✅ Check subscriptions"
+

@@ -1,0 +1,129 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+
+services:
+  api: &main_app
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: saver_backend:${SAVER_BACKEND_VERSION:-latest}
+    hostname: saver_backend-api
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SAVER_BACKEND_HOST: 0.0.0.0
+      SAVER_BACKEND_DB_HOST: saver_backend-db
+      SAVER_BACKEND_DB_PORT: 5432
+      SAVER_BACKEND_DB_USER: saver_backend
+      SAVER_BACKEND_DB_PASS: saver_backend
+      SAVER_BACKEND_DB_BASE: saver_backend
+      SAVER_BACKEND_REDIS_HOST: saver_backend-redis
+    healthcheck:
+      test: curl -f http://localhost:8000/api/health || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    command:
+      - scripts/start_backend.sh
+    mem_limit: 1G
+    cpus: 2
+    logging: *default-logging
+
+  taskiq-worker:
+    <<: *main_app
+    hostname: saver_backend-taskiq-worker
+    labels: [ ]
+    healthcheck:
+      disable: true
+    command:
+      - scripts/start_taskiq_worker.sh
+    logging: *default-logging
+    mem_limit: 5G
+    cpus: 3
+
+  db:
+    image: postgres:16.3-bullseye
+    hostname: saver_backend-db
+    environment:
+      POSTGRES_PASSWORD: "saver_backend"
+      POSTGRES_USER: "saver_backend"
+      POSTGRES_DB: "saver_backend"
+    volumes:
+      - saver_backend-db-data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: pg_isready -U saver_backend
+      interval: 2s
+      timeout: 3s
+      retries: 40
+    logging: *default-logging
+
+  migrator:
+    image: saver_backend:${SAVER_BACKEND_VERSION:-latest}
+    restart: "no"
+    command: alembic upgrade head
+    environment:
+      SAVER_BACKEND_DB_HOST: saver_backend-db
+      SAVER_BACKEND_DB_PORT: 5432
+      SAVER_BACKEND_DB_USER: saver_backend
+      SAVER_BACKEND_DB_PASS: saver_backend
+      SAVER_BACKEND_DB_BASE: saver_backend
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *default-logging
+
+  redis:
+    image: bitnami/redis:6.2.5
+    hostname: "saver_backend-redis"
+    restart: always
+    environment:
+      ALLOW_EMPTY_PASSWORD: "yes"
+    healthcheck:
+      test: redis-cli ping
+      interval: 1s
+      timeout: 3s
+      retries: 50
+    logging: *default-logging
+
+  nginx:
+    image: nginx:latest
+    restart: always
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./nginx-configs:/etc/nginx/conf.d
+    logging: *default-logging
+
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    hostname: bot-api
+    environment:
+      TELEGRAM_API_ID: "24905596"
+      TELEGRAM_API_HASH: "1b1264e88cb2475be709831a2a53289b"
+      TELEGRAM_LOCAL: "true"
+      TELEGRAM_VERBOSE: "3"
+    volumes:
+      - saver-telegram-bot-api-data:/var/lib/telegram-bot-api
+    logging: *default-logging
+
+
+volumes:
+  saver_backend-db-data:
+    name: saver_backend-db-data
+  saver-telegram-bot-api-data:
+    name: saver-telegram-bot-api-data
