@@ -118,7 +118,7 @@ class TikTokDetector(Detector):
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
             return None
-        return Resolution(source=self.SOURCE, url=url)
+        return Resolution(source=self.SOURCE, url=self._clean_url(url))
 
 
 @register_detector()

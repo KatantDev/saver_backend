@@ -37,7 +37,7 @@ async def shutdown(state: TaskiqState) -> None:
 
     :param state: taskiq state.
     """
-    await state.telegram_bot_controller.close()
     await shutdown_db(state)
+    await state.telegram_bot_controller.close()
 
     logging.info("Taskiq worker shutdown")

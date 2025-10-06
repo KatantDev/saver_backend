@@ -24,15 +24,21 @@ async def save_video(
     logging.info("Resolving controller for %s", resolution)
     yt_dlp_controller = state.source_resolver.get_controller(resolution)
     if yt_dlp_controller is None:
-        # TODO: Send message to user and fallback in channel
         return
 
+    message_id = await state.telegram_bot_controller.send_start_downloading(
+        telegram_id=telegram_id,
+        percent=0,
+    )
+
     controller = yt_dlp_controller(
+        resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
+        message_id=message_id,
     )
     try:
-        await controller.download_video(resolution=resolution)
+        await controller.download_video()
     except TikTokYtDlpDownloaderError:
         await state.telegram_bot_controller.send_tiktok_error_downloading(
             telegram_id=telegram_id,

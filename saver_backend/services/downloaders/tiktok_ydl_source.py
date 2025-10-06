@@ -2,7 +2,6 @@ import logging
 from typing import Any, ClassVar, Dict
 
 from saver_backend.entities.enums import SourceEnum
-from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.exceptions import TikTokYtDlpDownloaderError
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
@@ -29,32 +28,28 @@ class TikTokYdlController(YtDlpController):
         """
         return await self._get_video_info(url)
 
-    async def download_video(
-        self,
-        resolution: Resolution,
-    ) -> None:
+    async def download_video(self) -> None:
         """
         Asynchronously downloads a video from TikTok.
 
-        :param resolution: Resolution of the video.
         :return: Dictionary with information about the downloaded file.
         """
         # Get video information
-        video_info = await self.get_video_info(url=resolution.url)
+        video_info = await self.get_video_info(url=self._resolution.url)
 
         if video_info is None:
             logging.error(
                 "%s | Error getting video information (%s)",
                 self.SOURCE,
-                resolution.url,
+                self._resolution.url,
             )
             raise TikTokYtDlpDownloaderError
 
         logging.info(
             "%s | Starting video download: %s",
             self.SOURCE,
-            video_info.get("title", None),
+            self._resolution.url,
         )
 
         # Execute download in a separate thread
-        await self._download_video(url_list=[resolution.url])
+        await self._download_video(url_list=[self._resolution.url])

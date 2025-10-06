@@ -176,7 +176,6 @@ class TelegramBotController:
         Send welcome message.
 
         :param chat_id: Chat id.
-        :param first_name: First name of user.
         """
         coro = self._bot.send_message(
             chat_id=chat_id,
@@ -187,7 +186,6 @@ class TelegramBotController:
     async def send_start_downloading(
         self,
         telegram_id: int,
-        title: str,
         percent: int,
     ) -> int | None:
         """
@@ -200,7 +198,7 @@ class TelegramBotController:
         try:
             message = await self._bot.send_message(
                 chat_id=telegram_id,
-                text=f'Downloading "{title}"... {percent}%',
+                text=f"Downloading... {percent}%",
             )
             return message.message_id
         except AiogramError as e:
@@ -212,7 +210,6 @@ class TelegramBotController:
         self,
         telegram_id: int,
         message_id: int,
-        title: str,
         percent: int,
     ) -> None:
         """
@@ -220,13 +217,12 @@ class TelegramBotController:
 
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
-        :param title: Title of the video.
         :param percent: Percent of the video.
         """
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,
-            text=f'Downloading "{title}"... {percent}%',
+            text=f"Downloading... {percent}%",
         )
         return await self._send(coro)
 
@@ -234,14 +230,18 @@ class TelegramBotController:
         self,
         files: list[PhotoDTO | VideoDTO],
         telegram_id: int,
+        message_id: int | None = None,
     ) -> None:
         """
         Send finish downloading group message.
 
         :param files: List of files.
         :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID.
         """
-        media_group = MediaGroupBuilder()
+        media_group = MediaGroupBuilder(
+            caption=_("result direct message").format(url=files[0].url),
+        )
         for file in files:
             if isinstance(file, PhotoDTO):
                 media_group.add_photo(media=FSInputFile(path=file.path))
@@ -262,24 +262,38 @@ class TelegramBotController:
             media=media_group.build(),
         )
         await self._send(coro)
+        if message_id is not None:
+            coro2 = self._bot.delete_message(
+                message_id=message_id,
+                chat_id=telegram_id,
+            )
+            await self._send(coro2)
 
     async def send_finish_downloading_photo(
         self,
         photo: PhotoDTO,
         telegram_id: int,
+        message_id: int | None = None,
     ) -> None:
         """
         Send finish downloading message.
 
         :param photo: Photo.
         :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID.
         """
         coro = self._bot.send_photo(
             chat_id=telegram_id,
             photo=FSInputFile(path=photo.path),
-            caption=photo.title,
+            caption=_("result direct message").format(url=photo.url),
         )
         await self._send(coro)
+        if message_id is not None:
+            coro2 = self._bot.delete_message(
+                message_id=message_id,
+                chat_id=telegram_id,
+            )
+            await self._send(coro2)
 
     async def send_finish_downloading(
         self,
@@ -294,23 +308,24 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
         """
-        if message_id is not None:
-            coro1 = self._bot.delete_message(
-                message_id=message_id,
-                chat_id=telegram_id,
-            )
-        coro2 = self._bot.send_video(
+        coro1 = self._bot.send_video(
             chat_id=telegram_id,
             video=FSInputFile(path=video.path),
-            caption=video.title,
+            caption=_("result direct message").format(url=video.url),
             width=video.width,
             height=video.height,
             duration=video.duration,
             thumbnail=FSInputFile(path=video.thumbnail) if video.thumbnail else None,
             supports_streaming=True,
         )
-        await self._send(coro2)
         await self._send(coro1)
+
+        if message_id is not None:
+            coro2 = self._bot.delete_message(
+                message_id=message_id,
+                chat_id=telegram_id,
+            )
+            await self._send(coro2)
 
     async def send_tiktok_error_downloading(self, telegram_id: int) -> None:
         """

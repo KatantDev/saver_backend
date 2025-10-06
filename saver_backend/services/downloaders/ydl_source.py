@@ -3,7 +3,7 @@ import logging
 import secrets
 from abc import ABC
 from pathlib import Path
-from typing import Any, Awaitable, ClassVar, Dict
+from typing import Any, ClassVar, Dict
 
 import sentry_sdk
 import yt_dlp
@@ -48,12 +48,8 @@ class YtDlpController(BaseSourceController, ABC):
         self._download_directory.mkdir(exist_ok=True)
 
         self._yt_dlp = yt_dlp.YoutubeDL(self._base_options)
-        self._loop = asyncio.get_event_loop()
         self._filename: Path | None = None
         self._yt_dlp.add_progress_hook(self._progress_hook)
-
-        self._message_id: int | None = None
-        self._last_percent: int = 0
 
     async def _download_video(self, url_list: list[str]) -> Dict[str, Any] | None:
         """
@@ -81,49 +77,18 @@ class YtDlpController(BaseSourceController, ABC):
         :return: Dictionary with video information.
         """
         try:
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
                 url=url,
                 download=False,
             )
+            self._process_percent(percent=100 // 6)
+            return result
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
             return None
-
-    def _process_message(self, title: str, percent: int) -> None:
-        """
-        Process message.
-
-        :param title: Title of the video.
-        :param percent: Percent of the video.
-        """
-        coro: Awaitable[int | None] | None = None
-        if self._message_id is None:
-            coro = self._telegram_bot_controller.send_start_downloading(
-                telegram_id=self._telegram_id,
-                title=title or "",
-                percent=percent,
-            )
-            future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-            try:
-                message_id = future.result(timeout=5)
-                if message_id:
-                    self._message_id = message_id
-            except TimeoutError:
-                logging.warning(
-                    "Timeout waiting for start message to be sent (title=%r)",
-                    title,
-                )
-        else:
-            coro = self._telegram_bot_controller.send_update_downloading(
-                telegram_id=self._telegram_id,
-                message_id=self._message_id,
-                title=title or "",
-                percent=percent,
-            )
-            asyncio.run_coroutine_threadsafe(coro, self._loop)
 
     def _send_finish_message(
         self,
@@ -134,9 +99,6 @@ class YtDlpController(BaseSourceController, ABC):
 
         :param video: Video.
         """
-        if self._filename is None:
-            return
-
         coro = self._telegram_bot_controller.send_finish_downloading(
             video=video,
             telegram_id=self._telegram_id,
@@ -177,6 +139,7 @@ class YtDlpController(BaseSourceController, ABC):
                     ),
                     None,
                 ),
+                url=self._resolution.url,
             )
             self._send_finish_message(video=video)
             return
@@ -187,11 +150,12 @@ class YtDlpController(BaseSourceController, ABC):
         if percent is None:
             return
 
+        # Default percent is ~33% (100 / 3) and downloading percent is ~50% (100 / 2)
+        percent = round(percent / 2 + 100 / 3)
         if self._last_percent + 10 >= percent and self._message_id is not None:
             return
 
-        self._last_percent = int(percent)
-        self._process_message(title=title or "", percent=int(percent))
+        self._process_percent(percent=percent)
 
     def _get_downloaded_file(self) -> Path | None:
         """

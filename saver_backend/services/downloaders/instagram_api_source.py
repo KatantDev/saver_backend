@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import logging
+import secrets
 from pathlib import Path
 from typing import Any, Callable
 
@@ -10,10 +11,10 @@ from instagrapi.exceptions import LoginRequired
 from instagrapi.types import Resource, Story
 
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
-from saver_backend.entities.resolution import Resolution
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import PhotoDTO, VideoDTO
+from saver_backend.settings import settings
 
 
 def retry_on_loginrequired(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -57,26 +58,35 @@ class InstagramAPIController(BaseSourceController):
         super().__init__(*args, **kwargs)
         self._download_directory = BASE_DOWNLOAD_PATH / SourceEnum.INSTAGRAM_API.value
         self._download_directory.mkdir(exist_ok=True)
-        self._session_path = Path(
-            f"cookies/{SourceEnum.INSTAGRAM_API.value}/cookies1.json",
-        )
 
         self._api = instagrapi.Client()
+        self._session_path = self.load_settings()
         self._loop = asyncio.get_event_loop()
 
-    def load_settings(self) -> None:
+    def load_settings(self) -> Path:
         """
         Load settings.
 
         If settings file exists, load settings from file.
         If settings file does not exist, login and dump settings to file.
+
+        :return: Path to settings file.
         """
-        logging.info("Loading settings from %s", self._session_path)
-        if self._session_path.exists():
-            self._api.load_settings(self._session_path)
+        credentials = secrets.choice(settings.instagram_accounts)
+        index = settings.instagram_accounts.index(credentials)
+        session_path = Path(
+            f"cookies/{SourceEnum.INSTAGRAM_API.value}/cookies{index + 1}.json",
+        )
+
+        if session_path.exists():
+            self._api.load_settings(session_path)
         else:
-            self._api.login("katantdev@yandex.ru", "coxdib-2nyxki-Kofwuh")
-            self._api.dump_settings(self._session_path)
+            self._api = instagrapi.Client()
+            login, password = credentials.split(":")
+            self._api.login(login, password)
+            self._api.dump_settings(session_path)
+            self._process_percent(percent=100 // 5)
+        return session_path
 
     @staticmethod
     def _get_video_dimensions(path_or_url: str | Path) -> tuple[int, int, int]:
@@ -102,7 +112,7 @@ class InstagramAPIController(BaseSourceController):
             folder=self._download_directory,
         )
         if resource.media_type == 1:
-            return PhotoDTO(path=file_path)
+            return PhotoDTO(path=file_path, url=self._resolution.url)
 
         width, height, duration = self._get_video_dimensions(file_path)
         thumbnail_path = self._api.story_download_by_url(
@@ -115,6 +125,7 @@ class InstagramAPIController(BaseSourceController):
             height=height,
             duration=duration,
             thumbnail=thumbnail_path,
+            url=self._resolution.url,
         )
 
     @retry_on_loginrequired
@@ -125,17 +136,25 @@ class InstagramAPIController(BaseSourceController):
         :param code: Code of the media.
         :return: Dictionary with media information.
         """
+        base_percent = round(100 / 3)
+
         story_info = self._api.story_info(story_pk=code)
+        self._process_percent(percent=base_percent)
+
         result = self._download_resource(story_info)
+        self._process_percent(percent=base_percent + round(100 / 2))
+
         if isinstance(result, PhotoDTO):
             coro = self._telegram_bot_controller.send_finish_downloading_photo(
                 photo=result,
                 telegram_id=self._telegram_id,
+                message_id=self._message_id,
             )
         else:
             coro = self._telegram_bot_controller.send_finish_downloading(
                 video=result,
                 telegram_id=self._telegram_id,
+                message_id=self._message_id,
             )
         asyncio.run_coroutine_threadsafe(coro, self._loop)
 
@@ -146,33 +165,40 @@ class InstagramAPIController(BaseSourceController):
 
         :param code: Code of the media.
         """
+        base_percent = round(100 / 3)
+
         post = self._api.media_info(media_pk=self._api.media_pk_from_code(code))
+        self._process_percent(percent=base_percent)
+
+        count_medias = len(post.resources)
         files: list[PhotoDTO | VideoDTO] = []
-        for resource in post.resources:
+        for index, resource in enumerate(post.resources):
             files.append(self._download_resource(resource))
+
+            # Default percent is ~33% (100 / 3)
+            # and downloading percent is ~50% (100 / 2)
+            percent_downloading = round(100 / 2 / count_medias * (index + 1))
+            self._process_percent(percent=base_percent + percent_downloading)
         coro = self._telegram_bot_controller.send_finish_downloading_group(
             files=files,
             telegram_id=self._telegram_id,
+            message_id=self._message_id,
         )
         asyncio.run_coroutine_threadsafe(coro, self._loop)
 
-    async def download_video(
-        self,
-        resolution: Resolution,
-    ) -> None:
+    async def download_video(self) -> None:
         """
         Asynchronously downloads a video from Instagram.
 
-        :param resolution: Resolution of the video.
         :return: Dictionary with information about the downloaded file.
         """
         await asyncio.to_thread(self.load_settings)
 
-        code = resolution.metadata.get("code")
+        code = self._resolution.metadata.get("code")
         if code is None:
             logging.error("No code found in metadata")
             return
-        content_type = resolution.metadata.get("type")
+        content_type = self._resolution.metadata.get("type")
 
         if content_type == InstagramContentTypeEnum.STORIES:
             await asyncio.to_thread(self._download_story, code=code)

@@ -4,6 +4,7 @@ import taskiq_fastapi
 from taskiq import AsyncBroker, AsyncResultBackend, InMemoryBroker
 from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
+from saver_backend.services.i18n.taskiq import I18nMiddleware
 from saver_backend.settings import settings
 
 result_backend: AsyncResultBackend[Any] = RedisAsyncResultBackend(
@@ -12,6 +13,7 @@ result_backend: AsyncResultBackend[Any] = RedisAsyncResultBackend(
 broker: AsyncBroker = ListQueueBroker(
     str(settings.redis_url.with_path("/1")),
 ).with_result_backend(result_backend)
+broker.add_middlewares(I18nMiddleware(broker))
 
 if settings.environment.lower() == "pytest":
     broker = InMemoryBroker()

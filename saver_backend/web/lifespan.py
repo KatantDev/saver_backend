@@ -32,16 +32,18 @@ async def lifespan_setup(
     i18n = I18n(path="locales", default_locale="en", domain="messages")
     app.add_middleware(I18nMiddleware, i18n=i18n)
 
-    if not broker.is_worker_process:
-        await broker.startup()
     init_db(app.state)
     init_redis(app)
-    await init_telegram_bot_controller(app, i18n)
+
+    if not broker.is_worker_process:
+        await broker.startup()
+        await init_telegram_bot_controller(app, i18n)
     app.middleware_stack = app.build_middleware_stack()
 
     yield
     if not broker.is_worker_process:
         await broker.shutdown()
+        await shutdown_telegram_bot_controller(app)
+
     await shutdown_db(app.state)
     await shutdown_redis(app)
-    await shutdown_telegram_bot_controller(app)
