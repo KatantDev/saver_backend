@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     telegram_bot_api_url: str = "http://bot-api:8081"
 
     # Webhook Settings
-    webhook_base_url: str = "https://famous-thoroughly-ray.ngrok-free.app/api/webhook"
+    webhook_base_url: str = "http://saver_backend-api:8000/api/webhook"
     webhook_telegram_path: str = "/telegram"
 
     @property

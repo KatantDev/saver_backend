@@ -50,6 +50,7 @@ class TelegramBotController:
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
         )
         self._bot = Bot(
+            session=self._session,
             token=settings.telegram_bot_token,
             default=default,
             **kwargs,
