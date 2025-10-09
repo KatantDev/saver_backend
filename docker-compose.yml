@@ -85,7 +85,7 @@ services:
     logging: *default-logging
 
   redis:
-    image: bitnami/redis:6.2.5
+    image: bitnami/redis:latest
     hostname: "saver_backend-redis"
     restart: always
     environment:
