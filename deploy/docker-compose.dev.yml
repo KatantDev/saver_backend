@@ -27,3 +27,15 @@ services:
   redis:
     ports:
       - "6379:6379"
+
+  telegram-bot-api:
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+    environment:
+      TELEGRAM_API_ID: "24905596"
+      TELEGRAM_API_HASH: "1b1264e88cb2475be709831a2a53289b"
+      TELEGRAM_LOCAL: "true"
+      TELEGRAM_VERBOSE: "3"
+      TELEGRAM_STAT: "1"
+      TELEGRAM_VERBOSITY: "3"
