@@ -39,3 +39,5 @@ services:
       TELEGRAM_VERBOSE: "3"
       TELEGRAM_STAT: "1"
       TELEGRAM_VERBOSITY: "3"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
