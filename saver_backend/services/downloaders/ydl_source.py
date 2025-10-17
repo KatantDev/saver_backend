@@ -45,7 +45,7 @@ class YtDlpController(BaseSourceController, ABC):
             self._base_options["cookiefile"] = str(cookie_file)
             logging.info("Using cookie file %s for %s", cookie_file, self.SOURCE)
 
-        self._download_directory.mkdir(exist_ok=True)
+        self._download_directory.mkdir(parents=True, exist_ok=True)
 
         self._yt_dlp = yt_dlp.YoutubeDL(self._base_options)
         self._filename: Path | None = None

@@ -7,6 +7,7 @@ class SourceEnum(str, Enum):
     TIKTOK = "tiktok"
     INSTAGRAM_YDL = "instagram_ydl"
     INSTAGRAM_API = "instagram_api"
+    YOUTUBE_SHORTS_YDL = "youtube_shorts_ydl"
     UNSUPPORTED = "unsupported"
     UNKNOWN_URL = "unknown_url"
 

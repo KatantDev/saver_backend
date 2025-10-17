@@ -39,6 +39,7 @@ async def send_unknown_url(
             SourceEnum.TIKTOK,
             SourceEnum.INSTAGRAM_YDL,
             SourceEnum.INSTAGRAM_API,
+            SourceEnum.YOUTUBE_SHORTS_YDL,
         ],
     ),
 )

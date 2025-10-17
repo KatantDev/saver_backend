@@ -14,6 +14,9 @@ from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
 from saver_backend.services.downloaders.tiktok_ydl_source import TikTokYdlController
+from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
+    YouTubeShortsYdlController,
+)
 
 
 class Detector(ABC):
@@ -134,7 +137,7 @@ class InstagramYdlDetector(Detector):
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         InstagramContentTypeEnum.REELS: re.compile(
-            r"^/reel/(?P<code>[A-Za-z0-9_-]+)/?$",
+            r"^/reels?/(?P<code>[A-Za-z0-9_-]+)/?$",
         ),
     }
 
@@ -165,6 +168,40 @@ class InstagramInstaloaderDetector(Detector):
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
             return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class YouTubeShortsDetector(Detector):
+    """Detector for YouTube Shorts."""
+
+    SOURCE = SourceEnum.YOUTUBE_SHORTS_YDL
+    CONTROLLER = YouTubeShortsYdlController
+    HOSTS = (
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtu.be",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "shorts": re.compile(r"^/shorts/(?P<code>[A-Za-z0-9_-]+)/?$"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """
+        Check if the url is a valid YouTube Shorts url.
+
+        :param url: URL to check.
+        :return: Resolution if the url is valid, None otherwise.
+        """
+        if not self._host_in(url, *self.HOSTS):
+            return None
+
+        # Handle short youtu.be links, yt-dlp can resolve them.
+        if "youtu.be" in url:
+            return Resolution(source=self.SOURCE, url=self._clean_url(url))
+
+        # Handle full /shorts/ links
         return self._match_regex(url)
 
 
