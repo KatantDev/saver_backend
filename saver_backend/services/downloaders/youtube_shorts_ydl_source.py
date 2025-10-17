@@ -22,7 +22,7 @@ class YouTubeShortsYdlController(YtDlpController):
 
         youtube_params = {
             # Use the download directory already defined in the parent class
-            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best",
+            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best",  # noqa: E501
             "no_warnings": True,
             "downloader": "aria2c",
             "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
