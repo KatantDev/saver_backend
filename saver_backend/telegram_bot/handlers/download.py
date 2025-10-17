@@ -1,3 +1,4 @@
+import logging
 import re
 
 from aiogram import Bot, Router
@@ -34,6 +35,7 @@ async def send_unknown_url(
     if not pattern.match(message.text or ""):
         return
 
+    logging.info(f"[TG] User {message.from_user.id if message.from_user else 'unknown'} sent unknown url: {getattr(resolution, 'url', None)} | text: {message.text}")
     await message.answer(
         text=_("unknown url"),
     )
@@ -62,5 +64,27 @@ async def download_video(message: Message, resolution: Resolution) -> None:
     """
     if message.from_user is None:
         return
-
+    logging.info(f"[TG] User {message.from_user.id} requested download. Text: {message.text}, Resolution: {resolution}")
     await save_video.kiq(resolution=resolution, telegram_id=message.from_user.id)
+
+
+@download_router.message(SourceFilter(sources=[SourceEnum.VK]))
+async def handle_vk_direct_download(message: Message, resolution: Resolution) -> None:
+    """
+    Handle VK video - redirect to VK preview handler.
+    This handler is a fallback in case VK handler doesn't catch the message.
+
+    :param message: Message.
+    :param resolution: Resolution.
+    """
+    if message.from_user is None:
+        return
+    
+    logging.info(f"[TG] VK Fallback Handler called! User {message.from_user.id} sent VK URL: {resolution.url}")
+    logging.info(f"[TG] Resolution source: {resolution.source}, metadata: {resolution.metadata}")
+    
+    await message.answer(
+        f"URL: {resolution.url}\n"
+        f"Source: {resolution.source}\n"
+        f"Пожалуйста, используйте команду /start и отправьте ссылку заново."
+    )

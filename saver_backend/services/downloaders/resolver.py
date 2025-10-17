@@ -1,7 +1,7 @@
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar
+from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar, TYPE_CHECKING
 from urllib.parse import urlparse, urlunparse
 
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
@@ -17,6 +17,9 @@ from saver_backend.services.downloaders.tiktok_ydl_source import TikTokYdlContro
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
 )
+
+if TYPE_CHECKING:
+    from saver_backend.services.downloaders.vk_ydl_source import VkYdlController
 
 
 class Detector(ABC):
@@ -205,6 +208,29 @@ class YouTubeShortsDetector(Detector):
         return self._match_regex(url)
 
 
+@register_detector()
+class VkDetector(Detector):
+    SOURCE = SourceEnum.VK
+    CONTROLLER = "VkYdlController" 
+    HOSTS = (
+        "vk.com",
+        "www.vk.com",
+        "m.vk.com",
+        "vkvideo.ru",
+        "www.vkvideo.ru",
+        "m.vkvideo.ru",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video(?P<code>-?\d+_\d+)/?$"),
+        "clip": re.compile(r"^/clip(?P<code>-?\d+_\d+)/?$"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
 class SourceResolver:
     """Resolver for source of the message."""
 
@@ -243,6 +269,15 @@ class SourceResolver:
             source = source.source
         logging.info("Getting controller for %s", source)
         controller = self._detectors[source].CONTROLLER
+        
+        if isinstance(controller, str):
+            if controller == "VkYdlController":
+                from saver_backend.services.downloaders.vk_ydl_source import VkYdlController
+                return VkYdlController
+            else:
+                logging.error(f"Unknown controller string: {controller}")
+                return None
+        
         if controller is None or controller is BaseSourceController:
             return None
         return controller
