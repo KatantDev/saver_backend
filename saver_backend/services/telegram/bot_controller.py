@@ -315,7 +315,7 @@ class TelegramBotController:
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
-                thumbnail=(
+                cover=(
                     FSInputFile(
                         path=video.thumbnail,
                     )
