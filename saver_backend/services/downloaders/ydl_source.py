@@ -37,6 +37,7 @@ class YtDlpController(BaseSourceController, ABC):
             "quiet": True,
             "noprogress": True,
             "verbose": False,
+            "source_address": settings.source_ip,
         }
         if self.COOKIES:
             self._list_cookies = Path(f"cookies/{self.SOURCE.value}").glob(

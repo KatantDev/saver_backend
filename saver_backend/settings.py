@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     webhook_base_url: str = "http://saver_backend-api:8000/api/webhook"
     webhook_telegram_path: str = "/telegram"
 
+    # Downloader settings
+    source_ip: str = ""
+
     @property
     def webhook_telegram_url(self) -> str:
         """
@@ -84,13 +87,15 @@ class Settings(BaseSettings):
 
     @field_validator("subscription_channels", mode="before")
     @classmethod
-    def decode_channels(cls, v: str) -> list[str]:
+    def decode_channels(cls, v: str | list[str]) -> list[str]:
         """
         Decode subscription channels from comma-separated string.
 
         :param v: Comma-separated string of channels.
         :return: List of channels.
         """
+        if isinstance(v, list):
+            return v
         return [str(x) for x in v.split(",")]
 
     @property
