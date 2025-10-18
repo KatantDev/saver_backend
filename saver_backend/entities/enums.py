@@ -9,7 +9,6 @@ class SourceEnum(str, Enum):
     INSTAGRAM_API = "instagram_api"
     YOUTUBE_SHORTS_YDL = "youtube_shorts_ydl"
     UNSUPPORTED = "unsupported"
-    UNKNOWN_URL = "unknown_url"
 
 
 class InstagramContentTypeEnum(str, Enum):

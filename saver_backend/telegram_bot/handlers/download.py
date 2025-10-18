@@ -1,3 +1,5 @@
+import re
+
 from aiogram import Bot, Router
 from aiogram.types import Message
 
@@ -11,7 +13,7 @@ from saver_backend.telegram_bot.filters.source import SourceFilter
 download_router = Router()
 
 
-@download_router.message(SourceFilter(sources=[SourceEnum.UNKNOWN_URL]))
+@download_router.message(SourceFilter(sources=[SourceEnum.UNSUPPORTED]))
 async def send_unknown_url(
     message: Message,
     bot: Bot,
@@ -24,6 +26,14 @@ async def send_unknown_url(
     :param bot: Bot.
     :param resolution: Resolution.
     """
+    # Check if the url is a valid url
+    pattern = re.compile(
+        r"^(https?://)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(/[^\s]*)?$",
+        re.IGNORECASE,
+    )
+    if not pattern.match(message.text or ""):
+        return
+
     await message.answer(
         text=_("unknown url"),
     )
