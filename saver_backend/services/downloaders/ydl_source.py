@@ -20,6 +20,7 @@ class YtDlpController(BaseSourceController, ABC):
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.UNSUPPORTED
     COOKIES: ClassVar[bool] = False
+    SUPPORTS_STREAMING: ClassVar[bool] = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -103,6 +104,7 @@ class YtDlpController(BaseSourceController, ABC):
             video=video,
             telegram_id=self._telegram_id,
             message_id=self._message_id,
+            supports_streaming=self.SUPPORTS_STREAMING,
         )
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         try:

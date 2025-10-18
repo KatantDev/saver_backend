@@ -26,9 +26,6 @@ class YouTubeShortsYdlController(YtDlpController):
                 "bestvideo[ext=mp4][height<=1080]+"
                 "bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best"
             ),
-            "no_warnings": True,
-            "downloader": "aria2c",
-            "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
         }
         self._yt_dlp.params.update(youtube_params)
 

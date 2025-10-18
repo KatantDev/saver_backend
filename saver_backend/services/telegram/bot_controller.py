@@ -299,6 +299,7 @@ class TelegramBotController:
         video: VideoDTO,
         telegram_id: int,
         message_id: int | None = None,
+        supports_streaming: bool = True,
     ) -> Video | None:
         """
         Send finish downloading message.
@@ -322,7 +323,7 @@ class TelegramBotController:
                     if video.thumbnail
                     else None
                 ),
-                supports_streaming=True,
+                supports_streaming=supports_streaming,
             )
         except (TelegramForbiddenError, TelegramBadRequest):
             return None
