@@ -7,7 +7,7 @@ from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 
 class YouTubeShortsYdlController(YtDlpController):
-    """Asynchronous controller for downloading videos from YouTube Shorts through yt-dlp."""
+    """Asynchronous controller for downloading videos from YT Shorts through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_SHORTS_YDL
     COOKIES: ClassVar[bool] = True
@@ -22,7 +22,10 @@ class YouTubeShortsYdlController(YtDlpController):
 
         youtube_params = {
             # Use the download directory already defined in the parent class
-            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best",  # noqa: E501
+            "format": (
+                "bestvideo[ext=mp4][height<=1080]+"
+                "bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best"
+            ),
             "no_warnings": True,
             "downloader": "aria2c",
             "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
