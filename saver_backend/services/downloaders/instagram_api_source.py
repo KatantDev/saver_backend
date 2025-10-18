@@ -145,18 +145,19 @@ class InstagramAPIController(BaseSourceController):
         self._process_percent(percent=base_percent + round(100 / 2))
 
         if isinstance(result, PhotoDTO):
-            coro = self._telegram_bot_controller.send_finish_downloading_photo(
+            photo_coro = self._telegram_bot_controller.send_finish_downloading_photo(
                 photo=result,
                 telegram_id=self._telegram_id,
                 message_id=self._message_id,
             )
+            asyncio.run_coroutine_threadsafe(photo_coro, self._loop)
         else:
-            coro = self._telegram_bot_controller.send_finish_downloading(
+            video_coro = self._telegram_bot_controller.send_finish_downloading(
                 video=result,
                 telegram_id=self._telegram_id,
                 message_id=self._message_id,
             )
-        asyncio.run_coroutine_threadsafe(coro, self._loop)
+            asyncio.run_coroutine_threadsafe(video_coro, self._loop)
 
     @retry_on_loginrequired
     def _download_post(self, code: str) -> None:

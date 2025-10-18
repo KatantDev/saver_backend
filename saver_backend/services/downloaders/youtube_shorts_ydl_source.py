@@ -50,6 +50,7 @@ class YouTubeShortsYdlController(YtDlpController):
         """
         # Get video information
         video_info = await self.get_video_info(url=self._resolution.url)
+        logging.info(video_info)
 
         if video_info is None:
             logging.error(

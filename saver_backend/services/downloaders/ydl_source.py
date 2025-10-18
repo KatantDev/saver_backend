@@ -104,7 +104,15 @@ class YtDlpController(BaseSourceController, ABC):
             telegram_id=self._telegram_id,
             message_id=self._message_id,
         )
-        asyncio.run_coroutine_threadsafe(coro, self._loop)
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            tg_video = future.result(timeout=30)
+            logging.info(tg_video)
+        except TimeoutError:
+            logging.warning(
+                "Timeout waiting for finish message to be sent (url=%r)",
+                self._resolution.url,
+            )
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         """

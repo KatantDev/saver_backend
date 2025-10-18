@@ -14,7 +14,7 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
     TelegramRetryAfter,
 )
-from aiogram.types import FSInputFile, Update
+from aiogram.types import FSInputFile, Update, Video
 from aiogram.utils.i18n import I18n, SimpleI18nMiddleware
 from aiogram.utils.media_group import MediaGroupBuilder
 from sentry_sdk import capture_exception
@@ -192,7 +192,6 @@ class TelegramBotController:
         Send start downloading message.
 
         :param telegram_id: Telegram ID of the user.
-        :param title: Title of the video.
         :param percent: Percent of the video.
         """
         try:
@@ -300,7 +299,7 @@ class TelegramBotController:
         video: VideoDTO,
         telegram_id: int,
         message_id: int | None = None,
-    ) -> None:
+    ) -> Video | None:
         """
         Send finish downloading message.
 
@@ -308,17 +307,30 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
         """
-        coro1 = self._bot.send_video(
-            chat_id=telegram_id,
-            video=FSInputFile(path=video.path),
-            caption=_("result direct message").format(url=video.url),
-            width=video.width,
-            height=video.height,
-            duration=video.duration,
-            thumbnail=FSInputFile(path=video.thumbnail) if video.thumbnail else None,
-            supports_streaming=True,
-        )
-        await self._send(coro1)
+        try:
+            message = await self._bot.send_video(
+                chat_id=telegram_id,
+                video=FSInputFile(path=video.path),
+                caption=_("result direct message").format(url=video.url),
+                width=video.width,
+                height=video.height,
+                duration=video.duration,
+                thumbnail=(
+                    FSInputFile(
+                        path=video.thumbnail,
+                    )
+                    if video.thumbnail
+                    else None
+                ),
+                supports_streaming=True,
+            )
+        except (TelegramForbiddenError, TelegramBadRequest):
+            return None
+        except Exception as e:
+            if settings.environment == "local":
+                logging.exception(e)
+            capture_exception(e)
+            return None
 
         if message_id is not None:
             coro2 = self._bot.delete_message(
@@ -326,6 +338,8 @@ class TelegramBotController:
                 chat_id=telegram_id,
             )
             await self._send(coro2)
+
+        return message.video
 
     async def send_tiktok_error_downloading(self, telegram_id: int) -> None:
         """
