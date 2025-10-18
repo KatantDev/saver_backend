@@ -87,15 +87,13 @@ class Settings(BaseSettings):
 
     @field_validator("subscription_channels", mode="before")
     @classmethod
-    def decode_channels(cls, v: str | list[str]) -> list[str]:
+    def decode_channels(cls, v: str) -> list[str]:
         """
         Decode subscription channels from comma-separated string.
 
         :param v: Comma-separated string of channels.
         :return: List of channels.
         """
-        if isinstance(v, list):
-            return v
         return [str(x) for x in v.split(",")]
 
     @property
