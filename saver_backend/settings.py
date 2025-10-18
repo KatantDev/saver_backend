@@ -1,9 +1,10 @@
 import enum
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from yarl import URL
 
 TEMP_DIR = Path(gettempdir())
@@ -61,7 +62,7 @@ class Settings(BaseSettings):
     # Telegram bot configuration.
     telegram_bot_token: str = "7929882587:AAEKgw4y9YBVlpFsFrXemlu9Q-jCxHsjFY4"
     telegram_secret_token: str = "82-Ma_KyYj6hkMAvN6j-2J7lJg7Lgua"
-    subscription_channels: list[str] = ["expensive_gifts_channel"]
+    subscription_channels: Annotated[list[str], NoDecode] = ["expensive_gifts_channel"]
     admin_chat_id: int = -4816121008
     instagram_accounts: list[str] = ["katantdev@yandex.ru:coxdib-2nyxki-Kofwuh"]
 
@@ -80,6 +81,17 @@ class Settings(BaseSettings):
         :return: URL for telegram webhook.
         """
         return self.webhook_base_url + self.webhook_telegram_path
+
+    @field_validator("subscription_channels", mode="before")
+    @classmethod
+    def decode_channels(cls, v: str) -> list[str]:
+        """
+        Decode subscription channels from comma-separated string.
+
+        :param v: Comma-separated string of channels.
+        :return: List of channels.
+        """
+        return [str(x) for x in v.split(",")]
 
     @property
     def db_url(self) -> URL:
