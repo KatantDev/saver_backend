@@ -20,6 +20,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      telegram-bot-api:
+        condition: service_started
     environment:
       SAVER_BACKEND_HOST: 0.0.0.0
       SAVER_BACKEND_DB_HOST: saver_backend-db
