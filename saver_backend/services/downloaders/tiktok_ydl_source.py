@@ -20,36 +20,21 @@ class TikTokYdlController(YtDlpController):
         self._yt_dlp.params["format"] = "bv*+ba/best"
 
     async def get_video_info(self, url: str) -> Dict[str, Any] | None:
-        """
-        Get video information without downloading.
-
-        :param url: URL of the video.
-        :return: Dictionary with video information.
-        """
-        return await self._get_video_info(url)
+        """Override to raise a specific error for slideshows (which return no info)."""
+        info = await super()._get_video_info(url)
+        if not info:
+            raise TikTokYtDlpDownloaderError
+        return info
 
     async def download_video(self) -> None:
-        """
-        Asynchronously downloads a video from TikTok.
-
-        :return: Dictionary with information about the downloaded file.
-        """
-        # Get video information
-        video_info = await self.get_video_info(url=self._resolution.url)
-
-        if video_info is None:
-            logging.error(
-                "%s | Error getting video information (%s)",
-                self.SOURCE,
+        """Public method to start the download process."""
+        try:
+            await self._download_and_send_video()
+        except TikTokYtDlpDownloaderError:
+            logging.warning(
+                "Could not get info for TikTok URL %s. It might be a slideshow.",
                 self._resolution.url,
             )
-            raise TikTokYtDlpDownloaderError
-
-        logging.info(
-            "%s | Starting video download: %s",
-            self.SOURCE,
-            self._resolution.url,
-        )
-
-        # Execute download in a separate thread
-        await self._download_video(url_list=[self._resolution.url])
+            await self._telegram_bot_controller.send_tiktok_error_downloading(
+                telegram_id=self._telegram_id,
+            )

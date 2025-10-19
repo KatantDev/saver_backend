@@ -1,4 +1,3 @@
-import logging
 from typing import Any, ClassVar, Dict
 
 from yt_dlp import DownloadError
@@ -29,31 +28,13 @@ class InstagramYdlController(YtDlpController):
         :return: Dictionary with video information.
         """
         try:
-            return await self._get_video_info(url)
+            return await super()._get_video_info(url)
         except DownloadError as error:
             if "No video formats found" in error.msg:
                 return None
             raise error
 
     async def download_video(self) -> None:
-        """
-        Asynchronously downloads a video from Instagram.
+        """Public method to start the download process."""
+        await self._download_and_send_video()
 
-        :return: Dictionary with information about the downloaded file.
-        """
-        video_info = await self.get_video_info(url=self._resolution.url)
-
-        if video_info is None:
-            logging.error(
-                "%s | Error getting video information (%s)",
-                self.SOURCE,
-                self._resolution.url,
-            )
-
-        logging.info(
-            "%s | Starting video download: %s",
-            self.SOURCE,
-            self._resolution.url,
-        )
-
-        await self._download_video(url_list=[self._resolution.url])

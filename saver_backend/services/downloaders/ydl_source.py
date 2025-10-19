@@ -29,153 +29,126 @@ class YtDlpController(BaseSourceController, ABC):
             "format": "best",
             "outtmpl": str(self._download_directory / "%(id)s.%(ext)s"),
             "noplaylist": True,
-            "extract_flat": False,
             "writethumbnail": True,
-            "writeinfojson": False,
-            "ignoreerrors": False,
-            "no_warnings": False,
             "quiet": True,
-            "noprogress": True,
-            "verbose": False,
+            "noprogress": False,
+            "overwrites": True,
+            "postprocessor_args": [
+                "-nostdin",
+            ],
         }
         if settings.source_ip:
             self._base_options["source_address"] = settings.source_ip
         if self.COOKIES:
-            self._list_cookies = Path(f"cookies/{self.SOURCE.value}").glob(
-                "cookies*.txt",
-            )
-            cookie_file = secrets.choice(list(self._list_cookies)).resolve()
-            self._base_options["cookiefile"] = str(cookie_file)
-            logging.info("Using cookie file %s for %s", cookie_file, self.SOURCE)
+            base_dir = Path(__file__).resolve().parent.parent.parent.parent
+            cookie_dir = base_dir / "cookies" / self.SOURCE.value
+            cookie_files = list(cookie_dir.glob("cookies*.txt"))
+            if cookie_files:
+                cookie_file = secrets.choice(cookie_files).resolve()
+                self._base_options["cookiefile"] = str(cookie_file)
+                logging.info("Using cookie file %s for %s", cookie_file, self.SOURCE)
+            else:
+                logging.warning(
+                    "Cookies enabled for %s, but no files found in %s",
+                    self.SOURCE, cookie_dir,
+                )
 
         self._download_directory.mkdir(parents=True, exist_ok=True)
-
         self._yt_dlp = yt_dlp.YoutubeDL(self._base_options)
-        self._filename: Path | None = None
         self._yt_dlp.add_progress_hook(self._progress_hook)
 
-    async def _download_video(self, url_list: list[str]) -> Dict[str, Any] | None:
-        """
-        Download video in separate thread.
+    def _progress_hook(self, d: Dict[str, Any]) -> None:
+        """This hook's only job is to report download progress."""
+        if d["status"] == "downloading":
+            total_bytes = d.get("total_bytes") or d.get("total_bytes_estimate")
+            downloaded_bytes = d.get("downloaded_bytes")
+            if not total_bytes or not downloaded_bytes:
+                return
 
-        :param url_list: List of URLs of the videos.
-        :return: Dictionary with video information.
-        """
-        try:
-            return await asyncio.to_thread(
-                self._yt_dlp.download,
-                url_list=url_list,
-            )
-        except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
-            sentry_sdk.capture_exception(e)
-            return None
+            percent_float = (downloaded_bytes / total_bytes) * 100
+            percent = round(percent_float * 0.66 + 16)
+
+            if self._last_percent + 10 >= percent and self._message_id is not None:
+                return
+
+            self._process_percent(percent=percent)
 
     async def _get_video_info(self, url: str) -> Dict[str, Any] | None:
-        """
-        Get video information without downloading in separate thread.
-
-        :param url: URL of the video.
-        :return: Dictionary with video information.
-        """
+        """Get video information without downloading in a separate thread."""
         try:
-            result = await asyncio.to_thread(
-                self._yt_dlp.extract_info,
-                url=url,
-                download=False,
+            return await asyncio.to_thread(
+                self._yt_dlp.extract_info, url=url, download=False,
             )
-            self._process_percent(percent=100 // 6)
-            return result
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
             return None
 
-    def _send_finish_message(
-        self,
-        video: VideoDTO,
-    ) -> None:
-        """
-        Send finish message.
-
-        :param video: Video.
-        """
+    def _send_finish_message(self, video: VideoDTO) -> None:
+        """Send the finished video to the user."""
         coro = self._telegram_bot_controller.send_finish_downloading(
             video=video,
             telegram_id=self._telegram_id,
             message_id=self._message_id,
             supports_streaming=self.SUPPORTS_STREAMING,
         )
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        try:
-            tg_video = future.result(timeout=30)
-            logging.info(tg_video)
-        except TimeoutError:
-            logging.warning(
-                "Timeout waiting for finish message to be sent (url=%r)",
+        asyncio.run_coroutine_threadsafe(coro, self._loop)
+
+    async def _download_and_send_video(self) -> None:
+        """Run the full, reliable download-and-send logic.
+
+        This protected method contains the complete download process.
+        """
+        info = await self._get_video_info(url=self._resolution.url)
+        if not info:
+            logging.error(
+                "Failed to get video info for %s. Aborting download.",
                 self._resolution.url,
             )
+            return
 
-    def _progress_hook(self, d: Dict[str, Any]) -> None:
-        """
-        Progress handler for download.
+        self._process_percent(percent=16)
 
-        :param d: Dictionary with information about the progress.
-        """
-        filename: str | None = d.get("filename")
-        info: dict[str, Any] = d.get("info_dict") or {}
-        title: str | None = (
-            info.get("description") or info.get("fulltitle") or info.get("title")
-        )
-        percent: int | float | None = d.get("_percent")
+        try:
+            await asyncio.to_thread(self._yt_dlp.download, [self._resolution.url])
+        except Exception as e:
+            logging.error("yt-dlp download process failed: %s", e)
+            sentry_sdk.capture_exception(e)
+            return
 
-        if d["status"] == "finished" and filename:
-            self._filename = Path(filename)
+        video_id = info.get("id")
+        video_ext = info.get("ext")
+        if not video_id or not video_ext:
+            logging.error("Could not determine final filepath from info_dict.")
+            return
 
-            width = info.get("width")
-            height = info.get("height")
-            duration = info.get("duration")
-            video = VideoDTO(
-                path=self._filename,
-                title=title or "",
-                width=int(width) if width else None,
-                height=int(height) if height else None,
-                duration=int(duration) if duration else None,
-                thumbnail=next(
-                    (
-                        t.get("filepath") or t.get("filename")
-                        for t in info.get("thumbnails", [])
-                        if t.get("filepath") or t.get("filename")
-                    ),
-                    None,
-                ),
-                url=self._resolution.url,
+        final_filepath = self._download_directory / f"{video_id}.{video_ext}"
+        if not final_filepath.exists():
+            logging.error(
+                "Download reported as finished, but file %s does not exist.",
+                final_filepath,
             )
-            self._send_finish_message(video=video)
             return
 
-        if d["status"] == "downloading" and filename:
-            self._filename = Path(filename)
+        thumbnail_path = next(
+            (t.get("filepath")
+            for t in info.get("thumbnails", [])
+            if t.get("filepath")),
+            None,
+        )
 
-        if percent is None:
-            return
+        width = info.get("width")
+        height = info.get("height")
+        duration = info.get("duration")
 
-        # Default percent is ~33% (100 / 3) and downloading percent is ~50% (100 / 2)
-        percent = round(percent / 2 + 100 / 3)
-        if self._last_percent + 10 >= percent and self._message_id is not None:
-            return
-
-        self._process_percent(percent=percent)
-
-    def _get_downloaded_file(self) -> Path | None:
-        """
-        Find the downloaded file by title.
-
-        :return: Path to the downloaded file.
-        """
-        if self._filename and self._filename.exists():
-            return self._filename
-
-        return None
+        video = VideoDTO(
+            path=final_filepath,
+            title=info.get("title", ""),
+            width=int(width) if width else None,
+            height=int(height) if height else None,
+            duration=int(duration) if duration else None,
+            thumbnail=thumbnail_path,
+            url=self._resolution.url,
+        )
+        self._send_finish_message(video)
