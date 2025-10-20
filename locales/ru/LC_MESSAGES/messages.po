@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-10-06 13:33+1000\n"
+"POT-Creation-Date: 2025-10-17 16:32+0300\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -19,7 +19,6 @@ msgstr ""
 "Generated-By: Babel 2.17.0\n"
 
 #: saver_backend/services/telegram/bot_controller.py:182
-#: saver_backend/telegram_bot/handlers/start.py:66
 msgid "welcome message"
 msgstr ""
 "<b>🎬 Этот бот создан, чтобы скачивать видео из:</b> YouTube | TikTok | Instagram | ВКонтакте\n"
@@ -27,23 +26,86 @@ msgstr ""
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Бот — полностью бесплатный.</b>.\n"
 "Чтобы пользоваться им — просто подпишитесь на два наших канала:"
 
-#: saver_backend/services/telegram/bot_controller.py:244
-#: saver_backend/services/telegram/bot_controller.py:281
-#: saver_backend/services/telegram/bot_controller.py:301
+#: saver_backend/services/telegram/bot_controller.py:243
+#: saver_backend/services/telegram/bot_controller.py:288
+#: saver_backend/services/telegram/bot_controller.py:314
 msgid "result direct message"
 msgstr ""
 "{url}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
 
-#: saver_backend/telegram_bot/handlers/download.py:28
+#: saver_backend/telegram_bot/handlers/download.py:30
 msgid "unknown url"
 msgstr ""
 "Эта ссылка не поддерживается для скачивания.\n"
 "Но мы уже работаем над её поддержкой."
 
-#: saver_backend/telegram_bot/handlers/start.py:91
-#: saver_backend/telegram_bot/handlers/subscribe.py:36
+#: saver_backend/telegram_bot/keyboards/inline.py:52
+msgid "subscribe to channel"
+msgstr "➕ Подписаться на @{channel}"
+
+#: saver_backend/telegram_bot/keyboards/inline.py:55
+msgid "check subscriptions"
+msgstr "✅ Проверить подписки"
+
+#: saver_backend/telegram_bot/handlers/vk.py:45
+msgid "vk video info failed"
+msgstr "Не удалось получить информацию о видео"
+
+#: saver_backend/telegram_bot/handlers/vk.py:50
+msgid "vk formats failed"
+msgstr "Не удалось получить доступные форматы видео."
+
+#: saver_backend/telegram_bot/handlers/vk.py:63
+msgid "vk select quality"
+msgstr "Выберите качество видео:"
+
+#: saver_backend/telegram_bot/handlers/vk.py:107
+msgid "vk video data lost"
+msgstr "Данные о видео потеряны. Попробуйте снова."
+
+#: saver_backend/telegram_bot/handlers/vk.py:116
+msgid "vk starting download"
+msgstr "Начинаю скачивание в качестве {quality}..."
+
+#: saver_backend/telegram_bot/handlers/vk.py:128
+msgid "vk downloading"
+msgstr "Скачиваю видео в качестве {quality}...\nПожалуйста, подождите"
+
+#: saver_backend/telegram_bot/handlers/vk.py:144
+msgid "vk sending video"
+msgstr "Отправляю видео..."
+
+#: saver_backend/telegram_bot/handlers/vk.py:152
+msgid "vk video caption"
+msgstr "🎬 <b>{title}</b>\n⏱ Длительность: {duration}\n📹 Качество: {quality}"
+
+#: saver_backend/telegram_bot/handlers/vk.py:209
+msgid "vk file not found"
+msgstr "Файл не найден после скачивания."
+
+#: saver_backend/telegram_bot/handlers/vk.py:211
+msgid "vk directory not found"
+msgstr "Директория скачивания не найдена."
+
+#: saver_backend/telegram_bot/handlers/vk.py:215
+msgid "vk download error"
+msgstr "Ошибка при скачивании видео: {error}"
+
+#: saver_backend/telegram_bot/handlers/vk.py:222
+msgid "vk download error generic"
+msgstr "Произошла ошибка при скачивании. Попробуйте позже."
+
+#: saver_backend/telegram_bot/handlers/vk.py:83
+msgid "vk processing error"
+msgstr "Произошла ошибка при обработке видео: {error}"
+
+#: saver_backend/telegram_bot/handlers/vk.py:260
+msgid "vk session expired"
+msgstr "Сессия истекла. Отправьте ссылку заново."
+
+#: saver_backend/telegram_bot/handlers/subscribe.py:38
 msgid "information message"
 msgstr ""
 "<b>🎬 Этот бот создан, чтобы скачивать видео из:</b> YouTube | TikTok | Instagram | ВКонтакте\n"
@@ -52,23 +114,11 @@ msgstr ""
 "\n"
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Также работает в инлайн-режиме:</b> откройте любой чат, введите @saver и вставьте ссылку."
 
-#: saver_backend/telegram_bot/handlers/start.py:95
-msgid "not subscribed to channels"
-msgstr "⚠️ Вы не подписаны на каналы"
-
-#: saver_backend/telegram_bot/handlers/subscribe.py:19
+#: saver_backend/telegram_bot/handlers/subscribe.py:21
 msgid "left from channels"
 msgstr ""
 "🎬 Мы обнаружили, что вы <b>не подписаны</b> на наши каналы\n"
 "\n"
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Бот — полностью бесплатный.</b>.\n"
 "Чтобы пользоваться им — просто подпишитесь на два наших канала:"
-
-#: saver_backend/telegram_bot/keyboards/inline.py:44
-msgid "subscribe to channel"
-msgstr "➕ Подписаться на @{channel}"
-
-#: saver_backend/telegram_bot/keyboards/inline.py:47
-msgid "check subscriptions"
-msgstr "✅ Проверить подписки"
 
