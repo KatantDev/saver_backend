@@ -19,8 +19,7 @@ class YouTubeShortsYdlController(YtDlpController):
         super().__init__(*args, **kwargs)
 
         youtube_params = {
-            "format": ("bestvideo[ext=mp4][height<=1080]+"
-            "bestaudio/best[ext=mp4]"),
+            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",
             "downloader": "aria2c",
             "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
         }

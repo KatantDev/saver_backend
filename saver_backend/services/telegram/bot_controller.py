@@ -307,6 +307,7 @@ class TelegramBotController:
         :param video: Video.
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
+        :param supports_streaming: Supports streaming.
         """
         try:
             message = await self._bot.send_video(

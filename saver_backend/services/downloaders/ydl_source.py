@@ -50,7 +50,8 @@ class YtDlpController(BaseSourceController, ABC):
             else:
                 logging.warning(
                     "Cookies enabled for %s, but no files found in %s",
-                    self.SOURCE, cookie_dir,
+                    self.SOURCE,
+                    cookie_dir,
                 )
 
         self._download_directory.mkdir(parents=True, exist_ok=True)
@@ -77,7 +78,9 @@ class YtDlpController(BaseSourceController, ABC):
         """Get video information without downloading in a separate thread."""
         try:
             return await asyncio.to_thread(
-                self._yt_dlp.extract_info, url=url, download=False,
+                self._yt_dlp.extract_info,
+                url=url,
+                download=False,
             )
         except Exception as e:
             if settings.environment == "local":
@@ -132,9 +135,11 @@ class YtDlpController(BaseSourceController, ABC):
             return
 
         thumbnail_path = next(
-            (t.get("filepath")
-            for t in info.get("thumbnails", [])
-            if t.get("filepath")),
+            (
+                t.get("filepath")
+                for t in info.get("thumbnails", [])
+                if t.get("filepath")
+            ),
             None,
         )
 

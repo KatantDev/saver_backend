@@ -37,4 +37,3 @@ class InstagramYdlController(YtDlpController):
     async def download_video(self) -> None:
         """Public method to start the download process."""
         await self._download_and_send_video()
-
