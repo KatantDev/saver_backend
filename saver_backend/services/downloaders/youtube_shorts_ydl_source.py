@@ -22,6 +22,11 @@ class YouTubeShortsYdlController(YtDlpController):
             "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",
             "downloader": "aria2c",
             "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
+            "extractor_args": {
+                "youtubepot-bgutilhttp": {
+                    "base_url": ["http://saver_backend-bgutil:4416"],
+                },
+            },
         }
         self._yt_dlp.params.update(youtube_params)
 
