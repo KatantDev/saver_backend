@@ -13,23 +13,23 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = ">=3.10,<4"
 fastapi = "^0.119"
-uvicorn = { version = "^0.37.0", extras = ["standard"] }
+uvicorn = { version = "^0.38", extras = ["standard"] }
 gunicorn = "^23.0.0"
-pydantic = "^2.10.4"
+pydantic = "^2.11"
 pydantic-settings = "^2.7.0"
 yarl = "^1.18.3"
 ujson = "^5.10.0"
-SQLAlchemy = {version = "^2.0.36", extras = ["asyncio"]}
-alembic = "^1.14.0"
+SQLAlchemy = {version = "^2.0", extras = ["asyncio"]}
+alembic = "^1.17"
 asyncpg = {version = "^0.30.0", extras = ["sa"]}
 redis = {version = "^6.4.0", extras = ["hiredis"]}
-httptools = "^0.6.4"
-pymongo = "^4.10.1"
-sentry-sdk = "^2.39.0"
+httptools = "^0.7"
+pymongo = "^4.15"
+sentry-sdk = "^2.42"
 loguru = "^0.7.3"
 taskiq = "^0.11.10"
 taskiq-fastapi = "^0.3.3"
-taskiq-redis = "^1.1.0"
+taskiq-redis = "^1.1"
 pyzmq = "^27.1.0"
 aiogram = "^3.22.0"
 babel = "^2.17.0"
