@@ -98,6 +98,18 @@ class YtDlpController(BaseSourceController, ABC):
         )
         asyncio.run_coroutine_threadsafe(coro, self._loop)
 
+    def _get_thumbnail(self, video_id: str | None) -> Path | None:
+        if not video_id:
+            return None
+
+        possible_extensions = (".webp", ".png", ".jpg")
+        for ext in possible_extensions:
+            thumb_path = self._download_directory / f"{video_id}{ext}"
+            if not thumb_path.exists():
+                continue
+            return thumb_path
+        return None
+
     async def _download_and_send_video(self) -> None:
         """Run the full, reliable download-and-send logic.
 
@@ -130,14 +142,7 @@ class YtDlpController(BaseSourceController, ABC):
             )
             return
 
-        thumbnail = None
-        if video_id:
-            possible_extensions = (".webp", ".png", ".jpg")
-            for ext in possible_extensions:
-                thumb_path = self._download_directory / f"{video_id}{ext}"
-                if thumb_path.exists():
-                    thumbnail = str(thumb_path)
-                    break
+        thumbnail = self._get_thumbnail(video_id=video_id)
 
         width = info.get("width")
         height = info.get("height")
