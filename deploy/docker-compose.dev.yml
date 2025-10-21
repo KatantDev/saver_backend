@@ -40,3 +40,7 @@ services:
       TELEGRAM_VERBOSITY: "3"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  bgutil:
+    ports:
+      - "4416:4416"

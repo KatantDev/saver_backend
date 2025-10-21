@@ -23,8 +23,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      telegram-bot-api:
-        condition: service_started
     environment:
       SAVER_BACKEND_HOST: 0.0.0.0
       SAVER_BACKEND_DB_HOST: saver_backend-db
@@ -44,6 +42,8 @@ services:
     mem_limit: 1G
     cpus: 2
     logging: *default-logging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   taskiq-worker:
     <<: *main_app
@@ -125,7 +125,16 @@ services:
     volumes:
       - saver-telegram-bot-api-data:/var/lib/telegram-bot-api
     logging: *default-logging
+    depends_on:
+      api:
+        condition: service_healthy
 
+  bgutil:
+    image: brainicism/bgutil-ytdlp-pot-provider
+    hostname: saver_backend-bgutil
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   saver_backend-db-data:

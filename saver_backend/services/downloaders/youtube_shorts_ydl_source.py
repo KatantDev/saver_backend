@@ -8,7 +8,7 @@ class YouTubeShortsYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from YT Shorts through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_SHORTS_YDL
-    COOKIES: ClassVar[bool] = True
+    COOKIES: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -19,9 +19,18 @@ class YouTubeShortsYdlController(YtDlpController):
         super().__init__(*args, **kwargs)
 
         youtube_params = {
+            "proxy": "http://host.docker.internal:10808",
             "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",
             "downloader": "aria2c",
             "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["mweb", "tv"],
+                },
+                "youtubepot-bgutilhttp": {
+                    "base_url": ["http://saver_backend-bgutil:4416"],
+                },
+            },
         }
         self._yt_dlp.params.update(youtube_params)
 

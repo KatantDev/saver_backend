@@ -105,10 +105,6 @@ class YtDlpController(BaseSourceController, ABC):
         """
         info = await self._get_video_info(url=self._resolution.url)
         if not info:
-            logging.error(
-                "Failed to get video info for %s. Aborting download.",
-                self._resolution.url,
-            )
             return
 
         self._process_percent(percent=16)
