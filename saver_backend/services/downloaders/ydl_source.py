@@ -134,14 +134,14 @@ class YtDlpController(BaseSourceController, ABC):
             )
             return
 
-        thumbnail_path = next(
-            (
-                t.get("filepath")
-                for t in info.get("thumbnails", [])
-                if t.get("filepath")
-            ),
-            None,
-        )
+        thumbnail = None
+        if video_id:
+            possible_extensions = (".webp", ".png", ".jpg")
+            for ext in possible_extensions:
+                thumb_path = self._download_directory / f"{video_id}{ext}"
+                if thumb_path.exists():
+                    thumbnail = str(thumb_path)
+                    break
 
         width = info.get("width")
         height = info.get("height")
@@ -153,7 +153,7 @@ class YtDlpController(BaseSourceController, ABC):
             width=int(width) if width else None,
             height=int(height) if height else None,
             duration=int(duration) if duration else None,
-            thumbnail=thumbnail_path,
+            thumbnail=thumbnail,
             url=self._resolution.url,
         )
         self._send_finish_message(video)
