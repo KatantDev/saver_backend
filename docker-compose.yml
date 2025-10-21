@@ -23,6 +23,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      telegram-bot-api:
+        condition: service_started
     environment:
       SAVER_BACKEND_HOST: 0.0.0.0
       SAVER_BACKEND_DB_HOST: saver_backend-db
@@ -125,9 +127,6 @@ services:
     volumes:
       - saver-telegram-bot-api-data:/var/lib/telegram-bot-api
     logging: *default-logging
-    depends_on:
-      api:
-        condition: service_healthy
 
   bgutil:
     image: brainicism/bgutil-ytdlp-pot-provider
