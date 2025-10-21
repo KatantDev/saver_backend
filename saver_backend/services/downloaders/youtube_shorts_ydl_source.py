@@ -8,7 +8,7 @@ class YouTubeShortsYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from YT Shorts through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_SHORTS_YDL
-    COOKIES: ClassVar[bool] = False
+    COOKIES: ClassVar[bool] = True
 
     def __init__(
         self,
