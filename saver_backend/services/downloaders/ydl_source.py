@@ -133,9 +133,8 @@ class YtDlpController(BaseSourceController, ABC):
             return
 
         thumbnail = None
-        video_id = info.get("id")
         if video_id:
-            possible_extensions = ".webp"
+            possible_extensions = (".webp", ".png", ".jpg")
             for ext in possible_extensions:
                 thumb_path = self._download_directory / f"{video_id}{ext}"
                 if thumb_path.exists():
