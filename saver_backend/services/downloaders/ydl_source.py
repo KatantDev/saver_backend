@@ -16,7 +16,7 @@ from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
     VideoCacheDTO,
-    VideoMetadataDTO,
+    VideoDTO,
 )
 from saver_backend.settings import settings
 
@@ -46,7 +46,7 @@ class YtDlpController(BaseSourceController, ABC):
             video_cache_dao,
             message_id,
         )
-        self._video_info: dict[str, Any] | None = None
+        self._video: VideoDTO | None = None
 
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._base_options: dict[str, Any] = {
@@ -89,8 +89,8 @@ class YtDlpController(BaseSourceController, ABC):
         If a cached version (file_id) exists, it sends it directly.
         Otherwise, it proceeds with the full download process.
         """
-        info = await self._get_video_info(url=self._resolution.url)
-        if not info:
+        info_dict = await self._get_video_info(url=self._resolution.url)
+        if not self._video or not info_dict:
             if self._message_id:
                 await self._telegram_bot_controller.bot.delete_message(
                     chat_id=self._telegram_id,
@@ -98,17 +98,19 @@ class YtDlpController(BaseSourceController, ABC):
                 )
             return
 
-        source_id = info.get("id")
-        if not source_id:
-            logging.error("Could not determine source_id from info_dict.")
+        if not self._video.source_id:
+            logging.error("Could not determine source_id.")
             return
 
         cached_video = await self._video_cache_dao.get_by_source_id(
             source=self.SOURCE,
-            source_id=source_id,
+            source_id=self._video.source_id,
         )
         if cached_video:
-            logging.info("Cache hit for source_id=%s. Sending by file_id.", source_id)
+            logging.info(
+                "Cache hit for source_id=%s. Sending by file_id.",
+                self._video.source_id,
+            )
             if self._message_id:
                 await self._telegram_bot_controller.bot.delete_message(
                     chat_id=self._telegram_id,
@@ -121,10 +123,13 @@ class YtDlpController(BaseSourceController, ABC):
             )
             return
 
-        logging.info("Cache miss for source_id=%s. Starting download.", source_id)
-        await self._execute_download(info)
+        logging.info(
+            "Cache miss for source_id=%s. Starting download.",
+            self._video.source_id,
+        )
+        await self._execute_download(info_dict)
 
-    async def _execute_download(self, info: dict[str, Any]) -> None:
+    async def _execute_download(self, info_dict: dict[str, Any]) -> None:
         """Executes the actual download and sending logic.
 
         Subclasses can override this to add specific error handling.
@@ -132,7 +137,7 @@ class YtDlpController(BaseSourceController, ABC):
         self._process_percent(percent=16)
 
         try:
-            await asyncio.to_thread(self._yt_dlp.process_info, info)
+            await asyncio.to_thread(self._yt_dlp.process_info, info_dict)
         except Exception as e:
             logging.error("yt-dlp download process failed: %s", e, exc_info=True)
             sentry_sdk.capture_exception(e)
@@ -143,28 +148,18 @@ class YtDlpController(BaseSourceController, ABC):
                 )
             return
 
-        video_id = info.get("id")
-        video_ext = info.get("ext")
-        if not video_id or not video_ext:
-            logging.error("Could not determine final filepath from info_dict.")
+        if not self._video or not self._video.path:
+            logging.error("Could not determine final filepath from yt-dlp result.")
             return
 
-        final_filepath = self._download_directory / f"{video_id}.{video_ext}"
-        if not final_filepath.exists():
+        if not Path(self._video.path).exists():
             logging.error(
-                "Download reported as finished, but file %s does not exist.",
-                final_filepath,
+                "yt-dlp reported success, but file %s does not exist.",
+                self._video,
             )
             return
 
-        thumbnail = self._get_thumbnail(video_id=video_id)
-
-        video_metadata = VideoMetadataDTO.from_yt_dlp_info(
-            info,
-            final_filepath,
-            thumbnail,
-        )
-        await self._send_and_cache_video(video_metadata)
+        await self._send_and_cache_video()
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         """This hook's only job is to report download progress."""
@@ -185,76 +180,93 @@ class YtDlpController(BaseSourceController, ABC):
     async def _get_video_info(self, url: str) -> Dict[str, Any] | None:
         """Get video information and store it in the instance."""
         try:
-            info = await asyncio.to_thread(
+            info_dict = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
                 url=url,
                 download=False,
             )
-            self._video_info = info
-            return info
+
+            video_id = info_dict.get("id")
+            video_ext = info_dict.get("ext")
+
+            predicted_path = self._download_directory / f"{video_id}.{video_ext}"
+
+            thumbnail = self._get_thumbnail(video_id=video_id)
+
+            video = VideoDTO.from_yt_dlp_info(
+                info_dict,
+                predicted_path,
+                thumbnail,
+            )
+            self._video = video
+
+            return info_dict
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
             return None
 
-    async def _send_and_cache_video(
-        self,
-        video_metadata: VideoMetadataDTO,
-    ) -> None:
+    async def _send_and_cache_video(self) -> None:
         """Sends the video to the user and then caches the result."""
-        video = video_metadata.video
+        if not self._video:
+            logging.error("Cannot send video: self._video is not set.")
+            return
 
         telegram_video = await self._telegram_bot_controller.send_finish_downloading(
-            video=video,
+            video=self._video,
             telegram_id=self._telegram_id,
             message_id=self._message_id,
             supports_streaming=self.SUPPORTS_STREAMING,
         )
 
         if telegram_video:
+            if not self._video.source_id:
+                logging.warning("Cannot cache video: source_id is missing.")
+                return
+
             logging.info(
                 "Attempting to cache video with source_id=%s",
-                video.source_id,
+                self._video.source_id,
             )
-            await self._save_to_cache(telegram_video, video_metadata)
+            await self._save_to_cache(telegram_video)
 
     async def _save_to_cache(
         self,
         telegram_video: Video,
-        video_metadata: VideoMetadataDTO,
     ) -> None:
         """
         Save video details to cache.
 
         :param telegram_video: The Video object from aiogram after sending.
         """
-        if not self._video_info:
-            logging.warning("Cannot save to cache: self._video_info is not set.")
+        if not self._video:
+            logging.warning("Cannot save to cache: self._video is not set.")
             return
 
-        source_id = self._video_info.get("id")
-        if not source_id:
-            logging.warning("Cannot save to cache: source_id not found in video_info.")
+        if not self._video.source_id:
+            logging.warning("Cannot save to cache: source_id not found in video info.")
             return
 
-        video = video_metadata.video
         video_cache = VideoCacheDTO(
             source=self.SOURCE,
-            source_id=video.source_id,
+            source_id=self._video.source_id,
             file_id=telegram_video.file_id,
             file_unique_id=telegram_video.file_unique_id,
-            quality=video.quality,
-            meta_data=video_metadata,
+            quality=self._video.quality,
+            meta_data=self._video,
         )
 
         try:
             await self._video_cache_dao.create(video_cache=video_cache)
-            logging.info("Successfully cached video with source_id=%s", source_id)
+            logging.info(
+                "Successfully cached video with source_id=%s",
+                self._video.source_id,
+            )
         except Exception as e:
             logging.error(
                 "Failed to save video cache for source_id=%s: %s",
-                source_id,
+                self._video.source_id,
                 e,
                 exc_info=True,
             )

@@ -20,49 +20,7 @@ class VideoCacheDTO(BaseModel):
     file_id: str
     file_unique_id: str
     quality: str
-    meta_data: VideoMetadataDTO
-
-
-class VideoMetadataDTO(BaseModel):
-    """Data Transfer Object for video metadata."""
-
-    video: VideoDTO
-
-    title: str | None = None
-
-    @classmethod
-    def from_yt_dlp_info(
-        cls,
-        info: dict[str, Any],
-        file_path: Path,
-        thumbnail_path: Path | None,
-    ) -> VideoMetadataDTO:
-        """
-        Create a VideoMetadataDTO instance from a yt-dlp info dictionary.
-
-        :param info: The dictionary from yt_dlp.extract_info.
-        :param file_path: The path to the downloaded video file.
-        :param thumbnail_path: The path to the downloaded thumbnail.
-        :return: A VideoMetadataDTO instance.
-        """
-        title = info.get("title")
-
-        quality = "best"
-
-        video = VideoDTO(
-            path=file_path,
-            thumbnail=thumbnail_path,
-            url=info.get("original_url"),
-            source_id=info.get("id"),
-            width=int(w) if (w := info.get("width")) else None,
-            height=int(h) if (h := info.get("height")) else None,
-            quality=quality,
-        )
-
-        return cls(
-            title=title,
-            video=video,
-        )
+    meta_data: VideoDTO
 
 
 class VideoDTO(BaseModel):
@@ -71,6 +29,7 @@ class VideoDTO(BaseModel):
     path: str | Path
     thumbnail: str | Path | None = None
 
+    title: str | None = None
     url: str | None = None
     source_id: str | None = None
 
@@ -78,6 +37,36 @@ class VideoDTO(BaseModel):
     width: int | None = None
     height: int | None = None
     quality: str | None = None
+
+    @classmethod
+    def from_yt_dlp_info(
+        cls,
+        info: dict[str, Any],
+        file_path: Path,
+        thumbnail_path: Path | None,
+    ) -> VideoDTO:
+        """
+        Create a VideoDTO instance from a yt-dlp info dictionary.
+
+        :param info: The dictionary from yt_dlp.extract_info.
+        :param file_path: The path to the downloaded video file.
+        :param thumbnail_path: The path to the downloaded thumbnail.
+        :return: A VideoDTO instance.
+        """
+        title = info.get("title")
+
+        quality = "best"
+
+        return cls(
+            path=file_path,
+            thumbnail=thumbnail_path,
+            title=title,
+            url=info.get("original_url"),
+            source_id=info.get("id"),
+            width=int(w) if (w := info.get("width")) else None,
+            height=int(h) if (h := info.get("height")) else None,
+            quality=quality,
+        )
 
 
 class PhotoDTO(BaseModel):

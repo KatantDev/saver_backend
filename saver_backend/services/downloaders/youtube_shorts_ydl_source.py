@@ -1,12 +1,10 @@
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from saver_backend.entities.enums import SourceEnum
-from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 if TYPE_CHECKING:
-    from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
-    from saver_backend.services.telegram.bot_controller import TelegramBotController
+    pass
 
 
 class YouTubeShortsYdlController(YtDlpController):
@@ -17,20 +15,11 @@ class YouTubeShortsYdlController(YtDlpController):
 
     def __init__(
         self,
-        resolution: Resolution,
-        telegram_bot_controller: "TelegramBotController",
-        telegram_id: int,
-        video_cache_dao: "VideoCacheDAO",
-        message_id: int | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         """Initialize the controller with custom yt-dlp parameters for YouTube."""
-        super().__init__(
-            resolution,
-            telegram_bot_controller,
-            telegram_id,
-            video_cache_dao,
-            message_id,
-        )
+        super().__init__(*args, **kwargs)
 
         youtube_params = {
             "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",

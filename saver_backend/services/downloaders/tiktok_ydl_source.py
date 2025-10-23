@@ -2,13 +2,11 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar, Dict
 
 from saver_backend.entities.enums import SourceEnum
-from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.exceptions import TikTokYtDlpDownloaderError
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 if TYPE_CHECKING:
-    from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
-    from saver_backend.services.telegram.bot_controller import TelegramBotController
+    pass
 
 
 class TikTokYdlController(YtDlpController):
@@ -18,19 +16,10 @@ class TikTokYdlController(YtDlpController):
 
     def __init__(
         self,
-        resolution: Resolution,
-        telegram_bot_controller: "TelegramBotController",
-        telegram_id: int,
-        video_cache_dao: "VideoCacheDAO",
-        message_id: int | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
-        super().__init__(
-            resolution,
-            telegram_bot_controller,
-            telegram_id,
-            video_cache_dao,
-            message_id,
-        )
+        super().__init__(*args, **kwargs)
         self._yt_dlp.params["format"] = "bv*+ba/best"
 
     async def get_video_info(self, url: str) -> Dict[str, Any] | None:
