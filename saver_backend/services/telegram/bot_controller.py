@@ -343,6 +343,42 @@ class TelegramBotController:
 
         return message.video
 
+    async def send_video_by_file_id(
+        self,
+        telegram_id: int,
+        file_id: str,
+        url: str,
+    ) -> Video | None:
+        """
+        Send video by file_id from cache.
+
+        :param telegram_id: Telegram ID of the user.
+        :param file_id: The file_id to send.
+        :param url: The original source URL for the caption.
+        :return: The sent Video object or None on failure.
+        """
+        try:
+            message = await self._bot.send_video(
+                chat_id=telegram_id,
+                video=file_id,
+                caption=_("result direct message").format(url=url),
+            )
+            return message.video
+        except (TelegramForbiddenError, TelegramBadRequest) as e:
+            logging.warning(
+                "Failed to send video by file_id %s to user %s: %s. "
+                "Cache might be invalid.",
+                file_id,
+                telegram_id,
+                e,
+            )
+            return None
+        except Exception as e:
+            if settings.environment == "local":
+                logging.exception(e)
+            capture_exception(e)
+            return None
+
     async def send_tiktok_error_downloading(self, telegram_id: int) -> None:
         """
         Send TikTok error downloading message.

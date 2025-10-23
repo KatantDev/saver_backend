@@ -1,7 +1,10 @@
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
+
+if TYPE_CHECKING:
+    from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
 
 
 class YouTubeShortsYdlController(YtDlpController):
@@ -13,10 +16,11 @@ class YouTubeShortsYdlController(YtDlpController):
     def __init__(
         self,
         *args: Any,
+        video_cache_dao: "VideoCacheDAO",
         **kwargs: Any,
     ) -> None:
         """Initialize the controller with custom yt-dlp parameters for YouTube."""
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, video_cache_dao=video_cache_dao, **kwargs)
 
         youtube_params = {
             "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",
@@ -29,7 +33,3 @@ class YouTubeShortsYdlController(YtDlpController):
             },
         }
         self._yt_dlp.params.update(youtube_params)
-
-    async def download_video(self) -> None:
-        """Public method to start the download process."""
-        await self._download_and_send_video()

@@ -1,10 +1,10 @@
 import logging
 
-from taskiq import TaskiqDepends
+from taskiq import TaskiqDepends, TaskiqState
 
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.exceptions import TikTokYtDlpDownloaderError
-from saver_backend.task_manager.state import SaverState
+from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
 
 
@@ -13,6 +13,8 @@ async def save_video(
     resolution: Resolution,
     telegram_id: int,
     state: SaverState = TaskiqDepends(),
+    db: DatabaseState = TaskiqDepends(),
+    taskiq_state: TaskiqState = TaskiqDepends(),
 ) -> None:
     """
     Save video.
@@ -20,6 +22,7 @@ async def save_video(
     :param resolution: Resolution of the video.
     :param telegram_id: Telegram ID of the user.
     :param state: Saver state.
+    :param db: Database state with DAOs.
     """
     logging.info("Resolving controller for %s", resolution)
     yt_dlp_controller = state.source_resolver.get_controller(resolution)
@@ -36,6 +39,8 @@ async def save_video(
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
         message_id=message_id,
+        video_cache_dao=db.video_cache_dao,
+        session_factory=taskiq_state.db_session_factory,
     )
     try:
         await controller.download_video()

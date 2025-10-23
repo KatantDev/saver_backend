@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
@@ -21,6 +21,7 @@ class BaseSourceController(ABC):
         telegram_bot_controller: "TelegramBotController",
         telegram_id: int,
         message_id: int | None = None,
+        **kwargs: Any,
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()

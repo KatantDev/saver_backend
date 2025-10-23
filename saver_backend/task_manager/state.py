@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import TaskiqDepends, TaskiqState
 
 from saver_backend.db.dao.user_dao import UserDAO
+from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
 from saver_backend.services.downloaders.resolver import SourceResolver
 from saver_backend.task_manager.dependencies import get_session
 
@@ -28,6 +29,15 @@ class DatabaseState:
         :return: User DAO.
         """
         return UserDAO(session=self.session)
+
+    @property
+    def video_cache_dao(self) -> "VideoCacheDAO":
+        """
+        Get video cache DAO.
+
+        :return: VideoCacheDAO instance.
+        """
+        return VideoCacheDAO(session=self.session)
 
 
 class SaverState:

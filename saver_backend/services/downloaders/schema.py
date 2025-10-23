@@ -7,6 +7,7 @@ class VideoDTO(BaseModel):
     """Data Transfer Object for Video."""
 
     path: str | Path
+    source_id: str | None = None
     title: str | None = None
     width: int | None = None
     height: int | None = None

@@ -1,9 +1,12 @@
 import logging
-from typing import Any, ClassVar, Dict
+from typing import TYPE_CHECKING, Any, ClassVar, Dict
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.exceptions import TikTokYtDlpDownloaderError
 from saver_backend.services.downloaders.ydl_source import YtDlpController
+
+if TYPE_CHECKING:
+    from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
 
 
 class TikTokYdlController(YtDlpController):
@@ -14,9 +17,10 @@ class TikTokYdlController(YtDlpController):
     def __init__(
         self,
         *args: Any,
+        video_cache_dao: "VideoCacheDAO",
         **kwargs: Any,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, video_cache_dao=video_cache_dao, **kwargs)
         self._yt_dlp.params["format"] = "bv*+ba/best"
 
     async def get_video_info(self, url: str) -> Dict[str, Any] | None:
@@ -26,15 +30,27 @@ class TikTokYdlController(YtDlpController):
             raise TikTokYtDlpDownloaderError
         return info
 
-    async def download_video(self) -> None:
-        """Public method to start the download process."""
+    async def _execute_download(self, info: dict[str, Any]) -> None:
+        """
+        Execute the download with specific error handling for TikTok.
+
+        Catches TikTokYtDlpDownloaderError which is often caused by slideshows
+        and informs the user gracefully.
+
+        :param info: The pre-fetched video information dictionary.
+        """
         try:
-            await self._download_and_send_video()
+            await super()._execute_download(info)
         except TikTokYtDlpDownloaderError:
             logging.warning(
                 "Could not get info for TikTok URL %s. It might be a slideshow.",
                 self._resolution.url,
             )
+            if self._message_id:
+                await self._telegram_bot_controller.bot.delete_message(
+                    chat_id=self._telegram_id,
+                    message_id=self._message_id,
+                )
             await self._telegram_bot_controller.send_tiktok_error_downloading(
                 telegram_id=self._telegram_id,
             )
