@@ -1,6 +1,6 @@
 import logging
 
-from taskiq import TaskiqDepends, TaskiqState
+from taskiq import TaskiqDepends
 
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.exceptions import TikTokYtDlpDownloaderError
@@ -14,7 +14,6 @@ async def save_video(
     telegram_id: int,
     state: SaverState = TaskiqDepends(),
     db: DatabaseState = TaskiqDepends(),
-    taskiq_state: TaskiqState = TaskiqDepends(),
 ) -> None:
     """
     Save video.
@@ -40,7 +39,6 @@ async def save_video(
         telegram_id=telegram_id,
         message_id=message_id,
         video_cache_dao=db.video_cache_dao,
-        session_factory=taskiq_state.db_session_factory,
     )
     try:
         await controller.download_video()

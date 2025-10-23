@@ -40,13 +40,19 @@ class VideoCacheModel(DbBaseModel):
         nullable=False,
         doc="Telegram's unique and persistent file_unique_id",
     )
-    meta_data: Mapped[dict[str, Any] | list[Any]] = mapped_column(
+    quality: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        server_default=text("'best'"),
+        doc="Quality of the cached video (e.g., '1080p', 'best')",
+    )
+    meta_data: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
         nullable=True,
-        doc="Additional metadata, e.g., title, quality, duration",
+        doc="Additional metadata, e.g., title",
     )
 
     __table_args__ = (
-        UniqueConstraint("source", "source_id", name="uq_source_source_id"),
+        UniqueConstraint("source", "source_id", "quality", name="uq_source_id_quality"),
         Index("ix_video_cache_source_id", "source_id"),
     )

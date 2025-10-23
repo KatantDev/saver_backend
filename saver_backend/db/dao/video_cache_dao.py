@@ -1,10 +1,9 @@
-from typing import Any
-
 from sqlalchemy import select
 
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.video_cache_model import VideoCacheModel
 from saver_backend.entities.enums import SourceEnum
+from saver_backend.services.downloaders.schema import VideoCacheDTO
 
 
 class VideoCacheDAO(BaseDAO):
@@ -12,27 +11,20 @@ class VideoCacheDAO(BaseDAO):
 
     async def create(
         self,
-        source: SourceEnum,
-        source_id: str,
-        file_id: str,
-        file_unique_id: str,
-        meta_data: dict[str, Any] | None,
+        video_cache: VideoCacheDTO,
     ) -> None:
         """
-        Create a new video cache entry.
+        Create a new video cache entry from a DTO.
 
-        :param source: The source of the video.
-        :param source_id: The unique ID from the source.
-        :param file_id: The Telegram file_id.
-        :param file_unique_id: The Telegram file_unique_id.
-        :param meta_data: Additional metadata.
+        :param video_cache: A VideoCacheDTO containing all necessary cache information.
         """
         model = VideoCacheModel(
-            source=source,
-            source_id=source_id,
-            file_id=file_id,
-            file_unique_id=file_unique_id,
-            meta_data=meta_data,
+            source=video_cache.source,
+            source_id=video_cache.source_id,
+            file_id=video_cache.file_id,
+            file_unique_id=video_cache.file_unique_id,
+            quality=video_cache.quality,
+            meta_data=video_cache.meta_data.model_dump(mode="json"),
         )
         self.session.add(model)
         await self.session.flush()

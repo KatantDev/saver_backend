@@ -20,7 +20,10 @@ from aiogram.utils.media_group import MediaGroupBuilder
 from sentry_sdk import capture_exception
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from saver_backend.services.downloaders.schema import PhotoDTO, VideoDTO
+from saver_backend.services.downloaders.schema import (
+    PhotoDTO,
+    VideoDTO,
+)
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
 from saver_backend.telegram_bot.handlers import routers
@@ -304,7 +307,7 @@ class TelegramBotController:
         """
         Send finish downloading message.
 
-        :param video: Video.
+        :param video: VideoDTO.
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
         :param supports_streaming: Supports streaming.

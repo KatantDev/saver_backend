@@ -1,12 +1,13 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
 
 if TYPE_CHECKING:
+    from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
     from saver_backend.services.telegram.bot_controller import TelegramBotController
 
 
@@ -20,11 +21,12 @@ class BaseSourceController(ABC):
         resolution: Resolution,
         telegram_bot_controller: "TelegramBotController",
         telegram_id: int,
+        video_cache_dao: "VideoCacheDAO",
         message_id: int | None = None,
-        **kwargs: Any,
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()
+        self._video_cache_dao = video_cache_dao
 
         self._telegram_bot_controller = telegram_bot_controller
         self._telegram_id = telegram_id
