@@ -34,6 +34,7 @@ class Detector(ABC):
         :param url: URL to check.
         :return: Resolution if the url is a valid url for the detector, None otherwise.
         """
+        raise NotImplementedError
 
     @staticmethod
     def _idna_encode(host: str) -> str:

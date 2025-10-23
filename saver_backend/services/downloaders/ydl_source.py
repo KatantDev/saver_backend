@@ -39,24 +39,30 @@ class YtDlpController(BaseSourceController, ABC):
         }
         if settings.source_ip:
             self._base_options["source_address"] = settings.source_ip
-        if self.COOKIES:
-            base_dir = Path(__file__).resolve().parent.parent.parent.parent
-            cookie_dir = base_dir / "cookies" / self.SOURCE.value
-            cookie_files = list(cookie_dir.glob("cookies*.txt"))
-            if cookie_files:
-                cookie_file = secrets.choice(cookie_files).resolve()
-                self._base_options["cookiefile"] = str(cookie_file)
-                logging.info("Using cookie file %s for %s", cookie_file, self.SOURCE)
-            else:
-                logging.warning(
-                    "Cookies enabled for %s, but no files found in %s",
-                    self.SOURCE,
-                    cookie_dir,
-                )
+        self._set_cookies()
 
         self._download_directory.mkdir(parents=True, exist_ok=True)
         self._yt_dlp = yt_dlp.YoutubeDL(self._base_options)
         self._yt_dlp.add_progress_hook(self._progress_hook)
+
+    def _set_cookies(self) -> None:
+        if not self.COOKIES:
+            return
+
+        base_dir = Path(__file__).resolve().parent.parent.parent.parent
+        cookie_dir = base_dir / "cookies" / self.SOURCE.value
+        cookie_files = list(cookie_dir.glob("cookies*.txt"))
+        if not cookie_files:
+            logging.error(
+                "Cookies enabled for %s, but no files found in %s",
+                self.SOURCE,
+                cookie_dir,
+            )
+            return
+
+        cookie_file = secrets.choice(cookie_files).resolve()
+        self._base_options["cookiefile"] = str(cookie_file)
+        logging.info("Using cookie file %s for %s", cookie_file, self.SOURCE)
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         """This hook's only job is to report download progress."""
