@@ -3,15 +3,13 @@ import logging
 import secrets
 from abc import ABC
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Dict
+from typing import Any, ClassVar, Dict
 
 import sentry_sdk
 import yt_dlp
 from aiogram.types import Video
 
-from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
 from saver_backend.entities.enums import SourceEnum
-from saver_backend.entities.resolution import Resolution
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
@@ -19,9 +17,6 @@ from saver_backend.services.downloaders.schema import (
     VideoDTO,
 )
 from saver_backend.settings import settings
-
-if TYPE_CHECKING:
-    from saver_backend.services.telegram.bot_controller import TelegramBotController
 
 
 class YtDlpController(BaseSourceController, ABC):
@@ -31,21 +26,8 @@ class YtDlpController(BaseSourceController, ABC):
     COOKIES: ClassVar[bool] = False
     SUPPORTS_STREAMING: ClassVar[bool] = True
 
-    def __init__(
-        self,
-        resolution: Resolution,
-        telegram_bot_controller: "TelegramBotController",
-        telegram_id: int,
-        video_cache_dao: "VideoCacheDAO",
-        message_id: int | None = None,
-    ) -> None:
-        super().__init__(
-            resolution,
-            telegram_bot_controller,
-            telegram_id,
-            video_cache_dao,
-            message_id,
-        )
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
         self._video: VideoDTO | None = None
 
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
@@ -102,25 +84,10 @@ class YtDlpController(BaseSourceController, ABC):
             logging.error("Could not determine source_id.")
             return
 
-        cached_video = await self._video_cache_dao.get_by_source_id(
-            source=self.SOURCE,
+        is_sent_from_cache = await self.send_video_from_cache(
             source_id=self._video.source_id,
         )
-        if cached_video:
-            logging.info(
-                "Cache hit for source_id=%s. Sending by file_id.",
-                self._video.source_id,
-            )
-            if self._message_id:
-                await self._telegram_bot_controller.bot.delete_message(
-                    chat_id=self._telegram_id,
-                    message_id=self._message_id,
-                )
-            await self._telegram_bot_controller.send_video_by_file_id(
-                telegram_id=self._telegram_id,
-                file_id=cached_video.file_id,
-                url=self._resolution.url,
-            )
+        if is_sent_from_cache:
             return
 
         logging.info(
@@ -130,22 +97,22 @@ class YtDlpController(BaseSourceController, ABC):
         await self._execute_download(info_dict)
 
     async def _execute_download(self, info_dict: dict[str, Any]) -> None:
-        """Executes the actual download and sending logic.
+        """
+        Executes the actual download and sending logic.
 
         Subclasses can override this to add specific error handling.
+
+        :param info_dict: The dictionary from yt_dlp.extract_info.
         """
         self._process_percent(percent=16)
 
         try:
             await asyncio.to_thread(self._yt_dlp.process_info, info_dict)
         except Exception as e:
-            logging.error("yt-dlp download process failed: %s", e, exc_info=True)
+            if settings.environment == "local":
+                logging.error("yt-dlp download process failed: %s", e, exc_info=True)
             sentry_sdk.capture_exception(e)
-            if self._message_id:
-                await self._telegram_bot_controller.bot.delete_message(
-                    chat_id=self._telegram_id,
-                    message_id=self._message_id,
-                )
+            await self.delete_processing_message()
             return
 
         if not self._video or not self._video.path:
@@ -191,12 +158,12 @@ class YtDlpController(BaseSourceController, ABC):
 
             predicted_path = self._download_directory / f"{video_id}.{video_ext}"
 
-            thumbnail = self._get_thumbnail(video_id=video_id)
+            thumbnail = self._get_thumbnail(source_id=video_id)
 
-            video = VideoDTO.from_yt_dlp_info(
-                info_dict,
-                predicted_path,
-                thumbnail,
+            video = VideoDTO.from_yt_dlp(
+                info=info_dict,
+                file_path=predicted_path,
+                thumbnail_path=thumbnail,
             )
             self._video = video
 
@@ -244,18 +211,13 @@ class YtDlpController(BaseSourceController, ABC):
             logging.warning("Cannot save to cache: self._video is not set.")
             return
 
-        if not self._video.source_id:
-            logging.warning("Cannot save to cache: source_id not found in video info.")
-            return
-
-        video_cache = VideoCacheDTO(
+        video_cache = VideoCacheDTO.from_yt_dlp(
             source=self.SOURCE,
-            source_id=self._video.source_id,
-            file_id=telegram_video.file_id,
-            file_unique_id=telegram_video.file_unique_id,
-            quality=self._video.quality,
-            meta_data=self._video,
+            telegram_video=telegram_video,
+            video=self._video,
         )
+        if not video_cache:
+            return
 
         try:
             await self._video_cache_dao.create(video_cache=video_cache)
@@ -272,13 +234,13 @@ class YtDlpController(BaseSourceController, ABC):
             )
             sentry_sdk.capture_exception(e)
 
-    def _get_thumbnail(self, video_id: str | None) -> Path | None:
-        if not video_id:
+    def _get_thumbnail(self, source_id: str | None) -> Path | None:
+        if not source_id:
             return None
 
         possible_extensions = (".webp", ".png", ".jpg")
         for ext in possible_extensions:
-            thumb_path = self._download_directory / f"{video_id}{ext}"
+            thumb_path = self._download_directory / f"{source_id}{ext}"
             if not thumb_path.exists():
                 continue
             return thumb_path

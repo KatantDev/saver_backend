@@ -396,3 +396,16 @@ class TelegramBotController:
             ),
         )
         await self._send(coro)
+
+    async def delete_message(self, telegram_id: int, message_id: int) -> None:
+        """
+        Delete message.
+
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID.
+        """
+        coro = self._bot.delete_message(
+            message_id=message_id,
+            chat_id=telegram_id,
+        )
+        await self._send(coro)

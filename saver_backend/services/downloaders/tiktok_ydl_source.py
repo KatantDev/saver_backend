@@ -1,12 +1,9 @@
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar, Dict
+from typing import Any, ClassVar, Dict
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.exceptions import TikTokYtDlpDownloaderError
 from saver_backend.services.downloaders.ydl_source import YtDlpController
-
-if TYPE_CHECKING:
-    pass
 
 
 class TikTokYdlController(YtDlpController):
@@ -14,11 +11,7 @@ class TikTokYdlController(YtDlpController):
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.TIKTOK
 
-    def __init__(
-        self,
-        *args: Any,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._yt_dlp.params["format"] = "bv*+ba/best"
 

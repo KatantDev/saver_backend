@@ -72,3 +72,37 @@ class BaseSourceController(ABC):
         :return: Dictionary with video information.
         """
         raise NotImplementedError
+
+    async def delete_processing_message(self) -> None:
+        """Delete processing message."""
+        if self._message_id:
+            await self._telegram_bot_controller.delete_message(
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+            )
+
+    async def send_video_from_cache(self, source_id: str) -> bool:
+        """
+        Send video from cache.
+
+        :param source_id: Source ID of the video.
+        :return: True if video was sent from cache, False otherwise.
+        """
+        cached_video = await self._video_cache_dao.get_by_source_id(
+            source=self.SOURCE,
+            source_id=source_id,
+        )
+        if not cached_video:
+            return False
+
+        logging.info(
+            "Cache hit for source_id=%s. Sending by file_id.",
+            source_id,
+        )
+        await self.delete_processing_message()
+        await self._telegram_bot_controller.send_video_by_file_id(
+            telegram_id=self._telegram_id,
+            file_id=cached_video.file_id,
+            url=self._resolution.url,
+        )
+        return True

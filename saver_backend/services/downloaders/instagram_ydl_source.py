@@ -15,11 +15,7 @@ class InstagramYdlController(YtDlpController):
     SOURCE: ClassVar[SourceEnum] = SourceEnum.INSTAGRAM_YDL
     COOKIES: ClassVar[bool] = True
 
-    def __init__(
-        self,
-        *args: Any,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._yt_dlp.params["format"] = "best"
 

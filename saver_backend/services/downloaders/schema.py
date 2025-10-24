@@ -1,26 +1,13 @@
-from __future__ import annotations
-
+import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel
 
 from saver_backend.entities.enums import SourceEnum
 
-
-class VideoCacheDTO(BaseModel):
-    """
-    Data Transfer Object for creating a video cache entry.
-
-    This is the data contract for the VideoCacheDAO.create method.
-    """
-
-    source: SourceEnum
-    source_id: str
-    file_id: str
-    file_unique_id: str
-    quality: str
-    meta_data: VideoDTO
+if TYPE_CHECKING:
+    from aiogram.types import Video as TgVideo
 
 
 class VideoDTO(BaseModel):
@@ -39,12 +26,12 @@ class VideoDTO(BaseModel):
     quality: str | None = None
 
     @classmethod
-    def from_yt_dlp_info(
+    def from_yt_dlp(
         cls,
         info: dict[str, Any],
         file_path: Path,
         thumbnail_path: Path | None,
-    ) -> VideoDTO:
+    ) -> "VideoDTO":
         """
         Create a VideoDTO instance from a yt-dlp info dictionary.
 
@@ -66,6 +53,51 @@ class VideoDTO(BaseModel):
             width=int(w) if (w := info.get("width")) else None,
             height=int(h) if (h := info.get("height")) else None,
             quality=quality,
+        )
+
+
+class VideoCacheDTO(BaseModel):
+    """
+    Data Transfer Object for creating a video cache entry.
+
+    This is the data contract for the VideoCacheDAO.create method.
+    """
+
+    source: SourceEnum
+    source_id: str
+    file_id: str
+    file_unique_id: str
+    quality: str
+    meta_data: VideoDTO
+
+    @classmethod
+    def from_yt_dlp(
+        cls,
+        source: SourceEnum,
+        telegram_video: "TgVideo",
+        video: "VideoDTO",
+    ) -> Optional["VideoCacheDTO"]:
+        """
+        Create a VideoCacheDTO instance from a yt-dlp info dictionary.
+
+        :param source: The source of the video.
+        :param telegram_video: The Video object from aiogram after sending.
+        :param video: The VideoDTO instance.
+        :return: A VideoCacheDTO instance.
+        """
+        if not video.source_id:
+            logging.warning(
+                "Cannot create video cache: source_id not found in video info.",
+            )
+            return None
+
+        return cls(
+            source=source,
+            source_id=video.source_id,
+            file_id=telegram_video.file_id,
+            file_unique_id=telegram_video.file_unique_id,
+            quality=video.quality,
+            meta_data=video,
         )
 
 
