@@ -12,6 +12,7 @@ from aiogram.types import Video
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.exceptions import VideoInfoNotSetError
 from saver_backend.services.downloaders.schema import (
     VideoCacheDTO,
     VideoDTO,
@@ -50,6 +51,17 @@ class YtDlpController(BaseSourceController, ABC):
         self._download_directory.mkdir(parents=True, exist_ok=True)
         self._yt_dlp = yt_dlp.YoutubeDL(self._base_options)
         self._yt_dlp.add_progress_hook(self._progress_hook)
+
+    @property
+    def video_info(self) -> VideoDTO:
+        """
+        Get the video information.
+
+        :return: The video information.
+        """
+        if not self._video:
+            raise VideoInfoNotSetError
+        return self._video
 
     def _set_cookies(self) -> None:
         if not self.COOKIES:
