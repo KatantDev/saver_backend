@@ -35,10 +35,8 @@ aiogram = "^3.22.0"
 babel = "^2.17.0"
 instagrapi = "^2.2.1"
 ffmpeg-python = "^0.2.0"
-yt-dlp = {extras = ["default"], version = "^2025.10.14"}
+yt-dlp = {extras = ["default","curl-cffi"], version = "^2025.10"}
 bgutil-ytdlp-pot-provider = "^1.2.2"
-curl-cffi = "^0.13.0"
-brotli = "^1.1.0"
 
 
 [tool.poetry.group.dev.dependencies]
