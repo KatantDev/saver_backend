@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel
+from sentry_sdk import capture_exception
 
 from saver_backend.entities.enums import SourceEnum
 
@@ -16,6 +17,20 @@ class FormatDTO(BaseModel):
     format_id: str
     resolution: str
     fps: float = 30.0
+
+    @property
+    def label(self) -> str:
+        """
+        Label for this video.
+
+        :return: video label
+        """
+        try:
+            height = int(self.resolution.split("x")[1])
+            return f"{height}p"
+        except Exception as e:
+            capture_exception(e)
+            return self.resolution
 
     @classmethod
     def from_yt_dlp(cls, format_info: dict[str, Any]) -> Optional["FormatDTO"]:
@@ -71,7 +86,7 @@ class VideoDTO(BaseModel):
         :param thumbnail_path: The path to the downloaded thumbnail.
         :return: A VideoDTO instance.
         """
-        title = info.get("title")
+        title = info.get("fulltitle") or info.get("title")
         quality = "best"
 
         available_formats = []
