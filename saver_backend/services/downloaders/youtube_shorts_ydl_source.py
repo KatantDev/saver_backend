@@ -1,10 +1,7 @@
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
-
-if TYPE_CHECKING:
-    pass
 
 
 class YouTubeShortsYdlController(YtDlpController):

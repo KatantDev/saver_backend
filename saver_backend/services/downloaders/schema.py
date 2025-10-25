@@ -14,8 +14,29 @@ class FormatDTO(BaseModel):
     """Data Transfer Object for a specific video format."""
 
     format_id: str
-    resolution: str | None = None
-    fps: float | None = None
+    resolution: str
+    fps: float = 30.0
+
+    @classmethod
+    def from_yt_dlp(cls, format_info: dict[str, Any]) -> Optional["FormatDTO"]:
+        """
+        Create a FormatDTO instance from a yt-dlp format info dictionary.
+
+        :param format_info: The dictionary from yt_dlp.extract_info.
+        :return: A FormatDTO instance.
+        """
+        logging.info(format_info)
+        format_id = format_info.get("format_id")
+        resolution = format_info.get("resolution")
+        fps = format_info.get("fps", 30.0)
+        if not format_id or not resolution:
+            logging.warning("Cannot create format dto: %s", format_info)
+            return None
+        return cls(
+            format_id=format_id,
+            resolution=resolution,
+            fps=fps,
+        )
 
 
 class VideoDTO(BaseModel):
@@ -57,14 +78,14 @@ class VideoDTO(BaseModel):
         for format_info in info.get("formats", []):
             vcodec = format_info.get("vcodec")
             acodec = format_info.get("acodec")
-            if vcodec and vcodec != "none" and acodec and acodec != "none":
-                available_formats.append(
-                    FormatDTO(
-                        format_id=format_info.get("format_id", "N/A"),
-                        resolution=format_info.get("resolution"),
-                        fps=format_info.get("fps"),
-                    ),
-                )
+            if not vcodec or vcodec == "none":
+                continue
+            if not acodec or acodec == "none":
+                continue
+
+            dto = FormatDTO.from_yt_dlp(format_info)
+            if dto:
+                available_formats.append(dto)
 
         return cls(
             path=file_path,
