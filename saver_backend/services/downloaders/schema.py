@@ -1,8 +1,8 @@
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sentry_sdk import capture_exception
 
 from saver_backend.entities.enums import SourceEnum
@@ -69,7 +69,7 @@ class VideoDTO(BaseModel):
     height: int | None = None
     quality: str | None = None
 
-    formats: list[FormatDTO] = []
+    formats: Annotated[list[FormatDTO], Field(default_factory=list, exclude=True)]
 
     @classmethod
     def from_yt_dlp(

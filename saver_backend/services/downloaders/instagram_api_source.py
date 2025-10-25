@@ -126,6 +126,7 @@ class InstagramAPIController(BaseSourceController):
             duration=duration,
             thumbnail=thumbnail_path,
             url=self._resolution.url,
+            formats=[],
         )
 
     @retry_on_loginrequired
