@@ -17,7 +17,7 @@ class TikTokYdlController(YtDlpController):
 
     async def get_video_info(self, url: str) -> Dict[str, Any] | None:
         """Override to raise a specific error for slideshows (which return no info)."""
-        info = await super()._get_video_info(url)
+        info = await super().get_video_info(url)
         if not info:
             raise TikTokYtDlpDownloaderError
         return info

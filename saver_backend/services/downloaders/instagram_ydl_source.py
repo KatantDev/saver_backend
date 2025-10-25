@@ -27,7 +27,7 @@ class InstagramYdlController(YtDlpController):
         :return: Dictionary with video information.
         """
         try:
-            return await super()._get_video_info(url)
+            return await super().get_video_info(url)
         except DownloadError as error:
             if "No video formats found" in error.msg:
                 raise

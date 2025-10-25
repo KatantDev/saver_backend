@@ -26,7 +26,6 @@ from saver_backend.services.downloaders.schema import (
 )
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
-from saver_backend.telegram_bot.handlers import routers
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
 
@@ -58,7 +57,10 @@ class TelegramBotController:
             default=default,
             **kwargs,
         )
-        self._dispatcher = Dispatcher(main_bot=self._bot)
+        self._dispatcher = Dispatcher(
+            main_bot=self._bot,
+            telegram_bot_controller=self,
+        )
 
     @property
     def bot(self) -> Bot:
@@ -69,20 +71,27 @@ class TelegramBotController:
         """
         return self._bot
 
+    @property
+    def dispatcher(self) -> Dispatcher:
+        """
+        Get dispatcher instance.
+
+        :return: Dispatcher instance.
+        """
+        return self._dispatcher
+
     async def close(self) -> None:
         """Close bot session."""
         await self._bot.session.close()
 
     async def startup(self, **kwargs: Any) -> bool:
         """
-        Startup bot.
+        Startup bot by setting the webhook.
 
         :param kwargs: Additional arguments.
         :return: True if bot was started successfully, False otherwise.
         """
-        result = await self._startup_bot(bot=self._bot, **kwargs)
-        self._dispatcher.include_routers(*routers)
-        return result
+        return await self._startup_bot(bot=self._bot, **kwargs)
 
     @staticmethod
     async def _startup_bot(

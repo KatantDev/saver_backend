@@ -42,6 +42,10 @@ msgstr ""
 "Эта ссылка не поддерживается для скачивания.\n"
 "Но мы уже работаем над её поддержкой."
 
+#: saver_backend/telegram_bot/handlers/download.py:89
+msgid "failed to get video info"
+msgstr "Не удалось получить информацию о видео."
+
 #: saver_backend/telegram_bot/handlers/start.py:91
 #: saver_backend/telegram_bot/handlers/subscribe.py:36
 msgid "information message"

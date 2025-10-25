@@ -10,6 +10,14 @@ if TYPE_CHECKING:
     from aiogram.types import Video as TgVideo
 
 
+class FormatDTO(BaseModel):
+    """Data Transfer Object for a specific video format."""
+
+    format_id: str
+    resolution: str | None = None
+    fps: float | None = None
+
+
 class VideoDTO(BaseModel):
     """Data Transfer Object for Video."""
 
@@ -24,6 +32,8 @@ class VideoDTO(BaseModel):
     width: int | None = None
     height: int | None = None
     quality: str | None = None
+
+    formats: list[FormatDTO] = []
 
     @classmethod
     def from_yt_dlp(
@@ -41,8 +51,20 @@ class VideoDTO(BaseModel):
         :return: A VideoDTO instance.
         """
         title = info.get("title")
-
         quality = "best"
+
+        available_formats = []
+        for format_info in info.get("formats", []):
+            vcodec = format_info.get("vcodec")
+            acodec = format_info.get("acodec")
+            if vcodec and vcodec != "none" and acodec and acodec != "none":
+                available_formats.append(
+                    FormatDTO(
+                        format_id=format_info.get("format_id", "N/A"),
+                        resolution=format_info.get("resolution"),
+                        fps=format_info.get("fps"),
+                    ),
+                )
 
         return cls(
             path=file_path,
@@ -53,6 +75,7 @@ class VideoDTO(BaseModel):
             width=int(w) if (w := info.get("width")) else None,
             height=int(h) if (h := info.get("height")) else None,
             quality=quality,
+            formats=available_formats,
         )
 
 
