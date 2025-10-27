@@ -13,5 +13,9 @@ class YtDlpDownloaderError(DownloaderError):
     """Base exception for yt-dlp."""
 
 
+class IPAddressBlockedError(DownloaderError):
+    """Exception for ip address blocked."""
+
+
 class TikTokYtDlpDownloaderError(YtDlpDownloaderError):
     """Exception for TikTok yt-dlp."""

@@ -8,11 +8,15 @@ from typing import Any, ClassVar, Dict
 import sentry_sdk
 import yt_dlp
 from aiogram.types import Video
+from yt_dlp import DownloadError
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
-from saver_backend.services.downloaders.exceptions import VideoInfoNotSetError
+from saver_backend.services.downloaders.exceptions import (
+    IPAddressBlockedError,
+    VideoInfoNotSetError,
+)
 from saver_backend.services.downloaders.schema import (
     VideoCacheDTO,
     VideoDTO,
@@ -30,6 +34,7 @@ class YtDlpController(BaseSourceController, ABC):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._video: VideoDTO | None = None
+        self._retries: int = 0
 
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._base_options: dict[str, Any] = {
@@ -49,8 +54,17 @@ class YtDlpController(BaseSourceController, ABC):
         self._set_cookies()
 
         self._download_directory.mkdir(parents=True, exist_ok=True)
-        self._yt_dlp = yt_dlp.YoutubeDL(self._base_options)
-        self._yt_dlp.add_progress_hook(self._progress_hook)
+        self._yt_dlp = self._create_yt_dlp(self._base_options)
+
+    def _create_yt_dlp(self, params: dict[str, Any]) -> yt_dlp.YoutubeDL:
+        controller = yt_dlp.YoutubeDL(params)
+        controller.add_progress_hook(self._progress_hook)
+        return controller
+
+    def _set_proxy(self) -> None:
+        proxy = secrets.choice(settings.proxies)
+        params = {**self._yt_dlp.params, "proxy": f"socks5://{proxy}"}
+        self._yt_dlp = self._create_yt_dlp(params)
 
     @property
     def video_info(self) -> VideoDTO:
@@ -169,6 +183,10 @@ class YtDlpController(BaseSourceController, ABC):
         :param url: URL of the video.
         :return: Dictionary with video information or None on failure.
         """
+        if self._retries > 3:
+            raise IPAddressBlockedError
+        self._retries += 1
+
         try:
             info_dict = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
@@ -191,11 +209,18 @@ class YtDlpController(BaseSourceController, ABC):
             self._video = video
 
             return info_dict
-        except Exception as e:
+        except DownloadError as e:
+            if (
+                "Your IP address is blocked from accessing this post" in e.msg
+                or "Unable to connect to proxy" in e.msg
+                or "SOCKS server failure" in e.msg
+            ):
+                self._set_proxy()
+                return await self.get_video_info(url=url)
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
-            return None
+        return None
 
     async def _send_and_cache_video(self) -> None:
         """Sends the video to the user and then caches the result."""
