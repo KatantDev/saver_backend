@@ -61,24 +61,17 @@ def get_video_formats_keyboard(
     Create a keyboard with buttons for each unique video resolution.
 
     :param video_dto: The VideoDTO containing format information.
-    :param msg_id: The ID of the message this keyboard will be attached to.
     :return: An InlineKeyboardMarkup.
     """
     builder = InlineKeyboardBuilder()
-    sorted_labels = sorted(
-        video_dto.unique_formats_by_label.keys(),
-        key=lambda label: int(label.replace("p", "")),
+    sorted_items = sorted(
+        video_dto.unique_formats_by_label.items(),
+        key=lambda item: item[1][0].height,
         reverse=True,
     )
 
-    for label in sorted_labels:
-        formats = video_dto.unique_formats_by_label[label]
-        if not formats:
-            continue
-        example_format = formats[0]
-        button_text = label
-        if size := example_format.formatted_filesize:
-            button_text += f" (~{size})"
+    for label, _formats in sorted_items:
+        button_text = video_dto.get_format_button_text(label)
 
         builder.button(
             text=button_text,
@@ -95,17 +88,12 @@ def get_language_keyboard(
     Create a keyboard for selecting a language for a specific resolution.
 
     :param formats: A list of FormatDTOs for the same resolution.
-    :param msg_id: The ID of the message this keyboard will be attached to.
     :return: An InlineKeyboardMarkup.
     """
     builder = InlineKeyboardBuilder()
     for fmt in formats:
-        lang = fmt.language or "Default"
-        button_text = f"{lang.capitalize()}"
-        if size := fmt.formatted_filesize:
-            button_text += f" (~{size})"
         builder.button(
-            text=button_text,
+            text=fmt.language_button_text,
             callback_data=VideoLanguageCallback(
                 format_id=fmt.format_id,
             ).pack(),

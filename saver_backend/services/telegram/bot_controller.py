@@ -28,8 +28,8 @@ from saver_backend.services.downloaders.schema import (
 )
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
-from saver_backend.telegram_bot.middlewares.bot_provider import (
-    BotControllerProviderMiddleware,
+from saver_backend.telegram_bot.middlewares.controller_provider import (
+    ControllerProviderMiddleware,
 )
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
@@ -49,7 +49,6 @@ class TelegramBotController:
     def __init__(
         self,
         i18n: I18n,
-        redis: Redis,
         default: DefaultBotProperties = DefaultBotProperties(parse_mode=ParseMode.HTML),
         **kwargs: Any,
     ) -> None:
@@ -64,7 +63,8 @@ class TelegramBotController:
             **kwargs,
         )
 
-        storage = RedisStorage(redis=redis)
+        self._redis = Redis.from_url(str(settings.redis_url))
+        storage = RedisStorage(redis=self._redis)
         self._dispatcher = Dispatcher(
             main_bot=self._bot,
             storage=storage,
@@ -88,9 +88,19 @@ class TelegramBotController:
         """
         return self._dispatcher
 
+    @property
+    def i18n(self) -> I18n:
+        """
+        Get I18n instance.
+
+        :return: I18n instance.
+        """
+        return self._i18n
+
     async def close(self) -> None:
         """Close bot session."""
         await self._bot.session.close()
+        await self._redis.close()
 
     async def startup(self, **kwargs: Any) -> bool:
         """
@@ -138,7 +148,7 @@ class TelegramBotController:
         :param session_factory: Session factory.
         """
         self._dispatcher.update.middleware(
-            BotControllerProviderMiddleware(controller=self),
+            ControllerProviderMiddleware(controller=self),
         )
         self._dispatcher.update.middleware(
             DatabaseProviderMiddleware(session_factory=session_factory),
@@ -181,6 +191,34 @@ class TelegramBotController:
             if settings.environment == "local":
                 logging.exception(e)
             capture_exception(e)
+
+    async def set_fsm_data(
+        self,
+        user_id: int,
+        chat_id: int,
+        data: dict[str, Any],
+    ) -> None:
+        """
+        Set data to FSM context for a specific user and chat.
+
+        :param user_id: The user's Telegram ID.
+        :param chat_id: The chat's Telegram ID.
+        :param data: The data to store in FSM.
+        """
+        context = self._dispatcher.fsm.resolve_context(
+            bot=self.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        if not context:
+            logging.warning(
+                "Failed to resolve FSM context for user_id=%s, chat_id=%s",
+                user_id,
+                chat_id,
+            )
+            return
+
+        await context.set_data(data)
 
     async def get_username(self) -> str:
         """

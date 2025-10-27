@@ -2,7 +2,6 @@ import logging
 
 from aiogram.utils.i18n import I18n
 from fastapi import FastAPI
-from redis.asyncio import Redis
 
 from saver_backend.services.telegram.bot_controller import TelegramBotController
 from saver_backend.telegram_bot.handlers import setup_handlers
@@ -15,8 +14,7 @@ async def init_telegram_bot_controller(app: FastAPI, i18n: I18n) -> None:
     :param app: Instance of application.
     :param i18n: I18n context.
     """
-    redis_client = Redis(connection_pool=app.state.redis_pool)
-    telegram_bot_controller = TelegramBotController(i18n=i18n, redis=redis_client)
+    telegram_bot_controller = TelegramBotController(i18n=i18n)
     me = await telegram_bot_controller.bot.get_me()
     logging.info(f"Bot {me.username} ({me.full_name}) started.")
 

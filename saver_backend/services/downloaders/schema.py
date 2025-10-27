@@ -1,10 +1,10 @@
 import logging
 import math
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel, Field
-from sentry_sdk import capture_exception
 
 from saver_backend.entities.enums import SourceEnum
 
@@ -24,21 +24,47 @@ class FormatDTO(BaseModel):
     @property
     def label(self) -> str:
         """
-        Generate a user-friendly label for this format.
+        Generate a user-friendly label for this format's quality (e.g., '1080p').
 
-        :return: A string label like '1080p' or '720p (audio)'.
+        This label should NOT include language, as it's used for grouping.
+
+        :return: A string label like '1080p'.
         """
         try:
             parts = self.resolution.split("x")
             if len(parts) == 2:
                 height = int(parts[1])
-                label = f"{height}p"
-                if self.language:
-                    label += f" ({self.language})"
-                return label
-        except (ValueError, IndexError) as e:
-            capture_exception(e)
+                return f"{height}p"
+        except (ValueError, IndexError):
+            pass
         return self.resolution
+
+    @property
+    def height(self) -> int:
+        """
+        Extract the video height from the resolution string safely.
+
+        :return: The integer value of the height, or 0 if it cannot be parsed.
+        """
+        try:
+            # Extracts '1080' from '1920x1080'
+            return int(self.resolution.split("x")[1])
+        except (ValueError, IndexError):
+            # Return 0 for non-standard resolutions like "audio only"
+            return 0
+
+    @property
+    def language_button_text(self) -> str:
+        """
+        Generate a user-friendly button text for language selection.
+
+        :return: A string for the button, like "English (~15.7 MB)".
+        """
+        lang = self.language or "Default"
+        button_text = f"{lang.capitalize()}"
+        if size := self.formatted_filesize:
+            button_text += f" (~{size})"
+        return button_text
 
     @property
     def formatted_filesize(self) -> str | None:
@@ -124,19 +150,28 @@ class VideoDTO(BaseModel):
 
         :return: A dictionary mapping a label to a list of matching FormatDTOs.
         """
-        grouped: dict[str, list[FormatDTO]] = {}
+        grouped: dict[str, list[FormatDTO]] = defaultdict(list)
         for fmt in self.formats:
-            try:
-                parts = fmt.resolution.split("x")
-                if len(parts) == 2:
-                    height = int(parts[1])
-                    label = f"{height}p"
-                    if label not in grouped:
-                        grouped[label] = []
-                    grouped[label].append(fmt)
-            except (ValueError, IndexError):
-                continue
+            if "audio only" not in fmt.resolution:
+                grouped[fmt.label].append(fmt)
         return grouped
+
+    def get_format_button_text(self, label: str) -> str:
+        """
+        Generate a user-friendly button text for a format quality label.
+
+        :param label: The quality label (e.g., "1080p").
+        :return: A string for the button, like "1080p (~25.3 MB)".
+        """
+        formats = self.unique_formats_by_label.get(label, [])
+        if not formats:
+            return label
+
+        example_format = formats[0]
+        button_text = label
+        if size := example_format.formatted_filesize:
+            button_text += f" (~{size})"
+        return button_text
 
     @classmethod
     def from_yt_dlp(
@@ -169,13 +204,9 @@ class VideoDTO(BaseModel):
             if dto:
                 available_formats.append(dto)
 
-        unique_formats = []
-        seen_combinations = set()
-        for fmt in available_formats:
-            combination = (fmt.resolution, fmt.language)
-            if combination not in seen_combinations:
-                unique_formats.append(fmt)
-                seen_combinations.add(combination)
+        unique_formats = list(
+            {(f.resolution, f.language): f for f in available_formats}.values(),
+        )
 
         return cls(
             path=file_path,

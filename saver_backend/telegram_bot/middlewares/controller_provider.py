@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from saver_backend.services.telegram.bot_controller import TelegramBotController
 
 
-class BotControllerProviderMiddleware(BaseMiddleware):
+class ControllerProviderMiddleware(BaseMiddleware):
     """Middleware that provides TelegramBotController instance to handlers."""
 
     def __init__(self, controller: "TelegramBotController") -> None:
@@ -20,7 +20,7 @@ class BotControllerProviderMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         """
-        Provide TelegramBotController instance to handlers.
+        Provide controller instances to handlers.
 
         :param handler: handler to call.
         :param event: event object.

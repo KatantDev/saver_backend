@@ -77,6 +77,7 @@ async def show_youtube_video_info(
         telegram_id=message.from_user.id,
         chat_id=message.chat.id,
         processing_message_id=processing_message.message_id,
+        user_locale=message.from_user.language_code,
     )
 
 
