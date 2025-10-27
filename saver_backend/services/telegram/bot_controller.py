@@ -14,9 +14,11 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
     TelegramRetryAfter,
 )
+from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import FSInputFile, Update, Video
 from aiogram.utils.i18n import I18n, SimpleI18nMiddleware
 from aiogram.utils.media_group import MediaGroupBuilder
+from redis.asyncio import Redis
 from sentry_sdk import capture_exception
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -26,7 +28,9 @@ from saver_backend.services.downloaders.schema import (
 )
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
-from saver_backend.telegram_bot.handlers import routers
+from saver_backend.telegram_bot.middlewares.controller_provider import (
+    ControllerProviderMiddleware,
+)
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
 
@@ -58,7 +62,13 @@ class TelegramBotController:
             default=default,
             **kwargs,
         )
-        self._dispatcher = Dispatcher(main_bot=self._bot)
+
+        self._redis = Redis.from_url(str(settings.redis_url))
+        storage = RedisStorage(redis=self._redis)
+        self._dispatcher = Dispatcher(
+            main_bot=self._bot,
+            storage=storage,
+        )
 
     @property
     def bot(self) -> Bot:
@@ -69,20 +79,37 @@ class TelegramBotController:
         """
         return self._bot
 
+    @property
+    def dispatcher(self) -> Dispatcher:
+        """
+        Get dispatcher instance.
+
+        :return: Dispatcher instance.
+        """
+        return self._dispatcher
+
+    @property
+    def i18n(self) -> I18n:
+        """
+        Get I18n instance.
+
+        :return: I18n instance.
+        """
+        return self._i18n
+
     async def close(self) -> None:
         """Close bot session."""
         await self._bot.session.close()
+        await self._redis.close()
 
     async def startup(self, **kwargs: Any) -> bool:
         """
-        Startup bot.
+        Startup bot by setting the webhook.
 
         :param kwargs: Additional arguments.
         :return: True if bot was started successfully, False otherwise.
         """
-        result = await self._startup_bot(bot=self._bot, **kwargs)
-        self._dispatcher.include_routers(*routers)
-        return result
+        return await self._startup_bot(bot=self._bot, **kwargs)
 
     @staticmethod
     async def _startup_bot(
@@ -120,6 +147,9 @@ class TelegramBotController:
 
         :param session_factory: Session factory.
         """
+        self._dispatcher.update.middleware(
+            ControllerProviderMiddleware(controller=self),
+        )
         self._dispatcher.update.middleware(
             DatabaseProviderMiddleware(session_factory=session_factory),
         )
@@ -161,6 +191,34 @@ class TelegramBotController:
             if settings.environment == "local":
                 logging.exception(e)
             capture_exception(e)
+
+    async def set_fsm_data(
+        self,
+        user_id: int,
+        chat_id: int,
+        data: dict[str, Any],
+    ) -> None:
+        """
+        Set data to FSM context for a specific user and chat.
+
+        :param user_id: The user's Telegram ID.
+        :param chat_id: The chat's Telegram ID.
+        :param data: The data to store in FSM.
+        """
+        context = self._dispatcher.fsm.resolve_context(
+            bot=self.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        if not context:
+            logging.warning(
+                "Failed to resolve FSM context for user_id=%s, chat_id=%s",
+                user_id,
+                chat_id,
+            )
+            return
+
+        await context.set_data(data)
 
     async def get_username(self) -> str:
         """

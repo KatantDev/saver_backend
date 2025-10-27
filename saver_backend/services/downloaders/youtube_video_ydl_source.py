@@ -4,14 +4,14 @@ from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 
-class YouTubeShortsYdlController(YtDlpController):
-    """Asynchronous controller for downloading videos from YT Shorts through yt-dlp."""
+class YouTubeVideoYdlController(YtDlpController):
+    """Asynchronous controller for downloading videos from YouTube through yt-dlp."""
 
-    SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_SHORTS_YDL
+    SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_VIDEO_YDL
     COOKIES: ClassVar[bool] = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize the controller with custom yt-dlp parameters for YouTube."""
+        """Initialize the controller with standard yt-dlp parameters for YouTube."""
         super().__init__(*args, **kwargs)
 
         youtube_params = {

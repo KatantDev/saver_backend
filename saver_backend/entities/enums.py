@@ -8,6 +8,7 @@ class SourceEnum(str, Enum):
     INSTAGRAM_YDL = "instagram_ydl"
     INSTAGRAM_API = "instagram_api"
     YOUTUBE_SHORTS_YDL = "youtube_shorts_ydl"
+    YOUTUBE_VIDEO_YDL = "youtube_video_ydl"
     UNSUPPORTED = "unsupported"
 
 

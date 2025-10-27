@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
@@ -72,6 +72,17 @@ class BaseSourceController(ABC):
         :return: Dictionary with video information.
         """
         raise NotImplementedError
+
+    async def get_video_info(self, url: str) -> dict[str, Any] | None:
+        """
+        Get video information without downloading.
+
+        Base implementation returns None as not all sources support this.
+
+        :param url: URL of the video.
+        :return: Dictionary with video information or None.
+        """
+        return None
 
     async def delete_processing_message(self) -> None:
         """Delete processing message."""

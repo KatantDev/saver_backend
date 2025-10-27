@@ -5,6 +5,7 @@ from aiogram.types import TelegramObject
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from saver_backend.db.dao.user_dao import UserDAO
+from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
 
 
 class DAOProviderMiddleware(BaseMiddleware):
@@ -26,4 +27,5 @@ class DAOProviderMiddleware(BaseMiddleware):
         """
         session: AsyncSession = data["db_session"]
         data["user_dao"] = UserDAO(session)
+        data["video_cache_dao"] = VideoCacheDAO(session)
         return await handler(event, data)

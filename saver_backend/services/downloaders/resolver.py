@@ -2,7 +2,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qs, urlparse, urlunparse
 
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
@@ -16,6 +16,9 @@ from saver_backend.services.downloaders.instagram_ydl_source import (
 from saver_backend.services.downloaders.tiktok_ydl_source import TikTokYdlController
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
+)
+from saver_backend.services.downloaders.youtube_video_ydl_source import (
+    YouTubeVideoYdlController,
 )
 
 
@@ -82,10 +85,26 @@ class Detector(ABC):
 
     @staticmethod
     def _clean_url(url: str) -> str:
+        """
+        Clean URL by removing query parameters and fragments.
+
+        For YouTube, it specifically preserves the 'v' parameter.
+
+        :param url: The URL to clean.
+        :return: The cleaned URL.
+        """
         if "://" not in url:
             url = "https://" + url
+
         p = urlparse(url)
-        return urlunparse((p.scheme or "https", p.netloc, p.path, "", "", ""))
+        query = ""
+
+        if "youtube.com" in p.netloc:
+            query_params = parse_qs(p.query)
+            if "v" in query_params:
+                query = f"v={query_params['v'][0]}"
+
+        return urlunparse((p.scheme or "https", p.netloc, p.path, "", query, ""))
 
 
 _REGISTRY: list[Detector] = []
@@ -198,12 +217,54 @@ class YouTubeShortsDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
 
-        # Handle short youtu.be links, yt-dlp can resolve them.
-        if "youtu.be" in url:
-            return Resolution(source=self.SOURCE, url=self._clean_url(url))
-
         # Handle full /shorts/ links
         return self._match_regex(url)
+
+
+@register_detector()
+class YouTubeVideoDetector(Detector):
+    """Detector for standard YouTube videos."""
+
+    SOURCE = SourceEnum.YOUTUBE_VIDEO_YDL
+    CONTROLLER = YouTubeVideoYdlController
+    HOSTS = (
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtu.be",
+    )
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """
+        Check if the url is a valid YouTube video url.
+
+        :param url: URL to check.
+        :return: Resolution if the url is valid, None otherwise.
+        """
+        if not self._host_in(url, *self.HOSTS):
+            return None
+
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query)
+
+        if "youtu.be" in parsed.netloc:
+            video_code = parsed.path.strip("/")
+            if video_code:
+                return Resolution(
+                    source=self.SOURCE,
+                    url=self._clean_url(url),
+                    metadata={"code": video_code},
+                )
+
+        if parsed.path == "/watch" and "v" in query_params:
+            video_code = query_params["v"][0]
+            return Resolution(
+                source=self.SOURCE,
+                url=self._clean_url(url),
+                metadata={"code": video_code},
+            )
+
+        return None
 
 
 class SourceResolver:

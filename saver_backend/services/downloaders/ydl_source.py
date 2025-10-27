@@ -89,7 +89,7 @@ class YtDlpController(BaseSourceController, ABC):
         If a cached version (file_id) exists, it sends it directly.
         Otherwise, it proceeds with the full download process.
         """
-        info_dict = await self._get_video_info(url=self._resolution.url)
+        info_dict = await self.get_video_info(url=self._resolution.url)
         if not self._video or not info_dict:
             if self._message_id:
                 await self._telegram_bot_controller.bot.delete_message(
@@ -162,8 +162,13 @@ class YtDlpController(BaseSourceController, ABC):
 
             self._process_percent(percent=percent)
 
-    async def _get_video_info(self, url: str) -> Dict[str, Any] | None:
-        """Get video information and store it in the instance."""
+    async def get_video_info(self, url: str) -> dict[str, Any] | None:
+        """
+        Get video information without downloading.
+
+        :param url: URL of the video.
+        :return: Dictionary with video information or None on failure.
+        """
         try:
             info_dict = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
