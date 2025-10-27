@@ -46,6 +46,8 @@ services:
     logging: *default-logging
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
 
   taskiq-worker:
     <<: *main_app
@@ -58,6 +60,9 @@ services:
     logging: *default-logging
     mem_limit: 5G
     cpus: 3
+    network_mode: host
+    networks:
+      - default
 
   db:
     image: postgres:16.3-bullseye
@@ -75,6 +80,8 @@ services:
       timeout: 3s
       retries: 40
     logging: *default-logging
+    networks:
+      - default
 
   migrator:
     image: saver_backend:${SAVER_BACKEND_VERSION:-latest}
@@ -90,6 +97,8 @@ services:
       db:
         condition: service_healthy
     logging: *default-logging
+    networks:
+      - default
 
   redis:
     image: bitnami/redis:latest
@@ -103,6 +112,8 @@ services:
       timeout: 3s
       retries: 50
     logging: *default-logging
+    networks:
+      - default
 
   nginx:
     image: nginx:latest
@@ -116,6 +127,8 @@ services:
     volumes:
       - ./nginx-configs:/etc/nginx/conf.d
     logging: *default-logging
+    networks:
+      - default
 
   telegram-bot-api:
     image: aiogram/telegram-bot-api:latest
@@ -128,6 +141,8 @@ services:
     volumes:
       - saver-telegram-bot-api-data:/var/lib/telegram-bot-api
     logging: *default-logging
+    networks:
+      - default
 
   bgutil:
     image: brainicism/bgutil-ytdlp-pot-provider
@@ -135,6 +150,12 @@ services:
     restart: always
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
 
 volumes:
   saver_backend-db-data:
