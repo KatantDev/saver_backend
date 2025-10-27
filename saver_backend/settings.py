@@ -75,11 +75,8 @@ class Settings(BaseSettings):
     # Downloader settings
     source_ip: str = ""
     proxies: list[str] = [
-        "24572096rV-zone-custom-sessid-x4HX8woY:asxeBSMT@us.922s5.net:6300",
-        "24572096rV-zone-custom-sessid-CeSWHiU8:asxeBSMT@de.922s5.net:6300",
-        "24572096rV-zone-custom-sessid-2fTeyk5x:asxeBSMT@de.922s5.net:6300",
-        "24572096rV-zone-custom-sessid-tosRTEoN:asxeBSMT@de.922s5.net:6300",
-        "24572096rV-zone-custom-sessid-hbFwxAnq:asxeBSMT@de.922s5.net:6300",
+        "socks5://host.docker.internal:1080",
+        "socks5://host.docker.internal:1081",
     ]
 
     @property
