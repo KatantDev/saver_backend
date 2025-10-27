@@ -14,9 +14,11 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
     TelegramRetryAfter,
 )
+from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import FSInputFile, Update, Video
 from aiogram.utils.i18n import I18n, SimpleI18nMiddleware
 from aiogram.utils.media_group import MediaGroupBuilder
+from redis.asyncio import Redis
 from sentry_sdk import capture_exception
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -26,6 +28,9 @@ from saver_backend.services.downloaders.schema import (
 )
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
+from saver_backend.telegram_bot.middlewares.bot_provider import (
+    BotControllerProviderMiddleware,
+)
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
 
@@ -44,6 +49,7 @@ class TelegramBotController:
     def __init__(
         self,
         i18n: I18n,
+        redis: Redis,
         default: DefaultBotProperties = DefaultBotProperties(parse_mode=ParseMode.HTML),
         **kwargs: Any,
     ) -> None:
@@ -57,9 +63,11 @@ class TelegramBotController:
             default=default,
             **kwargs,
         )
+
+        storage = RedisStorage(redis=redis)
         self._dispatcher = Dispatcher(
             main_bot=self._bot,
-            telegram_bot_controller=self,
+            storage=storage,
         )
 
     @property
@@ -129,6 +137,9 @@ class TelegramBotController:
 
         :param session_factory: Session factory.
         """
+        self._dispatcher.update.middleware(
+            BotControllerProviderMiddleware(controller=self),
+        )
         self._dispatcher.update.middleware(
             DatabaseProviderMiddleware(session_factory=session_factory),
         )

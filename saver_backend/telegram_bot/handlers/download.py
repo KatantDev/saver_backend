@@ -1,25 +1,24 @@
 import json
 import re
-from pathlib import Path
-from typing import TYPE_CHECKING
 
 from aiogram import Bot, Router
-from aiogram.enums import ParseMode
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
-from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
-from saver_backend.services.downloaders.resolver import SourceResolver
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
-from saver_backend.task_manager.tasks import save_video
+from saver_backend.task_manager.tasks import get_youtube_video_info, save_video
 from saver_backend.telegram_bot.filters.source import SourceFilter
-
-if TYPE_CHECKING:
-    from saver_backend.services.telegram.bot_controller import TelegramBotController
-
+from saver_backend.telegram_bot.keyboards.callback import (
+    VideoFormatCallback,
+    VideoLanguageCallback,
+)
+from saver_backend.telegram_bot.keyboards.inline import (
+    get_language_keyboard,
+)
 
 download_router = Router()
 
@@ -58,52 +57,153 @@ async def send_unknown_url(
 async def show_youtube_video_info(
     message: Message,
     resolution: Resolution,
-    video_cache_dao: VideoCacheDAO,
-    telegram_bot_controller: "TelegramBotController",
 ) -> None:
     """
-    Get info for a YouTube video and display it.
+    Get info for a YouTube video, show thumbnail and format selection buttons.
 
     :param message: Message object.
     :param resolution: Resolution object.
     :param video_cache_dao: DAO for video cache.
     :param telegram_bot_controller: The main bot controller instance.
+    :param redis: Redis client instance.
     """
     if not message.from_user:
         return
 
-    resolver = SourceResolver()
-    controller_class = resolver.get_controller(resolution)
-    if not controller_class:
-        return
+    processing_message = await message.reply(_("🔍 Getting video info..."))
 
-    controller = controller_class(
+    await get_youtube_video_info.kiq(
         resolution=resolution,
-        telegram_bot_controller=telegram_bot_controller,
         telegram_id=message.from_user.id,
-        video_cache_dao=video_cache_dao,
+        chat_id=message.chat.id,
+        processing_message_id=processing_message.message_id,
     )
 
-    info_dict = await controller.get_video_info(url=resolution.url)
-    if not info_dict:
-        await message.reply(_("failed to get video info"))
+
+@download_router.callback_query(VideoFormatCallback.filter())
+async def on_format_select(
+    query: CallbackQuery,
+    callback_data: VideoFormatCallback,
+    state: FSMContext,
+) -> None:
+    """
+    Handle selection of a video resolution.
+
+    If multiple languages are available for this resolution, it shows a
+    language selection keyboard. Otherwise, it shows the final format info.
+    """
+    if not isinstance(query.message, Message) or not query.from_user:
+        await query.answer()
         return
 
-    dummy_path = Path("dummy")
-    video_dto = VideoDTO.from_yt_dlp(
-        info=info_dict,
-        file_path=dummy_path,
-        thumbnail_path=None,
+    data = await state.get_data()
+    video_dto_data = data.get("video_dto")
+
+    if not video_dto_data:
+        await query.message.edit_text(
+            _("Selection time expired. Please send the link again."),
+        )
+        return
+
+    video_dto = VideoDTO.model_validate(video_dto_data)
+    formats_for_label = video_dto.unique_formats_by_label.get(callback_data.label, [])
+
+    if len(formats_for_label) > 1:
+        caption = _(
+            "<b>{title}</b>\n\nMultiple audio tracks are available for quality {label}."
+            " Please select the language:",
+        ).format(
+            title=video_dto.title,
+            label=callback_data.label,
+        )
+        reply_markup = get_language_keyboard(formats_for_label)
+        if query.message.caption:
+            await query.message.edit_caption(caption=caption, reply_markup=reply_markup)
+        else:
+            await query.message.edit_text(caption, reply_markup=reply_markup)
+    elif len(formats_for_label) == 1:
+        format_dto = formats_for_label[0]
+        video_dump = json.dumps(
+            video_dto.model_dump(exclude={"formats"}),
+            indent=2,
+            ensure_ascii=False,
+        )
+        format_dump = json.dumps(format_dto.model_dump(), indent=2, ensure_ascii=False)
+        text = (
+            f"<blockquote>{video_dump}</blockquote>\n\n<b>{_('Selected format:')}</b>\n"
+            f"<blockquote>{format_dump}</blockquote>"
+        )
+        if query.message.caption:
+            await query.message.edit_caption(caption=text)
+        else:
+            await query.message.edit_text(text)
+    else:
+        await query.answer(
+            _("An error occurred, the format was not found."),
+            show_alert=True,
+        )
+    await query.answer()
+
+
+@download_router.callback_query(VideoLanguageCallback.filter())
+async def on_language_select(
+    query: CallbackQuery,
+    callback_data: VideoLanguageCallback,
+    state: FSMContext,
+) -> None:
+    """
+    Handle the final selection of a specific format (with language).
+
+    This handler fires after the user has selected a language,
+    pinpointing the exact format to download.
+
+    :param query: CallbackQuery object from the language selection.
+    :param callback_data: Parsed callback data with the final format_id.
+    :param redis: Redis client instance.
+    """
+    if not isinstance(query.message, Message) or not query.from_user:
+        await query.answer()
+        return
+
+    data = await state.get_data()
+    video_dto_data = data.get("video_dto")
+
+    if not video_dto_data:
+        await query.message.edit_text(
+            _("Selection time expired. Please send the link again."),
+        )
+        return
+
+    video_dto = VideoDTO.model_validate(video_dto_data)
+    selected_format = next(
+        (fmt for fmt in video_dto.formats if fmt.format_id == callback_data.format_id),
+        None,
     )
 
-    dto_json = json.dumps(
-        video_dto.model_dump(exclude={"path", "thumbnail"}),
+    if not selected_format:
+        await query.answer(
+            _("An error occurred, the format was not found."),
+            show_alert=True,
+        )
+        return
+
+    video_dump = json.dumps(
+        video_dto.model_dump(exclude={"formats"}),
         indent=2,
         ensure_ascii=False,
     )
-    response_text = f"<blockquote>{dto_json}</blockquote>"
+    format_dump = json.dumps(selected_format.model_dump(), indent=2, ensure_ascii=False)
+    text = (
+        f"<blockquote>{video_dump}</blockquote>\n\n<b>{_('Selected format:')}</b>\n"
+        f"<blockquote>{format_dump}</blockquote>"
+    )
 
-    await message.reply(response_text, parse_mode=ParseMode.HTML)
+    if query.message.caption:
+        await query.message.edit_caption(caption=text)
+    else:
+        await query.message.edit_text(text)
+
+    await query.answer()
 
 
 @download_router.message(
