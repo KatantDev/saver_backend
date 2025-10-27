@@ -143,3 +143,8 @@ cython_debug/
 
 # Cookies
 cookies/*
+
+# Certs
+cf-origin.key
+cf-origin.crt
+cf-origin-ca.pem
