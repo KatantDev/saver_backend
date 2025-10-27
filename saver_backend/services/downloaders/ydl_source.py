@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import secrets
 from abc import ABC
 from pathlib import Path
@@ -34,9 +35,11 @@ class YtDlpController(BaseSourceController, ABC):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._video: VideoDTO | None = None
-        self._retries: int = 0
 
+        # Get download directory and create it
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
+        self._download_directory.mkdir(parents=True, exist_ok=True)
+
         self._base_options: dict[str, Any] = {
             "format": "best",
             "outtmpl": str(self._download_directory / "%(id)s.%(ext)s"),
@@ -49,11 +52,16 @@ class YtDlpController(BaseSourceController, ABC):
                 "-nostdin",
             ],
         }
-        if settings.source_ip:
-            self._base_options["source_address"] = settings.source_ip
-        self._set_cookies()
 
-        self._download_directory.mkdir(parents=True, exist_ok=True)
+        # Proxies
+        proxies = settings.proxies
+        random.shuffle(proxies)
+        if settings.environment != "local":
+            self._base_options["proxy"] = proxies[0]
+            self._proxies = proxies[1:]
+
+        # Set cookies if needed and initialize yt-dlp controller
+        self._set_cookies()
         self._yt_dlp = self._create_yt_dlp(self._base_options)
 
     def _create_yt_dlp(self, params: dict[str, Any]) -> yt_dlp.YoutubeDL:
@@ -62,8 +70,10 @@ class YtDlpController(BaseSourceController, ABC):
         return controller
 
     def _set_proxy(self) -> None:
-        proxy = secrets.choice(settings.proxies)
-        params = {**self._yt_dlp.params, "proxy": f"socks5://{proxy}"}
+        if len(self._proxies) == 0:
+            raise IPAddressBlockedError
+        params = {**self._yt_dlp.params, "proxy": f"socks5://{self._proxies[0]}"}
+        self._proxies.pop(0)
         self._yt_dlp = self._create_yt_dlp(params)
 
     @property
@@ -183,10 +193,6 @@ class YtDlpController(BaseSourceController, ABC):
         :param url: URL of the video.
         :return: Dictionary with video information or None on failure.
         """
-        if self._retries > 3:
-            raise IPAddressBlockedError
-        self._retries += 1
-
         try:
             info_dict = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
