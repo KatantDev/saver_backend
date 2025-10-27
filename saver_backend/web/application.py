@@ -44,6 +44,10 @@ def get_app() -> FastAPI:
                 StdlibIntegration(),
                 RedisIntegration(),
             ],
+            enable_logs=True,
+            enable_tracing=True,
+            profile_session_sample_rate=1.0,
+            profile_lifecycle="trace",
         )
     app = FastAPI(
         title="saver_backend",

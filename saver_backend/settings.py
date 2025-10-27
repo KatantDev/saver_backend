@@ -74,8 +74,8 @@ class Settings(BaseSettings):
 
     # Downloader settings
     proxies: list[str] = [
-        "katant:katant@host.docker.internal:1080",
-        "katant:katant@host.docker.internal:1081",
+        "socks5://katant:katant@host.docker.internal:1080",
+        "socks5://katant:katant@host.docker.internal:1081",
     ]
 
     @property
