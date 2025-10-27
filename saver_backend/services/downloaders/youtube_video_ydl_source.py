@@ -10,12 +10,16 @@ class YouTubeVideoYdlController(YtDlpController):
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_VIDEO_YDL
     COOKIES: ClassVar[bool] = True
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        format_id: str | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Initialize the controller with standard yt-dlp parameters for YouTube."""
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, format_id=format_id, **kwargs)
 
         youtube_params = {
-            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",
             "downloader": "aria2c",
             "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
             "extractor_args": {

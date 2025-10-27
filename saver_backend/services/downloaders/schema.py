@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from pydantic import BaseModel, Field
 
 from saver_backend.entities.enums import SourceEnum
+from saver_backend.services.consts import MAX_FILE_SIZE_BYTES
 
 if TYPE_CHECKING:
     from aiogram.types import Video as TgVideo
@@ -58,13 +59,10 @@ class FormatDTO(BaseModel):
         """
         Generate a user-friendly button text for language selection.
 
-        :return: A string for the button, like "English (~15.7 MB)".
+        :return: A string for the button, e.g., "English".
         """
         lang = self.language or "Default"
-        button_text = f"{lang.capitalize()}"
-        if size := self.formatted_filesize:
-            button_text += f" (~{size})"
-        return button_text
+        return lang.capitalize()
 
     @property
     def formatted_filesize(self) -> str | None:
@@ -161,17 +159,9 @@ class VideoDTO(BaseModel):
         Generate a user-friendly button text for a format quality label.
 
         :param label: The quality label (e.g., "1080p").
-        :return: A string for the button, like "1080p (~25.3 MB)".
+        :return: A string for the button, like "1080p".
         """
-        formats = self.unique_formats_by_label.get(label, [])
-        if not formats:
-            return label
-
-        example_format = formats[0]
-        button_text = label
-        if size := example_format.formatted_filesize:
-            button_text += f" (~{size})"
-        return button_text
+        return label
 
     @classmethod
     def from_yt_dlp(
@@ -201,8 +191,19 @@ class VideoDTO(BaseModel):
                 continue
 
             dto = FormatDTO.from_yt_dlp(format_info, duration)
-            if dto:
-                available_formats.append(dto)
+            if not dto:
+                continue
+
+            if dto.filesize and dto.filesize > MAX_FILE_SIZE_BYTES:
+                logging.info(
+                    "Skipping format %s due to size limit: %s > %s",
+                    dto.format_id,
+                    dto.filesize,
+                    MAX_FILE_SIZE_BYTES,
+                )
+                continue
+
+            available_formats.append(dto)
 
         unique_formats = list(
             {(f.resolution, f.language): f for f in available_formats}.values(),

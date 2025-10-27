@@ -1,4 +1,3 @@
-import json
 import re
 
 from aiogram import Bot, Router
@@ -50,6 +49,32 @@ async def send_unknown_url(
     await bot.send_message(
         chat_id=settings.admin_chat_id,
         text=f"Unsupported URL: {resolution.url}",
+    )
+
+
+async def _trigger_download(
+    query: CallbackQuery,
+    resolution: Resolution,
+    format_id: str,
+) -> None:
+    """
+    Helper to delete the keyboard, send a confirmation, and start the download task.
+
+    :param query: The callback query from the user's button press.
+    :param resolution: The resolved URL information.
+    :param format_id: The specific format ID to download.
+    """
+    if not query.message or not query.from_user:
+        return
+
+    # Delete the message with the format/language selection buttons
+    if isinstance(query.message, Message):
+        await query.message.delete()
+
+    await save_video.kiq(
+        resolution=resolution,
+        telegram_id=query.from_user.id,
+        format_id=format_id,
     )
 
 
@@ -106,7 +131,7 @@ async def on_format_select(
         )
         return
 
-    video_dto = VideoDTO.model_validate(video_dto_data)
+    video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
     formats_for_label = video_dto.unique_formats_by_label.get(callback_data.label, [])
 
     if len(formats_for_label) > 1:
@@ -123,21 +148,13 @@ async def on_format_select(
         else:
             await query.message.edit_text(caption, reply_markup=reply_markup)
     elif len(formats_for_label) == 1:
-        format_dto = formats_for_label[0]
-        video_dump = json.dumps(
-            video_dto.model_dump(exclude={"formats"}),
-            indent=2,
-            ensure_ascii=False,
-        )
-        format_dump = json.dumps(format_dto.model_dump(), indent=2, ensure_ascii=False)
-        text = (
-            f"<blockquote>{video_dump}</blockquote>\n\n<b>{_('Selected format:')}</b>\n"
-            f"<blockquote>{format_dump}</blockquote>"
-        )
-        if query.message.caption:
-            await query.message.edit_caption(caption=text)
-        else:
-            await query.message.edit_text(text)
+        selected_format = formats_for_label[0]
+        if video_dto.url:
+            resolution = Resolution(
+                source=SourceEnum.YOUTUBE_VIDEO_YDL,
+                url=video_dto.url,
+            )
+            await _trigger_download(query, resolution, selected_format.format_id)
     else:
         await query.answer(
             _("An error occurred, the format was not found."),
@@ -175,7 +192,7 @@ async def on_language_select(
         )
         return
 
-    video_dto = VideoDTO.model_validate(video_dto_data)
+    video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
     selected_format = next(
         (fmt for fmt in video_dto.formats if fmt.format_id == callback_data.format_id),
         None,
@@ -188,21 +205,12 @@ async def on_language_select(
         )
         return
 
-    video_dump = json.dumps(
-        video_dto.model_dump(exclude={"formats"}),
-        indent=2,
-        ensure_ascii=False,
-    )
-    format_dump = json.dumps(selected_format.model_dump(), indent=2, ensure_ascii=False)
-    text = (
-        f"<blockquote>{video_dump}</blockquote>\n\n<b>{_('Selected format:')}</b>\n"
-        f"<blockquote>{format_dump}</blockquote>"
-    )
-
-    if query.message.caption:
-        await query.message.edit_caption(caption=text)
-    else:
-        await query.message.edit_text(text)
+    if video_dto.url:
+        resolution = Resolution(
+            source=SourceEnum.YOUTUBE_VIDEO_YDL,
+            url=video_dto.url,
+        )
+        await _trigger_download(query, resolution, selected_format.format_id)
 
     await query.answer()
 

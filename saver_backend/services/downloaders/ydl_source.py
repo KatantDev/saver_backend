@@ -8,6 +8,7 @@ from typing import Any, ClassVar, Dict
 import sentry_sdk
 import yt_dlp
 from aiogram.types import Video
+from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
@@ -27,9 +28,10 @@ class YtDlpController(BaseSourceController, ABC):
     COOKIES: ClassVar[bool] = False
     SUPPORTS_STREAMING: ClassVar[bool] = True
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, format_id: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._video: VideoDTO | None = None
+        self._selected_format_id = format_id
 
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._base_options: dict[str, Any] = {
@@ -38,12 +40,14 @@ class YtDlpController(BaseSourceController, ABC):
             "noplaylist": True,
             "writethumbnail": True,
             "quiet": True,
-            "noprogress": False,
+            "noprogress": True,
             "overwrites": True,
             "postprocessor_args": [
                 "-nostdin",
             ],
         }
+        if self._selected_format_id:
+            self._base_options["format"] = self._selected_format_id
         if settings.source_ip:
             self._base_options["source_address"] = settings.source_ip
         self._set_cookies()
@@ -102,15 +106,18 @@ class YtDlpController(BaseSourceController, ABC):
             logging.error("Could not determine source_id.")
             return
 
+        cache_quality_key = self._selected_format_id or "best"
         is_sent_from_cache = await self.send_video_from_cache(
             source_id=self._video.source_id,
+            quality=cache_quality_key,
         )
         if is_sent_from_cache:
             return
 
         logging.info(
-            "Cache miss for source_id=%s. Starting download.",
+            "Cache miss for source_id=%s and quality=%s. Starting download.",
             self._video.source_id,
+            cache_quality_key,
         )
         await self._execute_download(info_dict)
 
@@ -126,12 +133,24 @@ class YtDlpController(BaseSourceController, ABC):
 
         try:
             await asyncio.to_thread(self._yt_dlp.process_info, info_dict)
+        except DownloadError as e:
+            error_message = str(e)
+            if "HTTP Error 403: Forbidden" in error_message:
+                logging.error("YouTube download failed due to expired cookies (403).")
+            else:
+                if settings.environment == "local":
+                    logging.error(
+                        "yt-dlp download process failed: %s",
+                        e,
+                        exc_info=True,
+                    )
+                sentry_sdk.capture_exception(e)
         except Exception as e:
             if settings.environment == "local":
                 logging.error("yt-dlp download process failed: %s", e, exc_info=True)
             sentry_sdk.capture_exception(e)
+        finally:
             await self.delete_processing_message()
-            return
 
         if not self._video or not self._video.path:
             logging.error("Could not determine final filepath from yt-dlp result.")
@@ -215,9 +234,13 @@ class YtDlpController(BaseSourceController, ABC):
                 logging.warning("Cannot cache video: source_id is missing.")
                 return
 
+            if self._selected_format_id:
+                self._video.quality = self._selected_format_id
+
             logging.info(
-                "Attempting to cache video with source_id=%s",
+                "Attempting to cache video with source_id=%s and quality=%s",
                 self._video.source_id,
+                self._video.quality,
             )
             await self._save_to_cache(telegram_video)
 
@@ -245,13 +268,15 @@ class YtDlpController(BaseSourceController, ABC):
         try:
             await self._video_cache_dao.create(video_cache=video_cache)
             logging.info(
-                "Successfully cached video with source_id=%s",
+                "Successfully cached video with source_id=%s and quality=%s",
                 self._video.source_id,
+                video_cache.quality,
             )
         except Exception as e:
             logging.error(
-                "Failed to save video cache for source_id=%s: %s",
+                "Failed to save video cache for source_id=%s and quality=%s: %s",
                 self._video.source_id,
+                video_cache.quality,
                 e,
                 exc_info=True,
             )
