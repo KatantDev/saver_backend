@@ -29,21 +29,24 @@ class VideoCacheDAO(BaseDAO):
         self.session.add(model)
         await self.session.flush()
 
-    async def get_by_source_id(
+    async def get_by_source_id_and_quality(
         self,
         source: SourceEnum,
         source_id: str,
+        quality: str,
     ) -> VideoCacheModel | None:
         """
-        Get a video cache entry by its source and source_id.
+        Get a video cache entry by its source, source_id, and quality.
 
         :param source: The source of the video.
-        :param source_id: The unique ID from the source.
+        :param source_id: The unique ID from the source platform.
+        :param quality: The specific quality/format_id of the video.
         :return: A VideoCacheModel instance or None if not found.
         """
         query = select(VideoCacheModel).where(
             VideoCacheModel.source == source,
             VideoCacheModel.source_id == source_id,
+            VideoCacheModel.quality == quality,
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()

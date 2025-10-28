@@ -16,6 +16,7 @@ from saver_backend.tkq import broker
 async def save_video(
     resolution: Resolution,
     telegram_id: int,
+    format_id: str | None = None,
     state: SaverState = TaskiqDepends(),
     db: DatabaseState = TaskiqDepends(),
 ) -> None:
@@ -41,8 +42,9 @@ async def save_video(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
-        message_id=message_id,
         video_cache_dao=db.video_cache_dao,
+        message_id=message_id,
+        format_id=format_id,
     )
     try:
         await controller.download_video()

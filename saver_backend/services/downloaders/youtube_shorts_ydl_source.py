@@ -10,9 +10,14 @@ class YouTubeShortsYdlController(YtDlpController):
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_SHORTS_YDL
     COOKIES: ClassVar[bool] = True
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        format_id: str | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Initialize the controller with custom yt-dlp parameters for YouTube."""
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, format_id=format_id, **kwargs)
 
         youtube_params = {
             "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",

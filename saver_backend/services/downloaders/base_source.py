@@ -23,6 +23,7 @@ class BaseSourceController(ABC):
         telegram_id: int,
         video_cache_dao: "VideoCacheDAO",
         message_id: int | None = None,
+        format_id: str | None = None,
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()
@@ -92,23 +93,25 @@ class BaseSourceController(ABC):
                 message_id=self._message_id,
             )
 
-    async def send_video_from_cache(self, source_id: str) -> bool:
+    async def send_video_from_cache(self, source_id: str, quality: str) -> bool:
         """
         Send video from cache.
 
         :param source_id: Source ID of the video.
         :return: True if video was sent from cache, False otherwise.
         """
-        cached_video = await self._video_cache_dao.get_by_source_id(
+        cached_video = await self._video_cache_dao.get_by_source_id_and_quality(
             source=self.SOURCE,
             source_id=source_id,
+            quality=quality,
         )
         if not cached_video:
             return False
 
         logging.info(
-            "Cache hit for source_id=%s. Sending by file_id.",
+            "Cache hit for source_id=%s, quality=%s. Sending by file_id.",
             source_id,
+            quality,
         )
         await self.delete_processing_message()
         await self._telegram_bot_controller.send_video_by_file_id(
