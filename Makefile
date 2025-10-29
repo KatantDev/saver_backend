@@ -5,7 +5,6 @@ deploy:
 	docker rollout api
 	docker compose exec nginx nginx -s reload
 	docker rollout taskiq-worker
-	docker rollout taskiq-scheduler
 
 migrate:
 	docker compose build
