@@ -28,4 +28,4 @@ fi
 /bin/bash scripts/compile_po.sh
 
 # Выполнение команды
-eval $command
+exec bash -c "$command"
