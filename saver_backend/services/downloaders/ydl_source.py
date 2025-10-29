@@ -230,6 +230,7 @@ class YtDlpController(BaseSourceController, ABC):
                 thumbnail_path=thumbnail,
             )
             self._video = video
+            logging.info(self._video)
 
             return info_dict
         except DownloadError as e:
@@ -251,6 +252,7 @@ class YtDlpController(BaseSourceController, ABC):
             logging.error("Cannot send video: self._video is not set.")
             return
 
+        logging.info(self._video)
         telegram_video = await self._telegram_bot_controller.send_finish_downloading(
             video=self._video,
             telegram_id=self._telegram_id,
