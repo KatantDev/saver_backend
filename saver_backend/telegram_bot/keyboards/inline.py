@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from saver_backend.services.downloaders.schema import FormatDTO, VideoDTO
+from saver_backend.services.downloaders.schema import FormatDTO
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
 from saver_backend.telegram_bot.keyboards.callback import (
@@ -54,30 +54,20 @@ def get_subscribe_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_video_formats_keyboard(
-    video_dto: VideoDTO,
-) -> InlineKeyboardMarkup:
+def get_video_formats_keyboard(labels: list[str]) -> InlineKeyboardMarkup:
     """
     Create a keyboard with buttons for each unique video resolution.
 
-    :param video_dto: The VideoDTO containing format information.
+    :param labels: unique video resolution labels.
     :return: An InlineKeyboardMarkup.
     """
     builder = InlineKeyboardBuilder()
-    sorted_items = sorted(
-        video_dto.unique_formats_by_label.items(),
-        key=lambda item: item[1][0].height,
-        reverse=True,
-    )
-
-    for label, _formats in sorted_items:
-        button_text = video_dto.get_format_button_text(label)
-
+    for label in labels:
         builder.button(
-            text=button_text,
+            text=label,
             callback_data=VideoFormatCallback(label=label).pack(),
         )
-    builder.adjust(2)
+    builder.adjust(1)
     return builder.as_markup()
 
 

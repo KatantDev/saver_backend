@@ -162,26 +162,20 @@ class YtDlpController(BaseSourceController, ABC):
             error_message = str(e)
             if "HTTP Error 403: Forbidden" in error_message:
                 logging.error("YouTube download failed due to expired cookies (403).")
-            else:
-                if settings.environment == "local":
-                    logging.error(
-                        "yt-dlp download process failed: %s",
-                        e,
-                        exc_info=True,
-                    )
-                sentry_sdk.capture_exception(e)
+            raise e
         except Exception as e:
+            await self._send_error_message()
             if settings.environment == "local":
                 logging.error("yt-dlp download process failed: %s", e, exc_info=True)
             sentry_sdk.capture_exception(e)
-        finally:
-            await self.delete_processing_message()
 
         if not self._video or not self._video.path:
+            await self._send_error_message()
             logging.error("Could not determine final filepath from yt-dlp result.")
             return
 
         if not Path(self._video.path).exists():
+            await self._send_error_message()
             logging.error(
                 "yt-dlp reported success, but file %s does not exist.",
                 self._video,
@@ -201,7 +195,10 @@ class YtDlpController(BaseSourceController, ABC):
             percent_float = (downloaded_bytes / total_bytes) * 100
             percent = round(percent_float * 0.66 + 16)
 
-            if self._last_percent + 10 >= percent and self._message_id is not None:
+            if (
+                self._last_percent + 10 >= percent >= self._last_percent - 10
+                and self._message_id is not None
+            ):
                 return
 
             self._process_percent(percent=percent)
@@ -260,6 +257,7 @@ class YtDlpController(BaseSourceController, ABC):
             message_id=self._message_id,
             supports_streaming=self.SUPPORTS_STREAMING,
         )
+        await self.delete_processing_message()
 
         if telegram_video:
             if not self._video.source_id:
@@ -298,6 +296,7 @@ class YtDlpController(BaseSourceController, ABC):
             return
 
         try:
+            logging.info("Saving video details to cache, %s", video_cache)
             await self._video_cache_dao.create(video_cache=video_cache)
             logging.info(
                 "Successfully cached video with source_id=%s and quality=%s",

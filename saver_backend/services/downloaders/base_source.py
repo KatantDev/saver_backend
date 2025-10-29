@@ -5,8 +5,11 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
+from saver_backend.entities.user import UserDTO
+from saver_backend.services.downloaders.exceptions import UserInfoNotFoundError
 
 if TYPE_CHECKING:
+    from saver_backend.db.dao.user_dao import UserDAO
     from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
     from saver_backend.services.telegram.bot_controller import TelegramBotController
 
@@ -22,17 +25,46 @@ class BaseSourceController(ABC):
         telegram_bot_controller: "TelegramBotController",
         telegram_id: int,
         video_cache_dao: "VideoCacheDAO",
+        user_dao: "UserDAO",
         message_id: int | None = None,
         format_id: str | None = None,
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()
         self._video_cache_dao = video_cache_dao
+        self._user_dao = user_dao
+        self._user_info: UserDTO | None = None
 
         self._telegram_bot_controller = telegram_bot_controller
         self._telegram_id = telegram_id
         self._message_id = message_id
         self._last_percent = 0
+
+    async def set_user_language(self, language: str | None = None) -> None:
+        """
+        Set user language.
+
+        :param language: The language to set.
+        """
+        if language is None:
+            user = await self._get_user_info()
+            language = user.language
+
+        self._telegram_bot_controller.language = language
+
+    async def _get_user_info(self) -> UserDTO:
+        """
+        Get information about a user.
+
+        :return: A UserDTO object.
+        """
+        if self._user_info is not None:
+            return self._user_info
+
+        model = await self._user_dao.get_by_id(telegram_id=self._telegram_id)
+        if not model:
+            raise UserInfoNotFoundError("User %s not found" % self._telegram_id)
+        return UserDTO.from_db(model)
 
     def _process_percent(self, percent: int) -> None:
         """
@@ -85,6 +117,21 @@ class BaseSourceController(ABC):
         """
         return None
 
+    async def _send_error_message(self, with_delete: bool = True) -> None:
+        """
+        Send error message.
+
+        :param with_delete: If true, delete by message_id progress.
+        """
+        if self._message_id and with_delete:
+            await self._telegram_bot_controller.delete_message(
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+            )
+        await self._telegram_bot_controller.send_error_downloading(
+            telegram_id=self._telegram_id,
+        )
+
     async def delete_processing_message(self) -> None:
         """Delete processing message."""
         if self._message_id:
@@ -98,6 +145,7 @@ class BaseSourceController(ABC):
         Send video from cache.
 
         :param source_id: Source ID of the video.
+        :param quality: Quality of the video.
         :return: True if video was sent from cache, False otherwise.
         """
         cached_video = await self._video_cache_dao.get_by_source_id_and_quality(

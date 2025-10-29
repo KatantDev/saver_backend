@@ -18,5 +18,5 @@ deploy-local:
 	docker compose -f docker-compose.yml -f deploy/docker-compose.dev.yml --project-directory . up --build -d
 
 locales:
-	pybabel extract --input-dirs=. -o locales/messages.pot --project=Sounds --version=0.0.1 -k __
+	pybabel extract --input-dirs=. -o locales/messages.pot --project=Saver --version=0.0.1 -k __
 	pybabel update -d locales -D messages -i locales/messages.pot --no-wrap -N

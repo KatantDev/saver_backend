@@ -9,6 +9,10 @@ class VideoInfoNotSetError(DownloaderError):
         super().__init__("Video info not set. Call get_video_info first.")
 
 
+class UserInfoNotFoundError(DownloaderError):
+    """Exception for when user info is not found."""
+
+
 class YtDlpDownloaderError(DownloaderError):
     """Base exception for yt-dlp."""
 

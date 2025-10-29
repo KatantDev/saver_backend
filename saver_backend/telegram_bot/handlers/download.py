@@ -88,21 +88,16 @@ async def show_youtube_video_info(
 
     :param message: Message object.
     :param resolution: Resolution object.
-    :param video_cache_dao: DAO for video cache.
-    :param telegram_bot_controller: The main bot controller instance.
-    :param redis: Redis client instance.
     """
     if not message.from_user:
         return
 
-    processing_message = await message.reply(_("🔍 Getting video info..."))
+    processing_message = await message.reply(_("get video info"))
 
     await get_youtube_video_info.kiq(
         resolution=resolution,
         telegram_id=message.from_user.id,
-        chat_id=message.chat.id,
         processing_message_id=processing_message.message_id,
-        user_locale=message.from_user.language_code,
     )
 
 
@@ -122,44 +117,38 @@ async def on_format_select(
         await query.answer()
         return
 
-    data = await state.get_data()
-    video_dto_data = data.get("video_dto")
-
-    if not video_dto_data:
-        await query.message.edit_text(
-            _("Selection time expired. Please send the link again."),
-        )
+    data = await state.get_value(key="video_dto")
+    if not data:
+        await query.message.edit_text(_("format selection expired"))
         return
 
-    video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
-    formats_for_label = video_dto.unique_formats_by_label.get(callback_data.label, [])
+    video_dto: VideoDTO = VideoDTO.model_validate(data)
+    formats = video_dto.get_formats_by_label(label=callback_data.label)
 
-    if len(formats_for_label) > 1:
-        caption = _(
-            "<b>{title}</b>\n\nMultiple audio tracks are available for quality {label}."
-            " Please select the language:",
-        ).format(
+    if len(formats) > 1:
+        caption = _("choose language for download").format(
             title=video_dto.title,
             label=callback_data.label,
         )
-        reply_markup = get_language_keyboard(formats_for_label)
+        reply_markup = get_language_keyboard(formats)
         if query.message.caption:
             await query.message.edit_caption(caption=caption, reply_markup=reply_markup)
         else:
             await query.message.edit_text(caption, reply_markup=reply_markup)
-    elif len(formats_for_label) == 1:
-        selected_format = formats_for_label[0]
+    elif len(formats) == 1:
+        selected_format = formats[0]
         if video_dto.url:
             resolution = Resolution(
                 source=SourceEnum.YOUTUBE_VIDEO_YDL,
                 url=video_dto.url,
             )
-            await _trigger_download(query, resolution, selected_format.format_id)
+            await _trigger_download(
+                query=query,
+                resolution=resolution,
+                format_id=selected_format.format_id,
+            )
     else:
-        await query.answer(
-            _("An error occurred, the format was not found."),
-            show_alert=True,
-        )
+        await query.answer(_("format not found"), show_alert=True)
     await query.answer()
 
 
@@ -177,7 +166,7 @@ async def on_language_select(
 
     :param query: CallbackQuery object from the language selection.
     :param callback_data: Parsed callback data with the final format_id.
-    :param redis: Redis client instance.
+    :param state: State object from the callback data.
     """
     if not isinstance(query.message, Message) or not query.from_user:
         await query.answer()
@@ -187,22 +176,14 @@ async def on_language_select(
     video_dto_data = data.get("video_dto")
 
     if not video_dto_data:
-        await query.message.edit_text(
-            _("Selection time expired. Please send the link again."),
-        )
+        await query.message.edit_text(_("format selection expired"))
         return
 
     video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
-    selected_format = next(
-        (fmt for fmt in video_dto.formats if fmt.format_id == callback_data.format_id),
-        None,
-    )
+    selected_format = video_dto.get_format_by_id(format_id=callback_data.format_id)
 
     if not selected_format:
-        await query.answer(
-            _("An error occurred, the format was not found."),
-            show_alert=True,
-        )
+        await query.answer(_("format not found"), show_alert=True)
         return
 
     if video_dto.url:
@@ -210,7 +191,11 @@ async def on_language_select(
             source=SourceEnum.YOUTUBE_VIDEO_YDL,
             url=video_dto.url,
         )
-        await _trigger_download(query, resolution, selected_format.format_id)
+        await _trigger_download(
+            query=query,
+            resolution=resolution,
+            format_id=selected_format.format_id,
+        )
 
     await query.answer()
 

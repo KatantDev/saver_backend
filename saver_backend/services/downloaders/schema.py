@@ -139,7 +139,7 @@ class VideoDTO(BaseModel):
     formats: list[FormatDTO] = Field(default_factory=list)
 
     @property
-    def unique_formats_by_label(self) -> dict[str, list[FormatDTO]]:
+    def unique_formats(self) -> dict[str, list[FormatDTO]]:
         """
         Group available formats by a unique display label (e.g., '1080p').
 
@@ -152,23 +152,49 @@ class VideoDTO(BaseModel):
         for fmt in self.formats:
             if "audio only" not in fmt.resolution:
                 grouped[fmt.label].append(fmt)
-        return grouped
+        sorted_grouped = sorted(
+            grouped.items(),
+            key=lambda item: item[1][0].height if item[1] else 0,
+            reverse=True,
+        )
+        return dict(sorted_grouped)
 
-    def get_format_button_text(self, label: str) -> str:
+    def get_formats_by_label(self, label: str) -> list[FormatDTO]:
         """
-        Generate a user-friendly button text for a format quality label.
+        Get a list of available formats by label.
 
-        :param label: The quality label (e.g., "1080p").
-        :return: A string for the button, like "1080p".
+        :param label: The label to get available formats for.
+        :return: A list of available formats.
         """
-        return label
+        return self.unique_formats.get(label) or []
+
+    @property
+    def unique_labels(self) -> list[str]:
+        """
+        Return a set of unique labels (e.g., '1080p', '720p', etc).
+
+        :return: A set of unique labels.
+        """
+        return list(self.unique_formats.keys())
+
+    def get_format_by_id(self, format_id: str) -> FormatDTO | None:
+        """
+        Get a FormatDTO by its ID.
+
+        :param format_id: The ID of the format to get.
+        :return: A FormatDTO instance.
+        """
+        return next(
+            (fmt for fmt in self.formats if fmt.format_id == format_id),
+            None,
+        )
 
     @classmethod
     def from_yt_dlp(
         cls,
         info: dict[str, Any],
-        file_path: Path,
-        thumbnail_path: Path | None,
+        file_path: Path | None = None,
+        thumbnail_path: Path | None = None,
     ) -> "VideoDTO":
         """
         Create a VideoDTO instance from a yt-dlp info dictionary.
@@ -178,6 +204,8 @@ class VideoDTO(BaseModel):
         :param thumbnail_path: The path to the downloaded thumbnail.
         :return: A VideoDTO instance.
         """
+        if not file_path:
+            file_path = Path("dummy")
         title = info.get("fulltitle") or info.get("title")
         duration = info.get("duration")
 

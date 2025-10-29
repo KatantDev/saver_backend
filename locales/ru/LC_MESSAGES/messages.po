@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-10-28 02:16+1000\n"
+"POT-Creation-Date: 2025-10-29 21:07+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
 
-#: saver_backend/services/telegram/bot_controller.py:243
+#: saver_backend/services/telegram/bot_controller.py:247
 #: saver_backend/telegram_bot/handlers/start.py:66
 msgid "welcome message"
 msgstr ""
@@ -27,30 +27,41 @@ msgstr ""
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Бот — полностью бесплатный.</b>.\n"
 "Чтобы пользоваться им — просто подпишитесь на два наших канала:"
 
-#: saver_backend/services/telegram/bot_controller.py:303
-#: saver_backend/services/telegram/bot_controller.py:348
-#: saver_backend/services/telegram/bot_controller.py:377
-#: saver_backend/services/telegram/bot_controller.py:425
+#: saver_backend/services/telegram/bot_controller.py:310
+#: saver_backend/services/telegram/bot_controller.py:360
+#: saver_backend/services/telegram/bot_controller.py:394
+#: saver_backend/services/telegram/bot_controller.py:447
 msgid "result direct message"
 msgstr ""
 "{url}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
 
-#: saver_backend/task_manager/tasks.py:98
+#: saver_backend/services/telegram/bot_controller.py:480
+msgid "tiktok photo unsupported"
+msgstr "Скачивание фото не поддерживается для TikTok прямо сейчас, но мы уже работаем над его поддержкой."
+
+#: saver_backend/services/telegram/bot_controller.py:497
+msgid "error downloading"
+msgstr ""
+"<b>Произошла ошибка при скачивании видео.</b>\n"
+"Ошибка отправлена нашим разработчикам, мы исправим её в ближайшее время."
+
+#: saver_backend/services/telegram/bot_controller.py:529
 msgid "failed to get video info"
 msgstr "Не удалось получить информацию о видео."
 
-#: saver_backend/task_manager/tasks.py:112
-msgid "No formats available for download."
-msgstr "Не найдено доступных форматов для скачивания."
+#: saver_backend/services/telegram/bot_controller.py:547
+msgid "video info without formats"
+msgstr "Не найдено доступных форматов для скачивания. Пожалуйста, попробуйте ещё раз позже."
 
-#: saver_backend/task_manager/tasks.py:122
+#: saver_backend/services/telegram/bot_controller.py:572
+#: saver_backend/services/telegram/bot_controller.py:583
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"
 "\n"
-"Выберите желаемое качество:"
+"<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Выберите желаемое качество:"
 
 #: saver_backend/telegram_bot/handlers/download.py:47
 msgid "unknown url"
@@ -58,30 +69,25 @@ msgstr ""
 "Эта ссылка не поддерживается для скачивания.\n"
 "Но мы уже работаем над её поддержкой."
 
-#: saver_backend/telegram_bot/handlers/download.py:98
-msgid "🔍 Getting video info..."
-msgstr "🔍 Получаю информацию о видео..."
+#: saver_backend/telegram_bot/handlers/download.py:95
+msgid "get video info"
+msgstr "🔍 Получаю информацию о видео... Это может занять порядка 5 секунд."
 
-#: saver_backend/telegram_bot/handlers/download.py:130
-#: saver_backend/telegram_bot/handlers/download.py:191
-msgid "Selection time expired. Please send the link again."
+#: saver_backend/telegram_bot/handlers/download.py:122
+#: saver_backend/telegram_bot/handlers/download.py:179
+msgid "format selection expired"
 msgstr "Время выбора истекло. Пожалуйста, отправьте ссылку заново."
 
-#: saver_backend/telegram_bot/handlers/download.py:139
-#, python-brace-format
-msgid ""
-"<b>{title}</b>\n"
+#: saver_backend/telegram_bot/handlers/download.py:129
+msgid "choose language for download"
+msgstr "<b>{title}</b>\n"
 "\n"
-"Multiple audio tracks are available for quality {label}. Please select the language:"
-msgstr ""
-"<b>{title}</b>\n"
-"\n"
-"Для качества {label} доступно несколько аудиодорожек. Выберите язык:"
+"<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Выберите желаемый язык:"
 
-#: saver_backend/telegram_bot/handlers/download.py:160
-#: saver_backend/telegram_bot/handlers/download.py:203
-msgid "An error occurred, the format was not found."
-msgstr "Произошла ошибка, формат не найден."
+#: saver_backend/telegram_bot/handlers/download.py:151
+#: saver_backend/telegram_bot/handlers/download.py:186
+msgid "format not found"
+msgstr "Произошла ошибка, формат не найден. Пожалуйста, попробуйте ещё раз."
 
 #: saver_backend/telegram_bot/handlers/start.py:91
 #: saver_backend/telegram_bot/handlers/subscribe.py:36
@@ -112,7 +118,4 @@ msgstr "➕ Подписаться на @{channel}"
 #: saver_backend/telegram_bot/keyboards/inline.py:52
 msgid "check subscriptions"
 msgstr "✅ Проверить подписки"
-
-#~ msgid "Selected format:"
-#~ msgstr "Выбранный формат:"
 

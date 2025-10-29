@@ -85,6 +85,18 @@ class UserDAO(BaseDAO):
         result = await self.session.execute(query)
         return result.scalar()
 
+    async def get_language(self, telegram_id: int) -> str:
+        """
+        Get user language.
+
+        :param telegram_id: telegram id of a user.
+        :return: language code.
+        """
+        user = await self.get_by_id(telegram_id)
+        if not user:
+            return "en"
+        return user.lang
+
     async def get_count(self, created_after: datetime | None = None) -> int:
         """
         Get count of users.
