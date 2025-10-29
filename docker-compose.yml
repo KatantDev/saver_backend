@@ -52,7 +52,9 @@ services:
   taskiq-worker:
     <<: *main_app
     hostname: saver_backend-taskiq-worker
-    labels: [ ]
+    labels:
+      docker-rollout.pre-stop-hook: >
+        sh -c 'kill -TERM 1; while kill -0 1 2>/dev/null; do sleep 1; done'
     healthcheck:
       disable: true
     command:
