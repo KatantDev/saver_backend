@@ -194,14 +194,12 @@ class VideoDTO(BaseModel):
         cls,
         info: dict[str, Any],
         file_path: Path | None = None,
-        thumbnail_path: Path | None = None,
     ) -> "VideoDTO":
         """
         Create a VideoDTO instance from a yt-dlp info dictionary.
 
         :param info: The dictionary from yt_dlp.extract_info.
         :param file_path: The path to the downloaded video file.
-        :param thumbnail_path: The path to the downloaded thumbnail.
         :return: A VideoDTO instance.
         """
         if not file_path:
@@ -239,7 +237,6 @@ class VideoDTO(BaseModel):
 
         return cls(
             path=file_path,
-            thumbnail=thumbnail_path,
             thumbnail_url=info.get("thumbnail"),
             title=title,
             url=info.get("original_url"),
@@ -248,6 +245,7 @@ class VideoDTO(BaseModel):
             height=int(h) if (h := info.get("height")) else None,
             quality="best",
             formats=unique_formats,
+            duration=duration,
         )
 
 

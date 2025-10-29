@@ -118,6 +118,7 @@ class YtDlpController(BaseSourceController, ABC):
         If a cached version (file_id) exists, it sends it directly.
         Otherwise, it proceeds with the full download process.
         """
+        # Получаем информацию о видео, в случае, если данные не получены - останавливаем
         info_dict = await self.get_video_info(url=self._resolution.url)
         if not self._video or not info_dict:
             if self._message_id:
@@ -131,6 +132,7 @@ class YtDlpController(BaseSourceController, ABC):
             logging.error("Could not determine source_id.")
             return
 
+        # Отправляем видео из кэша, если уже скачивалось, иначе - идем дальше
         cache_quality_key = self._selected_format_id or "best"
         is_sent_from_cache = await self.send_video_from_cache(
             source_id=self._video.source_id,
@@ -144,7 +146,7 @@ class YtDlpController(BaseSourceController, ABC):
             self._video.source_id,
             cache_quality_key,
         )
-        await self._execute_download(info_dict)
+        await self._execute_download(info_dict=info_dict)
 
     async def _execute_download(self, info_dict: dict[str, Any]) -> None:
         """
@@ -182,6 +184,8 @@ class YtDlpController(BaseSourceController, ABC):
             )
             return
 
+        thumbnail = self._get_thumbnail(source_id=self._video.source_id)
+        self._video = self._video.model_copy(update={"thumbnail": thumbnail})
         await self._send_and_cache_video()
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
@@ -222,12 +226,9 @@ class YtDlpController(BaseSourceController, ABC):
 
             predicted_path = self._download_directory / f"{video_id}.{video_ext}"
 
-            thumbnail = self._get_thumbnail(source_id=video_id)
-
             video = VideoDTO.from_yt_dlp(
                 info=info_dict,
                 file_path=predicted_path,
-                thumbnail_path=thumbnail,
             )
             self._video = video
 
@@ -317,7 +318,7 @@ class YtDlpController(BaseSourceController, ABC):
         if not source_id:
             return None
 
-        possible_extensions = (".webp", ".png", ".jpg", ".jpeg")
+        possible_extensions = (".webp", ".png", ".jpg", ".jpeg", ".image")
         for ext in possible_extensions:
             thumb_path = self._download_directory / f"{source_id}{ext}"
             if not thumb_path.exists():
