@@ -60,7 +60,7 @@ services:
     logging: *default-logging
     mem_limit: 5G
     cpus: 3
-    stop_signal: SIGINT
+    stop_signal: SIGKILL
     stop_grace_period: 600s
     networks:
       - default
