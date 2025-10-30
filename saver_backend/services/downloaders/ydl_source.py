@@ -77,7 +77,7 @@ class YtDlpController(BaseSourceController, ABC):
     def _set_proxy(self) -> None:
         if len(self._proxies) == 0:
             raise IPAddressBlockedError
-        params = {**self._yt_dlp.params, "proxy": {self._proxies[0]}}
+        params = {**self._yt_dlp.params, "proxy": self._proxies[0]}
         self._proxies.pop(0)
         self._yt_dlp = self._create_yt_dlp(params)
 
