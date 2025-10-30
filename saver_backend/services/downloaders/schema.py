@@ -125,7 +125,7 @@ class FormatDTO(BaseModel):
 class VideoDTO(BaseModel):
     """Data Transfer Object for Video."""
 
-    path: str | Path
+    path: str | Path | None = None
     thumbnail: str | Path | None = None
     thumbnail_url: str | None = None
 
@@ -198,6 +198,7 @@ class VideoDTO(BaseModel):
         cls,
         info: dict[str, Any],
         file_path: Path | None = None,
+        extract_direct_links: bool = False,
     ) -> "VideoDTO":
         """
         Create a VideoDTO instance from a yt-dlp info dictionary.
@@ -208,6 +209,8 @@ class VideoDTO(BaseModel):
         """
         if not file_path:
             file_path = Path("dummy")
+
+        direct_download_url = info.get("url") if extract_direct_links else None
         title = info.get("fulltitle") or info.get("title")
         duration_float = info.get("duration")
         duration = int(duration_float) if duration_float is not None else None
@@ -244,6 +247,7 @@ class VideoDTO(BaseModel):
             path=file_path,
             thumbnail_url=info.get("thumbnail"),
             title=title,
+            direct_download_url=direct_download_url,
             url=info.get("original_url"),
             source_id=info.get("id"),
             width=int(w) if (w := info.get("width")) else None,

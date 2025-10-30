@@ -146,16 +146,16 @@ class YtDlpController(BaseSourceController, ABC):
             self._video.source_id,
             cache_quality_key,
         )
+
         if self.DIRECT_URL_DOWNLOAD:
             logging.info("Attempting direct URL send for source %s.", self.SOURCE)
-            self._video.direct_download_url = info_dict.get("url")
             if not self._video.direct_download_url:
                 logging.error(
                     "Direct URL not found in video info, falling back to download.",
                 )
                 await self._execute_download(info_dict)
             else:
-                await self._send_and_cache_video_by_url()
+                await self._send_and_cache_video()
         else:
             logging.info("Starting full download for source %s.", self.SOURCE)
             await self._execute_download(info_dict)
@@ -241,7 +241,12 @@ class YtDlpController(BaseSourceController, ABC):
             video = VideoDTO.from_yt_dlp(
                 info=info_dict,
                 file_path=predicted_path,
+                extract_direct_links=self.DIRECT_URL_DOWNLOAD,
             )
+
+            if self._selected_format_id:
+                video.quality = self._selected_format_id
+
             self._video = video
 
             return info_dict
@@ -257,26 +262,6 @@ class YtDlpController(BaseSourceController, ABC):
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
         return None
-
-    async def _send_and_cache_video_by_url(self) -> None:
-        """Sends the video via URL to the user and then caches the result."""
-        if not self._video:
-            logging.error("Cannot send video by URL: self._video is not set.")
-            return
-
-        await self.delete_processing_message()
-
-        telegram_video = (
-            await self._telegram_bot_controller.send_finish_downloading_by_url(
-                video=self._video,
-                telegram_id=self._telegram_id,
-            )
-        )
-
-        if telegram_video:
-            if self._selected_format_id:
-                self._video.quality = self._selected_format_id
-            await self._save_to_cache(telegram_video)
 
     async def _send_and_cache_video(self) -> None:
         """Sends the video to the user and then caches the result."""
@@ -296,9 +281,6 @@ class YtDlpController(BaseSourceController, ABC):
             if not self._video.source_id:
                 logging.warning("Cannot cache video: source_id is missing.")
                 return
-
-            if self._selected_format_id:
-                self._video.quality = self._selected_format_id
 
             logging.info(
                 "Attempting to cache video with source_id=%s and quality=%s",
@@ -353,13 +335,14 @@ class YtDlpController(BaseSourceController, ABC):
         if not self._video:
             return
 
-        video_path = Path(self._video.path)
-        if video_path.exists():
-            try:
-                video_path.unlink(missing_ok=True)
-                logging.info("Successfully deleted video file: %s", video_path)
-            except OSError as e:
-                logging.error("Error deleting video file %s: %s", video_path, e)
+        if self._video.path:
+            video_path = Path(self._video.path)
+            if video_path.exists():
+                try:
+                    video_path.unlink(missing_ok=True)
+                    logging.info("Successfully deleted video file: %s", video_path)
+                except OSError as e:
+                    logging.error("Error deleting video file %s: %s", video_path, e)
 
         if self._video.thumbnail:
             thumb_path = Path(self._video.thumbnail)
