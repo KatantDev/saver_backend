@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 from typing import Any, Awaitable, cast
 
 from aiogram import Bot, Dispatcher
@@ -312,19 +313,20 @@ class TelegramBotController:
             ).format(url=files[0].url),
         )
         for file in files:
-            if isinstance(file, PhotoDTO):
-                media_group.add_photo(media=FSInputFile(path=file.path))
-            elif isinstance(file, VideoDTO):
-                media_group.add_video(
-                    media=FSInputFile(path=file.path),
-                    width=file.width,
-                    height=file.height,
-                    duration=file.duration,
-                    thumbnail=(
-                        FSInputFile(path=file.thumbnail) if file.thumbnail else None
-                    ),
-                    supports_streaming=True,
-                )
+            if file.path:
+                if isinstance(file, PhotoDTO):
+                    media_group.add_photo(media=FSInputFile(path=file.path))
+                elif isinstance(file, VideoDTO):
+                    media_group.add_video(
+                        media=FSInputFile(path=file.path),
+                        width=file.width,
+                        height=file.height,
+                        duration=file.duration,
+                        thumbnail=(
+                            FSInputFile(path=file.thumbnail) if file.thumbnail else None
+                        ),
+                        supports_streaming=True,
+                    )
 
         coro = self._bot.send_media_group(
             chat_id=telegram_id,
@@ -386,10 +388,29 @@ class TelegramBotController:
         :param supports_streaming: Supports streaming.
         :param language: Language of the video.
         """
+        video_input: str | FSInputFile
+        thumbnail_input: str | FSInputFile | None = None
+
+        if video.direct_download_url:
+            logging.info("Sending video via direct URL: %s", video.direct_download_url)
+            video_input = video.direct_download_url
+            if video.thumbnail_url:
+                thumbnail_input = video.thumbnail_url
+        elif video.path and Path(video.path).exists():
+            logging.info("Sending video via file upload: %s", video.path)
+            video_input = FSInputFile(path=video.path)
+            if video.thumbnail and Path(video.thumbnail).exists():
+                thumbnail_input = FSInputFile(path=video.thumbnail)
+        else:
+            logging.error(
+                "Cannot send video: No direct URL or valid file path provided.",
+            )
+            return None
+
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
-                video=FSInputFile(path=video.path),
+                video=video_input,
                 caption=_(
                     "result direct message",
                     locale=self.language or language,
@@ -397,13 +418,7 @@ class TelegramBotController:
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
-                cover=(
-                    FSInputFile(
-                        path=video.thumbnail,
-                    )
-                    if video.thumbnail
-                    else None
-                ),
+                cover=thumbnail_input,
                 supports_streaming=supports_streaming,
             )
         except (TelegramForbiddenError, TelegramBadRequest):
@@ -457,52 +472,6 @@ class TelegramBotController:
                 telegram_id,
                 e,
             )
-            return None
-        except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
-            capture_exception(e)
-            return None
-
-    async def send_finish_downloading_by_url(
-        self,
-        video: VideoDTO,
-        telegram_id: int,
-        supports_streaming: bool = True,
-    ) -> Video | None:
-        """
-        Send video by its direct URL.
-
-        :param video: VideoDTO containing the direct URL and metadata.
-        :param telegram_id: Telegram ID of the user.
-        :param supports_streaming: Supports streaming.
-        :return: The sent Video object for caching, or None on failure.
-        """
-        if not video.direct_download_url:
-            logging.error("Cannot send video by URL: direct_download_url is missing.")
-            return None
-
-        try:
-            message = await self._bot.send_video(
-                chat_id=telegram_id,
-                video=video.direct_download_url,
-                caption=_("result direct message").format(url=video.url),
-                width=video.width,
-                height=video.height,
-                duration=video.duration,
-                supports_streaming=supports_streaming,
-            )
-            return message.video
-        except TelegramBadRequest as e:
-            if "failed to get HTTP URL content" in e.message:
-                logging.warning(
-                    "Telegram failed to get video by URL %s."
-                    " Need to fallback to downloading.",
-                    video.url,
-                )
-                return None
-            logging.error("TelegramBadRequest while sending by URL: %s", e)
-            capture_exception(e)
             return None
         except Exception as e:
             if settings.environment == "local":
