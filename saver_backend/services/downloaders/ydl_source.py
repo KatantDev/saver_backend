@@ -147,15 +147,9 @@ class YtDlpController(BaseSourceController, ABC):
             cache_quality_key,
         )
 
-        if self.DIRECT_URL_DOWNLOAD:
+        if not self._video.direct_download_url:
             logging.info("Attempting direct URL send for source %s.", self.SOURCE)
-            if not self._video.direct_download_url:
-                logging.error(
-                    "Direct URL not found in video info, falling back to download.",
-                )
-                await self._execute_download(info_dict)
-            else:
-                await self._send_and_cache_video()
+            await self._send_and_cache_video()
         else:
             logging.info("Starting full download for source %s.", self.SOURCE)
             await self._execute_download(info_dict)
@@ -242,10 +236,8 @@ class YtDlpController(BaseSourceController, ABC):
                 info=info_dict,
                 file_path=predicted_path,
                 extract_direct_links=self.DIRECT_URL_DOWNLOAD,
+                quality=self._selected_format_id or "best",
             )
-
-            if self._selected_format_id:
-                video.quality = self._selected_format_id
 
             self._video = video
 

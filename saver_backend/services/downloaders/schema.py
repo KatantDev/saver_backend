@@ -197,6 +197,7 @@ class VideoDTO(BaseModel):
     def from_yt_dlp(
         cls,
         info: dict[str, Any],
+        quality: str = "best",
         file_path: Path | None = None,
         extract_direct_links: bool = False,
     ) -> "VideoDTO":
@@ -204,7 +205,9 @@ class VideoDTO(BaseModel):
         Create a VideoDTO instance from a yt-dlp info dictionary.
 
         :param info: The dictionary from yt_dlp.extract_info.
+        :param quality: The quality of the video.
         :param file_path: The path to the downloaded video file.
+        :param extract_direct_links: Whether to extract direct links.
         :return: A VideoDTO instance.
         """
         if not file_path:
@@ -212,8 +215,7 @@ class VideoDTO(BaseModel):
 
         direct_download_url = info.get("url") if extract_direct_links else None
         title = info.get("fulltitle") or info.get("title")
-        duration_float = info.get("duration")
-        duration = int(duration_float) if duration_float is not None else None
+        duration = info.get("duration")
 
         available_formats = []
         for format_info in info.get("formats", []):
@@ -252,7 +254,7 @@ class VideoDTO(BaseModel):
             source_id=info.get("id"),
             width=int(w) if (w := info.get("width")) else None,
             height=int(h) if (h := info.get("height")) else None,
-            quality="best",
+            quality=quality,
             formats=unique_formats,
             duration=int(duration) if duration else None,
         )
