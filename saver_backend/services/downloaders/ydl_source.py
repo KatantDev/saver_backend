@@ -147,7 +147,7 @@ class YtDlpController(BaseSourceController, ABC):
             cache_quality_key,
         )
 
-        if not self._video.direct_download_url:
+        if self._video.direct_download_url:
             logging.info("Attempting direct URL send for source %s.", self.SOURCE)
             await self._send_and_cache_video()
         else:
