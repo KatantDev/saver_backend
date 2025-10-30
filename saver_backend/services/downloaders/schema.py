@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import MAX_FILE_SIZE_BYTES
+from saver_backend.services.language_resolver import LanguageResolver
 
 if TYPE_CHECKING:
     from aiogram.types import Video as TgVideo
@@ -61,8 +62,9 @@ class FormatDTO(BaseModel):
 
         :return: A string for the button, e.g., "English".
         """
-        lang = self.language or "Default"
-        return lang.capitalize()
+        if self.language is None:
+            return "Default"
+        return LanguageResolver(language=self.language).display_name
 
     @property
     def formatted_filesize(self) -> str | None:
@@ -248,7 +250,7 @@ class VideoDTO(BaseModel):
             height=int(h) if (h := info.get("height")) else None,
             quality="best",
             formats=unique_formats,
-            duration=duration,
+            duration=int(duration) if duration else None,
         )
 
 
