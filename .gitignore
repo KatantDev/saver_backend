@@ -148,3 +148,6 @@ cookies/*
 cf-origin.key
 cf-origin.crt
 cf-origin-ca.pem
+
+# MacOS
+.DS_Store
