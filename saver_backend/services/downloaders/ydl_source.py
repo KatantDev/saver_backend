@@ -232,14 +232,12 @@ class YtDlpController(BaseSourceController, ABC):
 
             predicted_path = self._download_directory / f"{video_id}.{video_ext}"
 
-            video = VideoDTO.from_yt_dlp(
+            self._video = VideoDTO.from_yt_dlp(
                 info=info_dict,
                 file_path=predicted_path,
                 extract_direct_links=self.DIRECT_URL_DOWNLOAD,
                 quality=self._selected_format_id or "best",
             )
-
-            self._video = video
 
             return info_dict
         except DownloadError as e:
