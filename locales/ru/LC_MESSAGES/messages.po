@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-10-29 21:07+1000\n"
+"POT-Creation-Date: 2025-10-30 18:37+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -31,32 +31,33 @@ msgstr ""
 #: saver_backend/services/telegram/bot_controller.py:360
 #: saver_backend/services/telegram/bot_controller.py:394
 #: saver_backend/services/telegram/bot_controller.py:447
+#: saver_backend/services/telegram/bot_controller.py:489
 msgid "result direct message"
 msgstr ""
 "{url}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
 
-#: saver_backend/services/telegram/bot_controller.py:480
+#: saver_backend/services/telegram/bot_controller.py:526
 msgid "tiktok photo unsupported"
 msgstr "Скачивание фото не поддерживается для TikTok прямо сейчас, но мы уже работаем над его поддержкой."
 
-#: saver_backend/services/telegram/bot_controller.py:497
+#: saver_backend/services/telegram/bot_controller.py:543
 msgid "error downloading"
 msgstr ""
 "<b>Произошла ошибка при скачивании видео.</b>\n"
 "Ошибка отправлена нашим разработчикам, мы исправим её в ближайшее время."
 
-#: saver_backend/services/telegram/bot_controller.py:529
+#: saver_backend/services/telegram/bot_controller.py:574
 msgid "failed to get video info"
 msgstr "Не удалось получить информацию о видео."
 
-#: saver_backend/services/telegram/bot_controller.py:547
+#: saver_backend/services/telegram/bot_controller.py:592
 msgid "video info without formats"
 msgstr "Не найдено доступных форматов для скачивания. Пожалуйста, попробуйте ещё раз позже."
 
-#: saver_backend/services/telegram/bot_controller.py:572
-#: saver_backend/services/telegram/bot_controller.py:583
+#: saver_backend/services/telegram/bot_controller.py:617
+#: saver_backend/services/telegram/bot_controller.py:628
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"
@@ -80,7 +81,8 @@ msgstr "Время выбора истекло. Пожалуйста, отпра
 
 #: saver_backend/telegram_bot/handlers/download.py:129
 msgid "choose language for download"
-msgstr "<b>{title}</b>\n"
+msgstr ""
+"<b>{title}</b>\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Выберите желаемый язык:"
 

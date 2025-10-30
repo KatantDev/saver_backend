@@ -31,11 +31,11 @@ class YtDlpController(BaseSourceController, ABC):
     SOURCE: ClassVar[SourceEnum] = SourceEnum.UNSUPPORTED
     COOKIES: ClassVar[bool] = False
     SUPPORTS_STREAMING: ClassVar[bool] = True
+    DIRECT_URL_DOWNLOAD: ClassVar[bool] = False
 
-    def __init__(self, *args: Any, format_id: str | None = None, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._video: VideoDTO | None = None
-        self._selected_format_id = format_id
 
         # Get download directory and create it
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
@@ -146,7 +146,19 @@ class YtDlpController(BaseSourceController, ABC):
             self._video.source_id,
             cache_quality_key,
         )
-        await self._execute_download(info_dict=info_dict)
+        if self.DIRECT_URL_DOWNLOAD:
+            logging.info("Attempting direct URL send for source %s.", self.SOURCE)
+            self._video.direct_download_url = info_dict.get("url")
+            if not self._video.direct_download_url:
+                logging.error(
+                    "Direct URL not found in video info, falling back to download.",
+                )
+                await self._execute_download(info_dict)
+            else:
+                await self._send_and_cache_video_by_url()
+        else:
+            logging.info("Starting full download for source %s.", self.SOURCE)
+            await self._execute_download(info_dict)
 
     async def _execute_download(self, info_dict: dict[str, Any]) -> None:
         """
@@ -193,7 +205,7 @@ class YtDlpController(BaseSourceController, ABC):
         if d["status"] == "downloading":
             total_bytes = d.get("total_bytes") or d.get("total_bytes_estimate")
             downloaded_bytes = d.get("downloaded_bytes")
-            if not total_bytes or not downloaded_bytes:
+            if not total_bytes or not downloaded_bytes or total_bytes <= 0:
                 return
 
             percent_float = (downloaded_bytes / total_bytes) * 100
@@ -246,6 +258,26 @@ class YtDlpController(BaseSourceController, ABC):
             sentry_sdk.capture_exception(e)
         return None
 
+    async def _send_and_cache_video_by_url(self) -> None:
+        """Sends the video via URL to the user and then caches the result."""
+        if not self._video:
+            logging.error("Cannot send video by URL: self._video is not set.")
+            return
+
+        await self.delete_processing_message()
+
+        telegram_video = (
+            await self._telegram_bot_controller.send_finish_downloading_by_url(
+                video=self._video,
+                telegram_id=self._telegram_id,
+            )
+        )
+
+        if telegram_video:
+            if self._selected_format_id:
+                self._video.quality = self._selected_format_id
+            await self._save_to_cache(telegram_video)
+
     async def _send_and_cache_video(self) -> None:
         """Sends the video to the user and then caches the result."""
         if not self._video:
@@ -274,6 +306,8 @@ class YtDlpController(BaseSourceController, ABC):
                 self._video.quality,
             )
             await self._save_to_cache(telegram_video)
+
+        self._cleanup_files()
 
     async def _save_to_cache(
         self,
@@ -313,6 +347,28 @@ class YtDlpController(BaseSourceController, ABC):
                 exc_info=True,
             )
             sentry_sdk.capture_exception(e)
+
+    def _cleanup_files(self) -> None:
+        """Safely deletes the downloaded video and thumbnail files."""
+        if not self._video:
+            return
+
+        video_path = Path(self._video.path)
+        if video_path.exists():
+            try:
+                video_path.unlink(missing_ok=True)
+                logging.info("Successfully deleted video file: %s", video_path)
+            except OSError as e:
+                logging.error("Error deleting video file %s: %s", video_path, e)
+
+        if self._video.thumbnail:
+            thumb_path = Path(self._video.thumbnail)
+            if thumb_path.exists():
+                try:
+                    thumb_path.unlink(missing_ok=True)
+                    logging.info("Successfully deleted thumbnail file: %s", thumb_path)
+                except OSError as e:
+                    logging.error("Error deleting thumbnail file %s: %s", thumb_path, e)
 
     def _get_thumbnail(self, source_id: str | None) -> Path | None:
         if not source_id:

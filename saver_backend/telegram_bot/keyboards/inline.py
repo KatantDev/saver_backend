@@ -63,8 +63,10 @@ def get_video_formats_keyboard(labels: list[str]) -> InlineKeyboardMarkup:
     """
     builder = InlineKeyboardBuilder()
     for label in labels:
+        button_text = f"📹 {label}"
+
         builder.button(
-            text=label,
+            text=button_text,
             callback_data=VideoFormatCallback(label=label).pack(),
         )
     builder.adjust(1)

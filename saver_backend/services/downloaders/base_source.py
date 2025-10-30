@@ -35,6 +35,7 @@ class BaseSourceController(ABC):
         self._user_dao = user_dao
         self._user_info: UserDTO | None = None
 
+        self._selected_format_id = format_id
         self._telegram_bot_controller = telegram_bot_controller
         self._telegram_id = telegram_id
         self._message_id = message_id

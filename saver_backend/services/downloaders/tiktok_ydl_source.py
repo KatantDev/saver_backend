@@ -10,14 +10,10 @@ class TikTokYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from TikTok through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.TIKTOK
+    DIRECT_URL_DOWNLOAD: ClassVar[bool] = False
 
-    def __init__(
-        self,
-        *args: Any,
-        format_id: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(*args, format_id=format_id, **kwargs)
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
         self._yt_dlp.params["format"] = "bv*+ba/best"
 
     async def get_video_info(self, url: str) -> Dict[str, Any] | None:

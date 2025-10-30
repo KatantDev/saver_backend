@@ -136,6 +136,8 @@ class VideoDTO(BaseModel):
     height: int | None = None
     quality: str | None = None
 
+    direct_download_url: str | None = None
+
     formats: list[FormatDTO] = Field(default_factory=list)
 
     @property
@@ -205,7 +207,8 @@ class VideoDTO(BaseModel):
         if not file_path:
             file_path = Path("dummy")
         title = info.get("fulltitle") or info.get("title")
-        duration = info.get("duration")
+        duration_float = info.get("duration")
+        duration = int(duration_float) if duration_float is not None else None
 
         available_formats = []
         for format_info in info.get("formats", []):

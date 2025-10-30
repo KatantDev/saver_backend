@@ -464,6 +464,52 @@ class TelegramBotController:
             capture_exception(e)
             return None
 
+    async def send_finish_downloading_by_url(
+        self,
+        video: VideoDTO,
+        telegram_id: int,
+        supports_streaming: bool = True,
+    ) -> Video | None:
+        """
+        Send video by its direct URL.
+
+        :param video: VideoDTO containing the direct URL and metadata.
+        :param telegram_id: Telegram ID of the user.
+        :param supports_streaming: Supports streaming.
+        :return: The sent Video object for caching, or None on failure.
+        """
+        if not video.direct_download_url:
+            logging.error("Cannot send video by URL: direct_download_url is missing.")
+            return None
+
+        try:
+            message = await self._bot.send_video(
+                chat_id=telegram_id,
+                video=video.direct_download_url,
+                caption=_("result direct message").format(url=video.url),
+                width=video.width,
+                height=video.height,
+                duration=video.duration,
+                supports_streaming=supports_streaming,
+            )
+            return message.video
+        except TelegramBadRequest as e:
+            if "failed to get HTTP URL content" in e.message:
+                logging.warning(
+                    "Telegram failed to get video by URL %s."
+                    " Need to fallback to downloading.",
+                    video.url,
+                )
+                return None
+            logging.error("TelegramBadRequest while sending by URL: %s", e)
+            capture_exception(e)
+            return None
+        except Exception as e:
+            if settings.environment == "local":
+                logging.exception(e)
+            capture_exception(e)
+            return None
+
     async def send_tiktok_error_downloading(
         self,
         telegram_id: int,
