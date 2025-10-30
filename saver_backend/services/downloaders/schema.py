@@ -245,7 +245,7 @@ class VideoDTO(BaseModel):
             height=int(h) if (h := info.get("height")) else None,
             quality="best",
             formats=unique_formats,
-            duration=duration,
+            duration=int(duration) if duration else None,
         )
 
 
