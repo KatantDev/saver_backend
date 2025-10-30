@@ -1035,6 +1035,24 @@ trio = ["trio (>=0.30)"]
 wmi = ["wmi (>=1.5.1) ; platform_system == \"Windows\""]
 
 [[package]]
+name = "emoji-country-flag"
+version = "2.1.0"
+description = "En/Decode unicode country flags emoji"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "emoji_country_flag-2.1.0-py3-none-any.whl", hash = "sha256:224b19583210901b950a624ab0b0896cdf0764b36f8bd1463868b15fb8c10f6a"},
+    {file = "emoji_country_flag-2.1.0.tar.gz", hash = "sha256:3b4df6a9d9961ab7716090689c2e96405baff68e46849ab2704335d904589f2a"},
+]
+
+[package.extras]
+coverage = ["codacy_coverage (>=1.3.11)", "coverage (>=7.5.1)"]
+docs = ["sphinx (>=7.3.7)", "sphinx-rtd-theme (>=2.0.0)", "sphinxcontrib-jquery (>=4.1)"]
+ruff = ["ruff (>=0.4.7)"]
+test = ["emoji (>=2.12.1)", "pytest (>=8.2.2)", "tox (>=4.15.0)"]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.3.0"
 description = "Backport of PEP 654 (exception groups)"
@@ -2595,6 +2613,18 @@ files = [
     {file = "propcache-0.4.1-cp39-cp39-win_arm64.whl", hash = "sha256:5fd37c406dd6dc85aa743e214cef35dc54bbdd1419baac4f6ae5e5b1a2976938"},
     {file = "propcache-0.4.1-py3-none-any.whl", hash = "sha256:af2a6052aeb6cf17d3e46ee169099044fd8224cbaf75c76a2ef596e8163e2237"},
     {file = "propcache-0.4.1.tar.gz", hash = "sha256:f48107a8c637e80362555f37ecf49abe20370e557cc4ab374f04ec4423c97c3d"},
+]
+
+[[package]]
+name = "pycountry"
+version = "24.6.1"
+description = "ISO country, subdivision, language, currency and script definitions and their translations"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "pycountry-24.6.1-py3-none-any.whl", hash = "sha256:f1a4fb391cd7214f8eefd39556d740adcc233c778a27f8942c8dca351d6ce06f"},
+    {file = "pycountry-24.6.1.tar.gz", hash = "sha256:b61b3faccea67f87d10c1f2b0fc0be714409e8fcdcc1315613174f6466c10221"},
 ]
 
 [[package]]
@@ -4373,4 +4403,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4"
-content-hash = "ba7009f6245cff3db2f24bcfbdf2bc603113864ff7e5d28efb121af577be572e"
+content-hash = "6561c5d752f8ad3cb4c3dd7b95156426f73f62cc54af4105d20ba15e9f0544bd"

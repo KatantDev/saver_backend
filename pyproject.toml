@@ -37,6 +37,8 @@ instagrapi = "^2.2.1"
 ffmpeg-python = "^0.2.0"
 yt-dlp = {extras = ["default","curl-cffi"], version = "^2025.10"}
 bgutil-ytdlp-pot-provider = "^1.2.2"
+pycountry = {extras = ["locales"], version = "^24.6.1"}
+emoji-country-flag = "^2.1.0"
 
 
 [tool.poetry.group.dev.dependencies]
