@@ -61,7 +61,7 @@ async def save_video(
 
 
 @broker.task()
-async def get_youtube_video_info(
+async def get_video_info(
     resolution: Resolution,
     telegram_id: int,
     processing_message_id: int,
@@ -115,7 +115,10 @@ async def get_youtube_video_info(
     await state.telegram_bot_controller.set_fsm_data(
         user_id=telegram_id,
         chat_id=telegram_id,
-        data={"video_dto": video_dto.model_dump(mode="json")},
+        data={
+            "video_dto": video_dto.model_dump(mode="json"),
+            "resolution": resolution.model_dump(mode="json"),
+        },
     )
     await state.telegram_bot_controller.send_choose_quality(
         telegram_id=telegram_id,

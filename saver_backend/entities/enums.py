@@ -10,6 +10,7 @@ class SourceEnum(str, Enum):
     YOUTUBE_SHORTS_YDL = "youtube_shorts_ydl"
     YOUTUBE_VIDEO_YDL = "youtube_video_ydl"
     VK_CLIPS_YDL = "vk_clips_ydl"
+    VK_VIDEO_YDL = "vk_video_ydl"
     UNSUPPORTED = "unsupported"
 
 

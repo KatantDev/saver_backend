@@ -9,7 +9,7 @@ from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
-from saver_backend.task_manager.tasks import get_youtube_video_info, save_video
+from saver_backend.task_manager.tasks import get_video_info, save_video
 from saver_backend.telegram_bot.filters.source import SourceFilter
 from saver_backend.telegram_bot.keyboards.callback import (
     VideoFormatCallback,
@@ -78,8 +78,15 @@ async def _trigger_download(
     )
 
 
-@download_router.message(SourceFilter(sources=[SourceEnum.YOUTUBE_VIDEO_YDL]))
-async def show_youtube_video_info(
+@download_router.message(
+    SourceFilter(
+        sources=[
+            SourceEnum.YOUTUBE_VIDEO_YDL,
+            SourceEnum.VK_VIDEO_YDL,
+        ],
+    ),
+)
+async def show_video_info(
     message: Message,
     resolution: Resolution,
 ) -> None:
@@ -94,7 +101,7 @@ async def show_youtube_video_info(
 
     processing_message = await message.reply(_("get video info"))
 
-    await get_youtube_video_info.kiq(
+    await get_video_info.kiq(
         resolution=resolution,
         telegram_id=message.from_user.id,
         processing_message_id=processing_message.message_id,
@@ -117,12 +124,16 @@ async def on_format_select(
         await query.answer()
         return
 
-    data = await state.get_value(key="video_dto")
-    if not data:
+    data = await state.get_data()
+    video_dto_data = data.get("video_dto")
+    resolution_data = data.get("resolution")
+
+    if not video_dto_data or not resolution_data:
         await query.message.edit_text(_("format selection expired"))
         return
 
-    video_dto: VideoDTO = VideoDTO.model_validate(data)
+    video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
+    resolution: Resolution = Resolution.model_validate(resolution_data)
     formats = video_dto.get_formats_by_label(label=callback_data.label)
 
     if len(formats) > 1:
@@ -138,10 +149,6 @@ async def on_format_select(
     elif len(formats) == 1:
         selected_format = formats[0]
         if video_dto.url:
-            resolution = Resolution(
-                source=SourceEnum.YOUTUBE_VIDEO_YDL,
-                url=video_dto.url,
-            )
             await _trigger_download(
                 query=query,
                 resolution=resolution,
@@ -174,12 +181,14 @@ async def on_language_select(
 
     data = await state.get_data()
     video_dto_data = data.get("video_dto")
+    resolution_data = data.get("resolution")
 
-    if not video_dto_data:
+    if not video_dto_data or not resolution_data:
         await query.message.edit_text(_("format selection expired"))
         return
 
     video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
+    resolution: Resolution = Resolution.model_validate(resolution_data)
     selected_format = video_dto.get_format_by_id(format_id=callback_data.format_id)
 
     if not selected_format:
@@ -187,10 +196,6 @@ async def on_language_select(
         return
 
     if video_dto.url:
-        resolution = Resolution(
-            source=SourceEnum.YOUTUBE_VIDEO_YDL,
-            url=video_dto.url,
-        )
         await _trigger_download(
             query=query,
             resolution=resolution,

@@ -17,6 +17,9 @@ from saver_backend.services.downloaders.tiktok_ydl_source import TikTokYdlContro
 from saver_backend.services.downloaders.vk_clips_ydl_source import (
     VKClipsYdlController,
 )
+from saver_backend.services.downloaders.vk_video_ydl_source import (
+    VKVideoYdlController,
+)
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
 )
@@ -297,6 +300,35 @@ class YouTubeVideoDetector(Detector):
             )
 
         return None
+
+
+@register_detector()
+class VKVideoDetector(Detector):
+    """Detector for VK Video."""
+
+    SOURCE = SourceEnum.VK_VIDEO_YDL
+    CONTROLLER = VKVideoYdlController
+    HOSTS = (
+        "vk.com",
+        "m.vk.com",
+        "vkvideo.ru",
+        "www.vk.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video(?P<code>-\d+_\d+)/?$"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """
+        Check if the url is a valid VK Video url.
+
+        :param url: URL to check.
+        :return: Resolution if the url is valid, None otherwise.
+        """
+        if not self._host_in(url, *self.HOSTS):
+            return None
+
+        return self._match_regex(url)
 
 
 class SourceResolver:
