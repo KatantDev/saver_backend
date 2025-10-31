@@ -13,7 +13,7 @@ from saver_backend.services.downloaders.instagram_api_source import (
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
-from saver_backend.services.downloaders.tiktok_ydl_source import TikTokYdlController
+from saver_backend.services.downloaders.tiktok_api_source import TikTokAPIController
 from saver_backend.services.downloaders.vk_clips_ydl_source import (
     VKClipsYdlController,
 )
@@ -135,7 +135,7 @@ class TikTokDetector(Detector):
     """Detector for TikTok."""
 
     SOURCE = SourceEnum.TIKTOK
-    CONTROLLER = TikTokYdlController
+    CONTROLLER = TikTokAPIController
     HOSTS = (
         "tiktok.com",
         "m.tiktok.com",

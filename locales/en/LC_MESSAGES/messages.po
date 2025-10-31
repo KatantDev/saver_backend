@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-10-31 16:39+1000\n"
+"POT-Creation-Date: 2025-10-31 22:56+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
 
-#: saver_backend/services/telegram/bot_controller.py:248
+#: saver_backend/services/telegram/bot_controller.py:249
 #: saver_backend/telegram_bot/handlers/start.py:66
 msgid "welcome message"
 msgstr ""
@@ -27,36 +27,37 @@ msgstr ""
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>This bot is completely free.</b>.\n"
 "To use it - just subscribe to two of our channels:"
 
-#: saver_backend/services/telegram/bot_controller.py:311
-#: saver_backend/services/telegram/bot_controller.py:362
-#: saver_backend/services/telegram/bot_controller.py:415
-#: saver_backend/services/telegram/bot_controller.py:462
+#: saver_backend/services/telegram/bot_controller.py:312
+#: saver_backend/services/telegram/bot_controller.py:358
+#: saver_backend/services/telegram/bot_controller.py:399
+#: saver_backend/services/telegram/bot_controller.py:456
+#: saver_backend/services/telegram/bot_controller.py:503
 msgid "result direct message"
 msgstr ""
 "{url}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
 
-#: saver_backend/services/telegram/bot_controller.py:495
+#: saver_backend/services/telegram/bot_controller.py:536
 msgid "tiktok photo unsupported"
 msgstr "Photo downloading is not supported for TikTok right now, but we are already working on it."
 
-#: saver_backend/services/telegram/bot_controller.py:512
+#: saver_backend/services/telegram/bot_controller.py:553
 msgid "error downloading"
 msgstr ""
 "<b>An error occurred while downloading the video.</b>\n"
 "The error has been sent to our developers, we will fix it as soon as possible."
 
-#: saver_backend/services/telegram/bot_controller.py:543
+#: saver_backend/services/telegram/bot_controller.py:584
 msgid "failed to get video info"
 msgstr "Failed to get video information."
 
-#: saver_backend/services/telegram/bot_controller.py:561
+#: saver_backend/services/telegram/bot_controller.py:602
 msgid "video info without formats"
 msgstr "No formats available for download. Please try again later."
 
-#: saver_backend/services/telegram/bot_controller.py:586
-#: saver_backend/services/telegram/bot_controller.py:597
+#: saver_backend/services/telegram/bot_controller.py:627
+#: saver_backend/services/telegram/bot_controller.py:638
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"
@@ -69,24 +70,24 @@ msgstr ""
 "This URL is not supported for downloading.\n"
 "But we are already working on its support."
 
-#: saver_backend/telegram_bot/handlers/download.py:95
+#: saver_backend/telegram_bot/handlers/download.py:102
 msgid "get video info"
 msgstr "🔍 Getting video info... This may take about 5 seconds."
 
-#: saver_backend/telegram_bot/handlers/download.py:122
-#: saver_backend/telegram_bot/handlers/download.py:179
+#: saver_backend/telegram_bot/handlers/download.py:132
+#: saver_backend/telegram_bot/handlers/download.py:187
 msgid "format selection expired"
 msgstr "Selection time expired. Please send the link again."
 
-#: saver_backend/telegram_bot/handlers/download.py:129
+#: saver_backend/telegram_bot/handlers/download.py:140
 msgid "choose language for download"
 msgstr ""
 "<b>{title}</b>\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Choose desired language:"
 
-#: saver_backend/telegram_bot/handlers/download.py:151
-#: saver_backend/telegram_bot/handlers/download.py:186
+#: saver_backend/telegram_bot/handlers/download.py:158
+#: saver_backend/telegram_bot/handlers/download.py:195
 msgid "format not found"
 msgstr "An error occurred, the format was not found. Please try again."
 

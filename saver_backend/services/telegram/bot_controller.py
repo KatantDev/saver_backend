@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Awaitable, cast
+from typing import Any, Awaitable, Sequence, cast
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -24,6 +24,7 @@ from sentry_sdk import capture_exception
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from saver_backend.services.downloaders.schema import (
+    AudioDTO,
     PhotoDTO,
     VideoDTO,
 )
@@ -293,7 +294,7 @@ class TelegramBotController:
 
     async def send_finish_downloading_group(
         self,
-        files: list[PhotoDTO | VideoDTO],
+        files: Sequence[PhotoDTO | VideoDTO],
         telegram_id: int,
         message_id: int | None = None,
         language: str = "en",
@@ -333,6 +334,42 @@ class TelegramBotController:
             media=media_group.build(),
         )
         await self._send(coro)
+        if message_id is not None:
+            coro2 = self._bot.delete_message(
+                message_id=message_id,
+                chat_id=telegram_id,
+            )
+            await self._send(coro2)
+
+    async def send_finish_downloading_audio(
+        self,
+        audio: AudioDTO,
+        telegram_id: int,
+        message_id: int | None = None,
+        language: str = "en",
+    ) -> None:
+        """
+        Send finish downloading audio message.
+
+        :param audio: Audio DTO.
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID to delete after sending.
+        """
+        caption = _("result direct message", locale=language).format(url=audio.url)
+        filename = f"{audio.title}.mp3"
+
+        coro = self._bot.send_audio(
+            chat_id=telegram_id,
+            audio=FSInputFile(
+                path=audio.path,
+                filename=filename,
+            ),
+            caption=caption,
+            title=filename,
+            duration=audio.duration,
+        )
+        await self._send(coro)
+
         if message_id is not None:
             coro2 = self._bot.delete_message(
                 message_id=message_id,

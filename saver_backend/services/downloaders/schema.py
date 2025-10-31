@@ -313,3 +313,32 @@ class PhotoDTO(BaseModel):
     path: str | Path
     title: str | None = None
     url: str | None = None
+
+
+class AudioDTO(BaseModel):
+    """Data Transfer Object for Audio."""
+
+    path: str | Path
+    url: str | None = None
+    title: str | None = None
+    duration: int | None = None
+
+
+class TikWMData(BaseModel):
+    """Pydantic model for the 'data' part of the TikWM API response."""
+
+    id: str
+    title: str | None = None
+    duration: int = 0
+    play: str | None = None
+    music: str | None = None
+    images: list[str] | None = None
+    cover: str | None = None
+
+
+class TikWMResponse(BaseModel):
+    """Pydantic model for the full TikWM API response."""
+
+    code: int
+    msg: str
+    data: TikWMData | None = None

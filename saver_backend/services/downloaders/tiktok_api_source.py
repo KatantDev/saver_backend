@@ -1,0 +1,270 @@
+import asyncio
+import logging
+import re
+import uuid
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+from aiogram.types import Video
+from httpx import AsyncClient, HTTPStatusError, RequestError
+
+from saver_backend.entities.enums import SourceEnum
+from saver_backend.services.consts import BASE_DOWNLOAD_PATH
+from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.schema import (
+    AudioDTO,
+    PhotoDTO,
+    TikWMData,
+    TikWMResponse,
+    VideoCacheDTO,
+    VideoDTO,
+)
+
+
+class TikTokAPIController(BaseSourceController):
+    """Controller for downloading videos from TikTok via tikwm.com API."""
+
+    SOURCE = SourceEnum.TIKTOK
+    API_URL = "https://www.tikwm.com/api/"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
+        self._download_directory.mkdir(parents=True, exist_ok=True)
+        self._temp_files: list[Path] = []
+
+    def _get_safe_filename(self, data: TikWMData) -> str:
+        """
+        Create a filesystem-safe filename from a string.
+
+        :param base_name: The string to clean.
+        :return: A safe filename.
+        """
+        url_match = re.search(r"/([\w-]+)/?$", self._resolution.url)
+        base_name = url_match.group(1) if url_match else (data.title or data.id)
+        # Remove invalid characters for most filesystems
+        safe_name = re.sub(r'[\\/*?:"<>|]', "", base_name)
+        # Truncate to avoid "Filename too long" errors
+        return safe_name[:150].strip() or str(uuid.uuid4())
+
+    async def _download_file(
+        self,
+        client: AsyncClient,
+        url: str,
+        desired_filename: str | None = None,
+    ) -> Path | None:
+        """
+        Download a file from a URL to a temporary path.
+
+        :param client: An AsyncClient instance.
+        :param url: The URL of the file to download.
+        :return: Path to the downloaded file or None on failure.
+        """
+        try:
+            response = await client.get(url, timeout=120)
+            response.raise_for_status()
+
+            if desired_filename:
+                extension = Path(urlparse(url).path).suffix or ".mp3"
+                file_name = f"{desired_filename}{extension}"
+            else:
+                file_name = Path(urlparse(url).path).name or f"{uuid.uuid4()}"
+
+            temp_path = self._download_directory / file_name
+            temp_path.write_bytes(response.content)
+
+            self._temp_files.append(temp_path)
+            return temp_path
+        except HTTPStatusError as e:
+            logging.error("HTTP error downloading file %s: %s", url, e)
+        except Exception as e:
+            logging.error("Failed to download file %s: %s", url, e)
+        return None
+
+    async def _handle_slideshow(
+        self,
+        client: AsyncClient,
+        data: TikWMData,
+    ) -> None:
+        """Handle downloading and sending of a photo slideshow with audio."""
+        if not data.images or not data.music:
+            await self._send_error_message()
+            return
+
+        safe_audio_name = self._get_safe_filename(data)
+
+        download_tasks = [
+            self._download_file(client, img_url) for img_url in data.images
+        ]
+        download_tasks.append(
+            self._download_file(
+                client,
+                data.music,
+                desired_filename=safe_audio_name,
+            ),
+        )
+
+        results = await asyncio.gather(*download_tasks)
+        photo_paths = [res for res in results[:-1] if res]
+        audio_path = results[-1]
+
+        if not photo_paths:
+            await self._send_error_message()
+            return
+
+        photos = [
+            PhotoDTO(path=path, url=self._resolution.url, title=data.title)
+            for path in photo_paths
+        ]
+
+        chunk_size = 10
+        total_photos = len(photos)
+        for i in range(0, total_photos, chunk_size):
+            chunk = photos[i : i + chunk_size]
+
+            await self._telegram_bot_controller.send_finish_downloading_group(
+                files=chunk,
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+            )
+
+        if audio_path:
+            audio = AudioDTO(
+                path=audio_path,
+                title=safe_audio_name,
+                duration=data.duration,
+                url=self._resolution.url,
+            )
+            await self._telegram_bot_controller.send_finish_downloading_audio(
+                audio=audio,
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+            )
+        elif self._message_id:
+            await self.delete_processing_message()
+
+    async def _handle_video(self, client: AsyncClient, data: TikWMData) -> None:
+        """Handle caching, downloading, and sending of a single video."""
+        if not data.play or not data.cover:
+            await self._send_error_message()
+            return
+
+        source_id = data.id
+        quality = "default"
+
+        is_sent_from_cache = await self.send_video_from_cache(
+            source_id=source_id,
+            quality=quality,
+        )
+        if is_sent_from_cache:
+            return
+
+        video_path, thumb_path = await asyncio.gather(
+            self._download_file(client, data.play),
+            self._download_file(client, data.cover),
+        )
+        if not video_path:
+            await self._send_error_message()
+            return
+
+        video_dto = VideoDTO(
+            path=video_path,
+            thumbnail=thumb_path,
+            title=data.title,
+            url=self._resolution.url,
+            source_id=source_id,
+            duration=data.duration,
+            quality=quality,
+        )
+        telegram_video = await self._telegram_bot_controller.send_finish_downloading(
+            video=video_dto,
+            telegram_id=self._telegram_id,
+            message_id=self._message_id,
+        )
+
+        if telegram_video:
+            await self._save_to_cache(telegram_video, video_dto)
+
+    async def download_video(self) -> None:
+        """Download video or photo set from TikTok using tikwm.com API."""
+        try:
+            async with AsyncClient() as client:
+                response = await client.post(
+                    self.API_URL,
+                    data={"url": self._resolution.url},
+                    timeout=30,
+                )
+                response.raise_for_status()
+                api_response: TikWMResponse = TikWMResponse.model_validate(
+                    response.json(),
+                )
+
+                if api_response.code != 0 or not api_response.data:
+                    logging.error("TikWM API returned an error: %s", api_response.msg)
+                    await self._send_error_message()
+                    return
+
+                data: TikWMData = api_response.data
+                self._process_percent(16)
+
+                if data.images and data.music:
+                    await self._handle_slideshow(client, data)
+                elif data.play and data.cover:
+                    await self._handle_video(client, data)
+                else:
+                    await self._send_error_message()
+
+        except RequestError as e:
+            logging.error("Request to TikWM API failed: %s", e)
+            await self._send_error_message()
+        except Exception as e:
+            logging.error("An unexpected error occurred in TikTok downloader: %s", e)
+            await self._send_error_message()
+        finally:
+            self._cleanup_temp_files()
+
+    async def _save_to_cache(self, telegram_video: Video, video_dto: VideoDTO) -> None:
+        """
+        Save video details to the cache.
+
+        :param telegram_video: The Video object from aiogram after sending.
+        :param video_dto: The VideoDTO instance containing video metadata.
+        """
+        if not video_dto.source_id or not video_dto.quality:
+            logging.warning("Cannot cache video: source_id or quality is missing.")
+            return
+
+        cache_dto = VideoCacheDTO(
+            source=self.SOURCE,
+            source_id=video_dto.source_id,
+            file_id=telegram_video.file_id,
+            file_unique_id=telegram_video.file_unique_id,
+            quality=video_dto.quality,
+            meta_data=video_dto,
+        )
+        try:
+            await self._video_cache_dao.create(cache_dto)
+            logging.info(
+                "Successfully cached TikTok video with source_id=%s",
+                video_dto.source_id,
+            )
+        except Exception as e:
+            logging.error(
+                "Failed to save TikTok video cache for source_id=%s: %s",
+                video_dto.source_id,
+                e,
+                exc_info=True,
+            )
+
+    def _cleanup_temp_files(self) -> None:
+        """Delete all temporary files created during the download process."""
+        for file_path in self._temp_files:
+            try:
+                file_path.unlink(missing_ok=True)
+            except OSError as e:
+                logging.error(
+                    "Error deleting temp file %s: %s",
+                    file_path,
+                    e,
+                )
