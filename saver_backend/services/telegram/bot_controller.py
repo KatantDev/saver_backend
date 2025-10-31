@@ -16,7 +16,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 from aiogram.fsm.storage.redis import RedisStorage
-from aiogram.types import FSInputFile, Update, Video
+from aiogram.types import FSInputFile, Update, URLInputFile, Video
 from aiogram.utils.i18n import I18n, SimpleI18nMiddleware
 from aiogram.utils.media_group import MediaGroupBuilder
 from redis.asyncio import Redis
@@ -388,12 +388,16 @@ class TelegramBotController:
         :param supports_streaming: Supports streaming.
         :param language: Language of the video.
         """
-        video_input: str | FSInputFile
+        video_input: str | FSInputFile | URLInputFile
         thumbnail_input: str | FSInputFile | None = None
 
         if video.direct_download_url:
             logging.info("Sending video via direct URL: %s", video.direct_download_url)
-            video_input = video.direct_download_url
+            video_input = (
+                video.direct_download_url
+                if video.duration and video.duration < 180
+                else URLInputFile(url=video.direct_download_url)
+            )
             if video.thumbnail_url:
                 thumbnail_input = video.thumbnail_url
         elif video.path and Path(video.path).exists():
