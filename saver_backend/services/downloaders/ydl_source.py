@@ -238,6 +238,7 @@ class YtDlpController(BaseSourceController, ABC):
                 extract_direct_links=self.DIRECT_URL_DOWNLOAD,
                 quality=self._selected_format_id or "best",
             )
+            logging.info(self._video)
 
             return info_dict
         except DownloadError as e:
