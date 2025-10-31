@@ -1,11 +1,9 @@
 import logging
-import uuid
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from aiogram.types import Video
-from httpx import AsyncClient, HTTPStatusError, RequestError
+from httpx import AsyncClient, RequestError
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
@@ -24,7 +22,6 @@ class TikTokAPIController(BaseSourceController):
     """Controller for downloading videos from TikTok via tikwm.com API."""
 
     SOURCE = SourceEnum.TIKTOK
-    API_URL = "https://www.tikwm.com/api/"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -32,45 +29,18 @@ class TikTokAPIController(BaseSourceController):
         self._download_directory.mkdir(parents=True, exist_ok=True)
         self._temp_files: list[Path] = []
 
-    async def _download_file(
-        self,
-        client: AsyncClient,
-        url: str,
-        desired_filename: str | None = None,
-    ) -> Path | None:
-        """
-        Download a file from a URL to a temporary path.
-
-        :param client: An AsyncClient instance.
-        :param url: The URL of the file to download.
-        :return: Path to the downloaded file or None on failure.
-        """
-        try:
-            response = await client.get(url, timeout=120)
-            response.raise_for_status()
-
-            if desired_filename:
-                extension = Path(urlparse(url).path).suffix or ".mp3"
-                file_name = f"{desired_filename}{extension}"
-            else:
-                file_name = Path(urlparse(url).path).name or f"{uuid.uuid4()}"
-
-            temp_path = self._download_directory / file_name
-            temp_path.write_bytes(response.content)
-
-            self._temp_files.append(temp_path)
-            return temp_path
-        except HTTPStatusError as e:
-            logging.error("HTTP error downloading file %s: %s", url, e)
-        except Exception as e:
-            logging.error("Failed to download file %s: %s", url, e)
-        return None
+        self._api_url = "https://www.tikwm.com/api/"
+        self._client = AsyncClient()
 
     async def _handle_slideshow(
         self,
         data: TikWMData,
     ) -> None:
-        """Handle downloading and sending of a photo slideshow with audio."""
+        """
+        Handle downloading and sending of a photo slideshow with audio.
+
+        :param data: The data to send.
+        """
         if not data.images or not data.music:
             await self._send_error_message()
             return
@@ -104,7 +74,11 @@ class TikTokAPIController(BaseSourceController):
             )
 
     async def _handle_video(self, data: TikWMData) -> None:
-        """Handle caching, downloading, and sending of a single video."""
+        """
+        Handle caching, downloading, and sending of a single video.
+
+        :param data: The data to send.
+        """
         if not data.play or not data.cover:
             await self._send_error_message()
             return
@@ -119,15 +93,15 @@ class TikTokAPIController(BaseSourceController):
         if is_sent_from_cache:
             return
 
-        video_dto = VideoDTO(
-            direct_download_url=data.play,
-            thumbnail=data.cover,
-            title=data.title,
+        video_dto = VideoDTO.from_tikwm(
+            data=data,
             url=self._resolution.url,
             source_id=source_id,
-            duration=data.duration,
-            quality=quality,
         )
+        if video_dto is None:
+            await self._send_error_message()
+            return
+
         telegram_video = await self._telegram_bot_controller.send_finish_downloading(
             video=video_dto,
             telegram_id=self._telegram_id,
@@ -140,31 +114,28 @@ class TikTokAPIController(BaseSourceController):
     async def download_video(self) -> None:
         """Download video or photo set from TikTok using tikwm.com API."""
         try:
-            async with AsyncClient() as client:
-                response = await client.post(
-                    self.API_URL,
-                    data={"url": self._resolution.url},
-                    timeout=30,
-                )
-                response.raise_for_status()
-                api_response: TikWMResponse = TikWMResponse.model_validate(
-                    response.json(),
-                )
+            response = await self._client.post(
+                self._api_url,
+                data={"url": self._resolution.url},
+                timeout=30,
+            )
+            response.raise_for_status()
+            api_response = TikWMResponse.model_validate(response.json())
 
-                if api_response.code != 0 or not api_response.data:
-                    logging.error("TikWM API returned an error: %s", api_response.msg)
-                    await self._send_error_message()
-                    return
+            if api_response.code != 0 or not api_response.data:
+                logging.error("TikWM API returned an error: %s", api_response.msg)
+                await self._send_error_message()
+                return
 
-                data = api_response.data
-                self._process_percent(100)
+            data = api_response.data
+            self._process_percent(80)
 
-                if data.images and data.music:
-                    await self._handle_slideshow(data)
-                elif data.play and data.cover:
-                    await self._handle_video(data)
-                else:
-                    await self._send_error_message()
+            if data.images and data.music:
+                await self._handle_slideshow(data)
+            elif data.play and data.cover:
+                await self._handle_video(data)
+            else:
+                await self._send_error_message()
 
         except RequestError as e:
             logging.error("Request to TikWM API failed: %s", e)
@@ -181,21 +152,21 @@ class TikTokAPIController(BaseSourceController):
         :param video_dto: The VideoDTO instance containing video metadata.
         """
         if not video_dto.source_id or not video_dto.quality:
-            logging.warning("Cannot cache video: source_id or quality is missing.")
             return
 
         dto_for_cache = video_dto.model_copy(
             update={"path": None, "thumbnail": None},
         )
 
-        cache_dto = VideoCacheDTO(
+        cache_dto = VideoCacheDTO.from_yt_dlp(
             source=self.SOURCE,
-            source_id=dto_for_cache.source_id,
-            file_id=telegram_video.file_id,
-            file_unique_id=telegram_video.file_unique_id,
-            quality=dto_for_cache.quality,
-            meta_data=dto_for_cache,
+            telegram_video=telegram_video,
+            video=dto_for_cache,
         )
+        if cache_dto is None:
+            logging.warning("Cannot cache video: some data is missing.")
+            return
+
         try:
             await self._video_cache_dao.create(cache_dto)
             logging.info(

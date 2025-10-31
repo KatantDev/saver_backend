@@ -263,6 +263,33 @@ class VideoDTO(BaseModel):
             duration=int(duration) if duration else None,
         )
 
+    @classmethod
+    def from_tikwm(
+        cls,
+        data: "TikWMData",
+        url: str,
+        source_id: str,
+    ) -> Optional["VideoDTO"]:
+        """
+        Create a VideoDTO instance from a TikWM data.
+
+        :param data: The TikWM data.
+        :param url: The URL of the video.
+        :param source_id: The ID of the video.
+        :return: A VideoDTO instance.
+        """
+        if data.play is None:
+            return None
+        return cls(
+            direct_download_url=data.play,
+            thumbnail=data.cover,
+            title=data.title,
+            url=url,
+            source_id=source_id,
+            duration=data.duration,
+            quality="default",
+        )
+
 
 class VideoCacheDTO(BaseModel):
     """
