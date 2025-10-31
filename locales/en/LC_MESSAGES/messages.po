@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-10-30 20:06+1000\n"
+"POT-Creation-Date: 2025-10-31 16:39+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -28,35 +28,35 @@ msgstr ""
 "To use it - just subscribe to two of our channels:"
 
 #: saver_backend/services/telegram/bot_controller.py:311
-#: saver_backend/services/telegram/bot_controller.py:361
-#: saver_backend/services/telegram/bot_controller.py:414
-#: saver_backend/services/telegram/bot_controller.py:461
+#: saver_backend/services/telegram/bot_controller.py:362
+#: saver_backend/services/telegram/bot_controller.py:415
+#: saver_backend/services/telegram/bot_controller.py:462
 msgid "result direct message"
 msgstr ""
 "{url}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
 
-#: saver_backend/services/telegram/bot_controller.py:494
+#: saver_backend/services/telegram/bot_controller.py:495
 msgid "tiktok photo unsupported"
 msgstr "Photo downloading is not supported for TikTok right now, but we are already working on it."
 
-#: saver_backend/services/telegram/bot_controller.py:511
+#: saver_backend/services/telegram/bot_controller.py:512
 msgid "error downloading"
 msgstr ""
 "<b>An error occurred while downloading the video.</b>\n"
 "The error has been sent to our developers, we will fix it as soon as possible."
 
-#: saver_backend/services/telegram/bot_controller.py:542
+#: saver_backend/services/telegram/bot_controller.py:543
 msgid "failed to get video info"
 msgstr "Failed to get video information."
 
-#: saver_backend/services/telegram/bot_controller.py:560
+#: saver_backend/services/telegram/bot_controller.py:561
 msgid "video info without formats"
 msgstr "No formats available for download. Please try again later."
 
-#: saver_backend/services/telegram/bot_controller.py:585
-#: saver_backend/services/telegram/bot_controller.py:596
+#: saver_backend/services/telegram/bot_controller.py:586
+#: saver_backend/services/telegram/bot_controller.py:597
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"
