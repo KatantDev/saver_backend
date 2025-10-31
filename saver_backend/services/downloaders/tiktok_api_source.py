@@ -1,6 +1,4 @@
-import asyncio
 import logging
-import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -33,20 +31,6 @@ class TikTokAPIController(BaseSourceController):
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._download_directory.mkdir(parents=True, exist_ok=True)
         self._temp_files: list[Path] = []
-
-    def _get_safe_filename(self, data: TikWMData) -> str:
-        """
-        Create a filesystem-safe filename from a string.
-
-        :param base_name: The string to clean.
-        :return: A safe filename.
-        """
-        url_match = re.search(r"/([\w-]+)/?$", self._resolution.url)
-        base_name = url_match.group(1) if url_match else (data.title or data.id)
-        # Remove invalid characters for most filesystems
-        safe_name = re.sub(r'[\\/*?:"<>|]', "", base_name)
-        # Truncate to avoid "Filename too long" errors
-        return safe_name[:150].strip() or str(uuid.uuid4())
 
     async def _download_file(
         self,
@@ -84,7 +68,6 @@ class TikTokAPIController(BaseSourceController):
 
     async def _handle_slideshow(
         self,
-        client: AsyncClient,
         data: TikWMData,
     ) -> None:
         """Handle downloading and sending of a photo slideshow with audio."""
@@ -92,30 +75,13 @@ class TikTokAPIController(BaseSourceController):
             await self._send_error_message()
             return
 
-        safe_audio_name = self._get_safe_filename(data)
-
-        download_tasks = [
-            self._download_file(client, img_url) for img_url in data.images
-        ]
-        download_tasks.append(
-            self._download_file(
-                client,
-                data.music,
-                desired_filename=safe_audio_name,
-            ),
-        )
-
-        results = await asyncio.gather(*download_tasks)
-        photo_paths = [res for res in results[:-1] if res]
-        audio_path = results[-1]
-
-        if not photo_paths:
-            await self._send_error_message()
-            return
-
         photos = [
-            PhotoDTO(path=path, url=self._resolution.url, title=data.title)
-            for path in photo_paths
+            PhotoDTO.from_tikwm(
+                image_url=img_url,
+                data=data,
+                resolution_url=self._resolution.url,
+            )
+            for img_url in data.images
         ]
 
         chunk_size = 10
@@ -129,22 +95,15 @@ class TikTokAPIController(BaseSourceController):
                 message_id=self._message_id,
             )
 
-        if audio_path:
-            audio = AudioDTO(
-                path=audio_path,
-                title=safe_audio_name,
-                duration=data.duration,
-                url=self._resolution.url,
-            )
+        # Create audio DTO and send it separately
+        audio = AudioDTO.from_tikwm(data=data, resolution_url=self._resolution.url)
+        if audio:
             await self._telegram_bot_controller.send_finish_downloading_audio(
                 audio=audio,
                 telegram_id=self._telegram_id,
-                message_id=self._message_id,
             )
-        elif self._message_id:
-            await self.delete_processing_message()
 
-    async def _handle_video(self, client: AsyncClient, data: TikWMData) -> None:
+    async def _handle_video(self, data: TikWMData) -> None:
         """Handle caching, downloading, and sending of a single video."""
         if not data.play or not data.cover:
             await self._send_error_message()
@@ -160,17 +119,9 @@ class TikTokAPIController(BaseSourceController):
         if is_sent_from_cache:
             return
 
-        video_path, thumb_path = await asyncio.gather(
-            self._download_file(client, data.play),
-            self._download_file(client, data.cover),
-        )
-        if not video_path:
-            await self._send_error_message()
-            return
-
         video_dto = VideoDTO(
-            path=video_path,
-            thumbnail=thumb_path,
+            direct_download_url=data.play,
+            thumbnail=data.cover,
             title=data.title,
             url=self._resolution.url,
             source_id=source_id,
@@ -205,13 +156,13 @@ class TikTokAPIController(BaseSourceController):
                     await self._send_error_message()
                     return
 
-                data: TikWMData = api_response.data
-                self._process_percent(16)
+                data = api_response.data
+                self._process_percent(100)
 
                 if data.images and data.music:
-                    await self._handle_slideshow(client, data)
+                    await self._handle_slideshow(data)
                 elif data.play and data.cover:
-                    await self._handle_video(client, data)
+                    await self._handle_video(data)
                 else:
                     await self._send_error_message()
 
@@ -221,8 +172,6 @@ class TikTokAPIController(BaseSourceController):
         except Exception as e:
             logging.error("An unexpected error occurred in TikTok downloader: %s", e)
             await self._send_error_message()
-        finally:
-            self._cleanup_temp_files()
 
     async def _save_to_cache(self, telegram_video: Video, video_dto: VideoDTO) -> None:
         """
@@ -235,13 +184,17 @@ class TikTokAPIController(BaseSourceController):
             logging.warning("Cannot cache video: source_id or quality is missing.")
             return
 
+        dto_for_cache = video_dto.model_copy(
+            update={"path": None, "thumbnail": None},
+        )
+
         cache_dto = VideoCacheDTO(
             source=self.SOURCE,
-            source_id=video_dto.source_id,
+            source_id=dto_for_cache.source_id,
             file_id=telegram_video.file_id,
             file_unique_id=telegram_video.file_unique_id,
-            quality=video_dto.quality,
-            meta_data=video_dto,
+            quality=dto_for_cache.quality,
+            meta_data=dto_for_cache,
         )
         try:
             await self._video_cache_dao.create(cache_dto)
@@ -256,15 +209,3 @@ class TikTokAPIController(BaseSourceController):
                 e,
                 exc_info=True,
             )
-
-    def _cleanup_temp_files(self) -> None:
-        """Delete all temporary files created during the download process."""
-        for file_path in self._temp_files:
-            try:
-                file_path.unlink(missing_ok=True)
-            except OSError as e:
-                logging.error(
-                    "Error deleting temp file %s: %s",
-                    file_path,
-                    e,
-                )

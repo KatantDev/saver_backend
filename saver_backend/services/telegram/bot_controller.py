@@ -307,27 +307,36 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language code.
         """
-        media_group = MediaGroupBuilder(
-            caption=_(
-                "result direct message",
-                locale=self.language or language,
-            ).format(url=files[0].url),
-        )
+        caption = _("result direct message", locale=language).format(url=files[0].url)
+        media_group = MediaGroupBuilder(caption=caption)
+
         for file in files:
-            if file.path:
-                if isinstance(file, PhotoDTO):
-                    media_group.add_photo(media=FSInputFile(path=file.path))
-                elif isinstance(file, VideoDTO):
-                    media_group.add_video(
-                        media=FSInputFile(path=file.path),
-                        width=file.width,
-                        height=file.height,
-                        duration=file.duration,
-                        thumbnail=(
-                            FSInputFile(path=file.thumbnail) if file.thumbnail else None
-                        ),
-                        supports_streaming=True,
-                    )
+            media_input: str | FSInputFile | URLInputFile | None = None
+            if isinstance(file, (PhotoDTO, AudioDTO)):
+                media_input = file.media_url or (
+                    FSInputFile(path=file.path) if file.path else None
+                )
+            elif isinstance(file, VideoDTO):
+                media_input = file.direct_download_url or (
+                    FSInputFile(path=file.path) if file.path else None
+                )
+
+            if not media_input:
+                continue
+
+            if isinstance(file, PhotoDTO):
+                media_group.add_photo(media=media_input)
+            elif isinstance(file, VideoDTO):
+                media_group.add_video(
+                    media=media_input,
+                    width=file.width,
+                    height=file.height,
+                    duration=file.duration,
+                    thumbnail=(
+                        FSInputFile(path=file.thumbnail) if file.thumbnail else None
+                    ),
+                    supports_streaming=True,
+                )
 
         coro = self._bot.send_media_group(
             chat_id=telegram_id,
@@ -355,17 +364,25 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID to delete after sending.
         """
+        audio_input: str | FSInputFile | URLInputFile | None = None
+        audio_input = audio.media_url or (
+            FSInputFile(path=audio.path) if audio.path else None
+        )
+        if not audio_input:
+            logging.error(
+                "Cannot send audio: No media_url or valid file path provided.",
+            )
+            if message_id:
+                await self.delete_message(telegram_id, message_id)
+            return
+
         caption = _("result direct message", locale=language).format(url=audio.url)
-        filename = f"{audio.title}.mp3"
 
         coro = self._bot.send_audio(
             chat_id=telegram_id,
-            audio=FSInputFile(
-                path=audio.path,
-                filename=filename,
-            ),
+            audio=audio_input,
             caption=caption,
-            title=filename,
+            title=audio.title,
             duration=audio.duration,
         )
         await self._send(coro)
@@ -392,9 +409,17 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language of the photo.
         """
+        photo_input: str | FSInputFile | URLInputFile | None = None
+        photo_input = photo.media_url or (
+            FSInputFile(path=photo.path) if photo.path else None
+        )
+        if not photo_input:
+            logging.error("Cannot send photo: No media_url or path provided.")
+            return
+
         coro = self._bot.send_photo(
             chat_id=telegram_id,
-            photo=FSInputFile(path=photo.path),
+            photo=photo_input,
             caption=_(
                 "result direct message",
                 locale=self.language or language,

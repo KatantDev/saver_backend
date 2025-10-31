@@ -1,5 +1,7 @@
 import logging
 import math
+import re
+import uuid
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -310,18 +312,57 @@ class VideoCacheDTO(BaseModel):
 class PhotoDTO(BaseModel):
     """Data Transfer Object for Photo."""
 
-    path: str | Path
+    path: str | Path | None = None
     title: str | None = None
+    media_url: str | None = None
     url: str | None = None
+
+    @classmethod
+    def from_tikwm(
+        cls,
+        image_url: str,
+        data: "TikWMData",
+        resolution_url: str,
+    ) -> "PhotoDTO":
+        """Create a PhotoDTO instance from TikWM API data."""
+        return cls(
+            media_url=image_url,
+            url=resolution_url,
+            title=data.title,
+        )
 
 
 class AudioDTO(BaseModel):
     """Data Transfer Object for Audio."""
 
-    path: str | Path
+    path: str | Path | None = None
+    media_url: str | None = None
     url: str | None = None
     title: str | None = None
     duration: int | None = None
+
+    @classmethod
+    def from_tikwm(cls, data: "TikWMData", resolution_url: str) -> "AudioDTO | None":
+        """Create an AudioDTO instance from TikWM API data."""
+        if not data.music:
+            return None
+
+        return cls(
+            media_url=data.music,
+            title=cls._get_audio_title(data, resolution_url),
+            duration=data.duration,
+            url=resolution_url,
+        )
+
+    @staticmethod
+    def _get_audio_title(data: "TikWMData", resolution_url: str) -> str:
+        """Generate a meaningful title for the audio track."""
+        url_match = re.search(r"/([\w-]+)/?$", resolution_url)
+        base_name = url_match.group(1) if url_match else (data.title or data.id)
+        # Remove invalid characters for most filesystems
+        safe_name = re.sub(r'[\\/*?:"<>|]', "", base_name)
+        # Truncate to avoid "Filename too long" errors
+        return safe_name[:150].strip() or str(uuid.uuid4())
 
 
 class TikWMData(BaseModel):
