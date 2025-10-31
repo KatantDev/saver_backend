@@ -16,6 +16,6 @@ class VKClipsYdlController(YtDlpController):
         super().__init__(*args, **kwargs)
 
         vk_params = {
-            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",
+            "format": "best[protocol!=https][width<=1080]",
         }
         self._yt_dlp.params.update(vk_params)
