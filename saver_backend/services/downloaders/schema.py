@@ -99,7 +99,9 @@ class FormatDTO(BaseModel):
         """
         format_id = format_info.get("format_id")
         resolution = format_info.get("resolution")
-        if not format_id or not resolution or "audio only" in resolution:
+        if not resolution or len(resolution.split("x")) != 2:
+            return None
+        if not format_id:
             return None
 
         filesize = format_info.get("filesize") or format_info.get("filesize_approx")
@@ -221,9 +223,9 @@ class VideoDTO(BaseModel):
         for format_info in info.get("formats", []):
             vcodec = format_info.get("vcodec")
             acodec = format_info.get("acodec")
-            if not vcodec or vcodec == "none":
+            if vcodec == "none":
                 continue
-            if not acodec or acodec == "none":
+            if acodec == "none":
                 continue
 
             dto = FormatDTO.from_yt_dlp(format_info, duration)

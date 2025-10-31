@@ -14,6 +14,9 @@ from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
 from saver_backend.services.downloaders.tiktok_ydl_source import TikTokYdlController
+from saver_backend.services.downloaders.vk_clips_ydl_source import (
+    VKClipsYdlController,
+)
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
 )
@@ -218,6 +221,35 @@ class YouTubeShortsDetector(Detector):
             return None
 
         # Handle full /shorts/ links
+        return self._match_regex(url)
+
+
+@register_detector()
+class VKClipsDetector(Detector):
+    """Detector for VK Clips."""
+
+    SOURCE = SourceEnum.VK_CLIPS_YDL
+    CONTROLLER = VKClipsYdlController
+    HOSTS = (
+        "vk.com",
+        "m.vk.com",
+        "www.vk.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "clips": re.compile(r"^/clip(?P<code>-\d+_\d+)/?$"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """
+        Check if the url is a valid VK Clip url.
+
+        :param url: URL to check.
+        :return: Resolution if the url is valid, None otherwise.
+        """
+        if not self._host_in(url, *self.HOSTS):
+            return None
+
+        # Handle /clip links
         return self._match_regex(url)
 
 
