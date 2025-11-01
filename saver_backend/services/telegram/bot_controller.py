@@ -246,7 +246,7 @@ class TelegramBotController:
         """
         coro = self._bot.send_message(
             chat_id=chat_id,
-            text=_("welcome message", locale=self.language or language),
+            text=_("welcome message", locale=language or self.language),
         )
         return await self._send(coro)
 
@@ -427,7 +427,7 @@ class TelegramBotController:
             photo=photo_input,
             caption=_(
                 "result direct message",
-                locale=self.language or language,
+                locale=language or self.language,
             ).format(url=photo.url),
         )
         await self._send(coro)
@@ -484,7 +484,7 @@ class TelegramBotController:
                 video=video_input,
                 caption=_(
                     "result direct message",
-                    locale=self.language or language,
+                    locale=language or self.language,
                 ).format(url=video.url),
                 width=video.width,
                 height=video.height,
@@ -531,7 +531,7 @@ class TelegramBotController:
                 video=file_id,
                 caption=_(
                     "result direct message",
-                    locale=self.language or language,
+                    locale=language or self.language,
                 ).format(url=url),
             )
             return message.video
@@ -580,7 +580,7 @@ class TelegramBotController:
         """
         coro = self._bot.send_message(
             chat_id=telegram_id,
-            text=_("error downloading", locale=self.language or language),
+            text=_("error downloading", locale=language or self.language),
         )
         await self._send(coro)
 
@@ -601,17 +601,19 @@ class TelegramBotController:
         self,
         telegram_id: int,
         message_id: int,
+        language: str | None = None,
     ) -> None:
         """
         Edit failed video information.
 
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
+        :param language: Language for message.
         """
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,
-            text=_("failed to get video info"),
+            text=_("failed to get video info", locale=language or self.language),
         )
         await self._send(coro)
 
@@ -619,17 +621,19 @@ class TelegramBotController:
         self,
         telegram_id: int,
         message_id: int,
+        language: str | None = None,
     ) -> None:
         """
         Edit failed video information.
 
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
+        :param language: Language for message.
         """
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,
-            text=_("video info without formats"),
+            text=_("video info without formats", locale=language or self.language),
         )
         await self._send(coro)
 
@@ -655,7 +659,7 @@ class TelegramBotController:
                 photo=video_dto.thumbnail_url,
                 caption=_(
                     "choose quality",
-                    locale=self.language or language,
+                    locale=language or self.language,
                 ).format(title=video_dto.title),
                 reply_markup=inline.get_video_formats_keyboard(
                     labels=video_dto.unique_labels,
@@ -666,7 +670,7 @@ class TelegramBotController:
                 chat_id=telegram_id,
                 text=_(
                     "choose quality",
-                    locale=self.language or language,
+                    locale=language or self.language,
                 ).format(title=video_dto.title),
                 reply_markup=inline.get_video_formats_keyboard(
                     labels=video_dto.unique_labels,
