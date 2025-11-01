@@ -173,7 +173,7 @@ class InstagramYdlDetector(Detector):
         return self._match_regex(url)
 
 
-@register_detector()
+# @register_detector()
 class InstagramInstaloaderDetector(Detector):
     """Detector for Instagram."""
 
