@@ -36,6 +36,7 @@ from saver_backend.telegram_bot.middlewares.controller_provider import (
 )
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
+from saver_backend.telegram_bot.middlewares.user import UserMiddleware
 
 
 class TelegramBotController:
@@ -151,13 +152,14 @@ class TelegramBotController:
 
         :param session_factory: Session factory.
         """
-        self._dispatcher.update.middleware(
+        self._dispatcher.update.outer_middleware(
             ControllerProviderMiddleware(controller=self),
         )
-        self._dispatcher.update.middleware(
+        self._dispatcher.update.outer_middleware(
             DatabaseProviderMiddleware(session_factory=session_factory),
         )
-        self._dispatcher.update.middleware(DAOProviderMiddleware())
+        self._dispatcher.update.outer_middleware(DAOProviderMiddleware())
+        self._dispatcher.update.outer_middleware(UserMiddleware())
         SimpleI18nMiddleware(self._i18n).setup(router=self._dispatcher)
 
     async def feed_update(self, update: Update) -> None:
