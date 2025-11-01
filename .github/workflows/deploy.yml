@@ -4,7 +4,7 @@ name: Deploy saver_backend
 on:
   workflow_run:
     workflows:
-      - "Testing saver_backend"
+      - tests
     types:
       - completed
     branches:

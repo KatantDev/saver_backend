@@ -1,4 +1,4 @@
-name: Testing saver_backend
+name: tests
 
 on: push
 
