@@ -36,6 +36,7 @@ from saver_backend.telegram_bot.middlewares.controller_provider import (
 )
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
+from saver_backend.telegram_bot.middlewares.user import UserMiddleware
 
 
 class TelegramBotController:
@@ -151,13 +152,14 @@ class TelegramBotController:
 
         :param session_factory: Session factory.
         """
-        self._dispatcher.update.middleware(
+        self._dispatcher.update.outer_middleware(
             ControllerProviderMiddleware(controller=self),
         )
-        self._dispatcher.update.middleware(
+        self._dispatcher.update.outer_middleware(
             DatabaseProviderMiddleware(session_factory=session_factory),
         )
-        self._dispatcher.update.middleware(DAOProviderMiddleware())
+        self._dispatcher.update.outer_middleware(DAOProviderMiddleware())
+        self._dispatcher.update.outer_middleware(UserMiddleware())
         SimpleI18nMiddleware(self._i18n).setup(router=self._dispatcher)
 
     async def feed_update(self, update: Update) -> None:
@@ -236,7 +238,7 @@ class TelegramBotController:
     async def send_welcome_message(
         self,
         chat_id: int,
-        language: str = "en",
+        language: str | None = None,
     ) -> None:
         """
         Send welcome message.
@@ -246,7 +248,7 @@ class TelegramBotController:
         """
         coro = self._bot.send_message(
             chat_id=chat_id,
-            text=_("welcome message", locale=self.language or language),
+            text=_("welcome message", locale=language or self.language),
         )
         return await self._send(coro)
 
@@ -297,7 +299,7 @@ class TelegramBotController:
         files: Sequence[PhotoDTO | VideoDTO],
         telegram_id: int,
         message_id: int | None = None,
-        language: str = "en",
+        language: str | None = None,
     ) -> None:
         """
         Send finish downloading group message.
@@ -310,7 +312,10 @@ class TelegramBotController:
         chunk_size = 10
         total_files = len(files)
 
-        caption = _("result direct message", locale=language).format(url=files[0].url)
+        caption = _(
+            "result direct message",
+            locale=language or self.language,
+        ).format(url=files[0].url)
 
         for i in range(0, total_files, chunk_size):
             chunk = files[i : i + chunk_size]
@@ -363,7 +368,7 @@ class TelegramBotController:
         audio: AudioDTO,
         telegram_id: int,
         message_id: int | None = None,
-        language: str = "en",
+        language: str | None = None,
     ) -> None:
         """
         Send finish downloading audio message.
@@ -371,8 +376,8 @@ class TelegramBotController:
         :param audio: Audio DTO.
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID to delete after sending.
+        :param language: Language code.
         """
-        audio_input: str | FSInputFile | URLInputFile | None = None
         audio_input = audio.media_url or (
             FSInputFile(path=audio.path) if audio.path else None
         )
@@ -384,7 +389,10 @@ class TelegramBotController:
                 await self.delete_message(telegram_id, message_id)
             return
 
-        caption = _("result direct message", locale=language).format(url=audio.url)
+        caption = _(
+            "result direct message",
+            locale=language or self.language,
+        ).format(url=audio.url)
 
         coro = self._bot.send_audio(
             chat_id=telegram_id,
@@ -407,7 +415,7 @@ class TelegramBotController:
         photo: PhotoDTO,
         telegram_id: int,
         message_id: int | None = None,
-        language: str = "en",
+        language: str | None = None,
     ) -> None:
         """
         Send finish downloading message.
@@ -417,7 +425,6 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language of the photo.
         """
-        photo_input: str | FSInputFile | URLInputFile | None = None
         photo_input = photo.media_url or (
             FSInputFile(path=photo.path) if photo.path else None
         )
@@ -430,7 +437,7 @@ class TelegramBotController:
             photo=photo_input,
             caption=_(
                 "result direct message",
-                locale=self.language or language,
+                locale=language or self.language,
             ).format(url=photo.url),
         )
         await self._send(coro)
@@ -447,7 +454,7 @@ class TelegramBotController:
         telegram_id: int,
         message_id: int | None = None,
         supports_streaming: bool = True,
-        language: str = "en",
+        language: str | None = None,
     ) -> Video | None:
         """
         Send finish downloading message.
@@ -487,7 +494,7 @@ class TelegramBotController:
                 video=video_input,
                 caption=_(
                     "result direct message",
-                    locale=self.language or language,
+                    locale=language or self.language,
                 ).format(url=video.url),
                 width=video.width,
                 height=video.height,
@@ -517,7 +524,7 @@ class TelegramBotController:
         telegram_id: int,
         file_id: str,
         url: str,
-        language: str = "en",
+        language: str | None = None,
     ) -> Video | None:
         """
         Send video by file_id from cache.
@@ -534,7 +541,7 @@ class TelegramBotController:
                 video=file_id,
                 caption=_(
                     "result direct message",
-                    locale=self.language or language,
+                    locale=language or self.language,
                 ).format(url=url),
             )
             return message.video
@@ -556,7 +563,7 @@ class TelegramBotController:
     async def send_video_is_private_error(
         self,
         telegram_id: int,
-        language: str = "en",
+        language: str | None = None,
     ) -> None:
         """
         Send a message indicating the video is private or region-locked.
@@ -566,14 +573,14 @@ class TelegramBotController:
         """
         coro = self._bot.send_message(
             chat_id=telegram_id,
-            text=_("video is private", locale=self.language or language),
+            text=_("video is private", locale=language or self.language),
         )
         await self._send(coro)
 
     async def send_tiktok_error_downloading(
         self,
         telegram_id: int,
-        language: str = "en",
+        language: str | None = None,
     ) -> None:
         """
         Send TikTok error downloading message.
@@ -583,14 +590,14 @@ class TelegramBotController:
         """
         coro = self._bot.send_message(
             chat_id=telegram_id,
-            text=_("tiktok photo unsupported", locale=language),
+            text=_("tiktok photo unsupported", locale=language or self.language),
         )
         await self._send(coro)
 
     async def send_error_downloading(
         self,
         telegram_id: int,
-        language: str = "en",
+        language: str | None = None,
     ) -> None:
         """
         Send error downloading message.
@@ -600,7 +607,7 @@ class TelegramBotController:
         """
         coro = self._bot.send_message(
             chat_id=telegram_id,
-            text=_("error downloading", locale=self.language or language),
+            text=_("error downloading", locale=language or self.language),
         )
         await self._send(coro)
 
@@ -621,17 +628,19 @@ class TelegramBotController:
         self,
         telegram_id: int,
         message_id: int,
+        language: str | None = None,
     ) -> None:
         """
         Edit failed video information.
 
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
+        :param language: Language for message.
         """
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,
-            text=_("failed to get video info"),
+            text=_("failed to get video info", locale=language or self.language),
         )
         await self._send(coro)
 
@@ -639,17 +648,19 @@ class TelegramBotController:
         self,
         telegram_id: int,
         message_id: int,
+        language: str | None = None,
     ) -> None:
         """
         Edit failed video information.
 
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
+        :param language: Language for message.
         """
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,
-            text=_("video info without formats"),
+            text=_("video info without formats", locale=language or self.language),
         )
         await self._send(coro)
 
@@ -657,7 +668,7 @@ class TelegramBotController:
         self,
         telegram_id: int,
         video_dto: VideoDTO,
-        language: str = "en",
+        language: str | None = None,
     ) -> None:
         """
         Send choose quality.
@@ -675,7 +686,7 @@ class TelegramBotController:
                 photo=video_dto.thumbnail_url,
                 caption=_(
                     "choose quality",
-                    locale=self.language or language,
+                    locale=language or self.language,
                 ).format(title=video_dto.title),
                 reply_markup=inline.get_video_formats_keyboard(
                     labels=video_dto.unique_labels,
@@ -686,7 +697,7 @@ class TelegramBotController:
                 chat_id=telegram_id,
                 text=_(
                     "choose quality",
-                    locale=self.language or language,
+                    locale=language or self.language,
                 ).format(title=video_dto.title),
                 reply_markup=inline.get_video_formats_keyboard(
                     labels=video_dto.unique_labels,

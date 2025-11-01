@@ -173,7 +173,7 @@ class InstagramYdlDetector(Detector):
         return self._match_regex(url)
 
 
-@register_detector()
+# @register_detector()
 class InstagramInstaloaderDetector(Detector):
     """Detector for Instagram."""
 
@@ -315,7 +315,7 @@ class VKVideoDetector(Detector):
         "www.vk.com",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
-        "video": re.compile(r"^/video(?P<code>-\d+_\d+)/?$"),
+        "video": re.compile(r"^/video(?P<code>-?\d+_\d+)/?$"),
     }
 
     def match(self, url: str) -> Optional[Resolution]:
