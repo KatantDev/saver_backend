@@ -50,6 +50,7 @@ jobs:
             SHA="${{ github.event.workflow_run.head_sha }}"
 
             mkdir -p "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
 
             # Настраиваем git remote через токен GitHub App
             if [ ! -d "$DEPLOY_PATH/.git" ]; then
@@ -74,4 +75,8 @@ jobs:
               exit 1
             fi
 
-            make -C "$DEPLOY_PATH" deploy
+            # Выводим DEBUG инфу
+            pwd
+            ls -la
+
+            make deploy
