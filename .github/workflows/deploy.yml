@@ -3,7 +3,7 @@ name: Deploy saver_backend
 
 on:
   workflow_run:
-    workflows: ["tests.yml"]
+    workflows: ["Testing saver_backend"]
     types: [completed]
     branches: [dev, main]
 
