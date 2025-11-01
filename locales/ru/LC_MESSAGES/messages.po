@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-01 00:26+1000\n"
+"POT-Creation-Date: 2025-11-01 18:09+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -27,37 +27,41 @@ msgstr ""
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Бот — полностью бесплатный.</b>.\n"
 "Чтобы пользоваться им — просто подпишитесь на два наших канала:"
 
-#: saver_backend/services/telegram/bot_controller.py:310
-#: saver_backend/services/telegram/bot_controller.py:379
-#: saver_backend/services/telegram/bot_controller.py:424
-#: saver_backend/services/telegram/bot_controller.py:481
-#: saver_backend/services/telegram/bot_controller.py:528
+#: saver_backend/services/telegram/bot_controller.py:313
+#: saver_backend/services/telegram/bot_controller.py:387
+#: saver_backend/services/telegram/bot_controller.py:432
+#: saver_backend/services/telegram/bot_controller.py:489
+#: saver_backend/services/telegram/bot_controller.py:536
 msgid "result direct message"
 msgstr ""
 "{url}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
 
-#: saver_backend/services/telegram/bot_controller.py:561
+#: saver_backend/services/telegram/bot_controller.py:569
+msgid "video is private"
+msgstr "Это видео является приватным."
+
+#: saver_backend/services/telegram/bot_controller.py:586
 msgid "tiktok photo unsupported"
 msgstr "Скачивание фото не поддерживается для TikTok прямо сейчас, но мы уже работаем над его поддержкой."
 
-#: saver_backend/services/telegram/bot_controller.py:578
+#: saver_backend/services/telegram/bot_controller.py:603
 msgid "error downloading"
 msgstr ""
 "<b>Произошла ошибка при скачивании видео.</b>\n"
 "Ошибка отправлена нашим разработчикам, мы исправим её в ближайшее время."
 
-#: saver_backend/services/telegram/bot_controller.py:609
+#: saver_backend/services/telegram/bot_controller.py:634
 msgid "failed to get video info"
 msgstr "Не удалось получить информацию о видео."
 
-#: saver_backend/services/telegram/bot_controller.py:627
+#: saver_backend/services/telegram/bot_controller.py:652
 msgid "video info without formats"
 msgstr "Не найдено доступных форматов для скачивания. Пожалуйста, попробуйте ещё раз позже."
 
-#: saver_backend/services/telegram/bot_controller.py:652
-#: saver_backend/services/telegram/bot_controller.py:663
+#: saver_backend/services/telegram/bot_controller.py:677
+#: saver_backend/services/telegram/bot_controller.py:688
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"

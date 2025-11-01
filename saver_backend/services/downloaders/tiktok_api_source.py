@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from aiogram.types import Video
 from httpx import AsyncClient, RequestError
 
 from saver_backend.entities.enums import SourceEnum
@@ -13,7 +12,6 @@ from saver_backend.services.downloaders.schema import (
     PhotoDTO,
     TikWMData,
     TikWMResponse,
-    VideoCacheDTO,
     VideoDTO,
 )
 
@@ -83,11 +81,10 @@ class TikTokAPIController(BaseSourceController):
             await self._send_error_message()
             return
 
-        source_id = data.id
         quality = "default"
 
         is_sent_from_cache = await self.send_video_from_cache(
-            source_id=source_id,
+            source_id=data.id,
             quality=quality,
         )
         if is_sent_from_cache:
@@ -96,20 +93,9 @@ class TikTokAPIController(BaseSourceController):
         video_dto = VideoDTO.from_tikwm(
             data=data,
             url=self._resolution.url,
-            source_id=source_id,
+            quality=quality,
         )
-        if video_dto is None:
-            await self._send_error_message()
-            return
-
-        telegram_video = await self._telegram_bot_controller.send_finish_downloading(
-            video=video_dto,
-            telegram_id=self._telegram_id,
-            message_id=self._message_id,
-        )
-
-        if telegram_video:
-            await self._save_to_cache(telegram_video, video_dto)
+        await self._send_video(video_dto)
 
     async def download_video(self) -> None:
         """Download video or photo set from TikTok using tikwm.com API."""
@@ -143,40 +129,3 @@ class TikTokAPIController(BaseSourceController):
         except Exception as e:
             logging.error("An unexpected error occurred in TikTok downloader: %s", e)
             await self._send_error_message()
-
-    async def _save_to_cache(self, telegram_video: Video, video_dto: VideoDTO) -> None:
-        """
-        Save video details to the cache.
-
-        :param telegram_video: The Video object from aiogram after sending.
-        :param video_dto: The VideoDTO instance containing video metadata.
-        """
-        if not video_dto.source_id or not video_dto.quality:
-            return
-
-        dto_for_cache = video_dto.model_copy(
-            update={"path": None, "thumbnail": None},
-        )
-
-        cache_dto = VideoCacheDTO.from_yt_dlp(
-            source=self.SOURCE,
-            telegram_video=telegram_video,
-            video=dto_for_cache,
-        )
-        if cache_dto is None:
-            logging.warning("Cannot cache video: some data is missing.")
-            return
-
-        try:
-            await self._video_cache_dao.create(cache_dto)
-            logging.info(
-                "Successfully cached TikTok video with source_id=%s",
-                video_dto.source_id,
-            )
-        except Exception as e:
-            logging.error(
-                "Failed to save TikTok video cache for source_id=%s: %s",
-                video_dto.source_id,
-                e,
-                exc_info=True,
-            )

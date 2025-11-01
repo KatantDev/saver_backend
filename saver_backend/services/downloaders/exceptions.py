@@ -23,3 +23,7 @@ class IPAddressBlockedError(DownloaderError):
 
 class TikTokYtDlpDownloaderError(YtDlpDownloaderError):
     """Exception for TikTok yt-dlp."""
+
+
+class VideoIsPrivateError(DownloaderError):
+    """Exception for when a video is private."""

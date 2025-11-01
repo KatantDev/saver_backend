@@ -307,42 +307,50 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language code.
         """
+        chunk_size = 10
+        total_files = len(files)
+
         caption = _("result direct message", locale=language).format(url=files[0].url)
-        media_group = MediaGroupBuilder(caption=caption)
 
-        for file in files:
-            media_input: str | FSInputFile | URLInputFile | None = None
-            if isinstance(file, (PhotoDTO, AudioDTO)):
-                media_input = file.media_url or (
-                    FSInputFile(path=file.path) if file.path else None
+        for i in range(0, total_files, chunk_size):
+            chunk = files[i : i + chunk_size]
+            media_group = MediaGroupBuilder(caption=caption)
+
+            for file in chunk:
+                media_input: str | FSInputFile | URLInputFile | None = None
+                if isinstance(file, (PhotoDTO, AudioDTO)):
+                    media_input = file.media_url or (
+                        FSInputFile(path=file.path) if file.path else None
+                    )
+                elif isinstance(file, VideoDTO):
+                    media_input = file.direct_download_url or (
+                        FSInputFile(path=file.path) if file.path else None
+                    )
+
+                if not media_input:
+                    continue
+
+                if isinstance(file, PhotoDTO):
+                    media_group.add_photo(media=media_input)
+                elif isinstance(file, VideoDTO):
+                    media_group.add_video(
+                        media=media_input,
+                        width=file.width,
+                        height=file.height,
+                        duration=file.duration,
+                        thumbnail=(
+                            FSInputFile(path=file.thumbnail) if file.thumbnail else None
+                        ),
+                        supports_streaming=True,
+                    )
+
+            if media_group.build():
+                coro = self._bot.send_media_group(
+                    chat_id=telegram_id,
+                    media=media_group.build(),
                 )
-            elif isinstance(file, VideoDTO):
-                media_input = file.direct_download_url or (
-                    FSInputFile(path=file.path) if file.path else None
-                )
+                await self._send(coro)
 
-            if not media_input:
-                continue
-
-            if isinstance(file, PhotoDTO):
-                media_group.add_photo(media=media_input)
-            elif isinstance(file, VideoDTO):
-                media_group.add_video(
-                    media=media_input,
-                    width=file.width,
-                    height=file.height,
-                    duration=file.duration,
-                    thumbnail=(
-                        FSInputFile(path=file.thumbnail) if file.thumbnail else None
-                    ),
-                    supports_streaming=True,
-                )
-
-        coro = self._bot.send_media_group(
-            chat_id=telegram_id,
-            media=media_group.build(),
-        )
-        await self._send(coro)
         if message_id is not None:
             coro2 = self._bot.delete_message(
                 message_id=message_id,
@@ -544,6 +552,23 @@ class TelegramBotController:
                 logging.exception(e)
             capture_exception(e)
             return None
+
+    async def send_video_is_private_error(
+        self,
+        telegram_id: int,
+        language: str = "en",
+    ) -> None:
+        """
+        Send a message indicating the video is private or region-locked.
+
+        :param telegram_id: Telegram ID of the user.
+        :param language: Language for the message.
+        """
+        coro = self._bot.send_message(
+            chat_id=telegram_id,
+            text=_("video is private", locale=self.language or language),
+        )
+        await self._send(coro)
 
     async def send_tiktok_error_downloading(
         self,

@@ -268,26 +268,24 @@ class VideoDTO(BaseModel):
         cls,
         data: "TikWMData",
         url: str,
-        source_id: str,
-    ) -> Optional["VideoDTO"]:
+        quality: str = "default",
+    ) -> "VideoDTO":
         """
-        Create a VideoDTO instance from a TikWM data.
+        Create a VideoDTO instance from TikWM API data.
 
-        :param data: The TikWM data.
-        :param url: The URL of the video.
-        :param source_id: The ID of the video.
-        :return: A VideoDTO instance.
+        :param data: The 'data' object from the TikWM API response.
+        :param url: The original URL provided by the user.
+        :param quality: The quality identifier for this video.
+        :return: A populated VideoDTO instance.
         """
-        if data.play is None:
-            return None
         return cls(
             direct_download_url=data.play,
-            thumbnail=data.cover,
+            thumbnail_url=data.cover,
             title=data.title,
             url=url,
-            source_id=source_id,
+            source_id=data.id,
             duration=data.duration,
-            quality="default",
+            quality=quality,
         )
 
 
@@ -329,10 +327,10 @@ class VideoCacheDTO(BaseModel):
         return cls(
             source=source,
             source_id=video.source_id,
-            file_id=telegram_video.file_id,
-            file_unique_id=telegram_video.file_unique_id,
             quality=video.quality or "best",
             meta_data=video,
+            file_id=telegram_video.file_id,
+            file_unique_id=telegram_video.file_unique_id,
         )
 
 

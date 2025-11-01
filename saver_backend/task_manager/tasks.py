@@ -3,7 +3,10 @@ import logging
 from taskiq import TaskiqDepends
 
 from saver_backend.entities.resolution import Resolution
-from saver_backend.services.downloaders.exceptions import TikTokYtDlpDownloaderError
+from saver_backend.services.downloaders.exceptions import (
+    TikTokYtDlpDownloaderError,
+    VideoIsPrivateError,
+)
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
@@ -58,6 +61,12 @@ async def save_video(
             telegram_id=telegram_id,
             language="en",
         )
+    except VideoIsPrivateError:
+        await controller.delete_processing_message()
+        await state.telegram_bot_controller.send_video_is_private_error(
+            telegram_id=telegram_id,
+            language="en",
+        )
 
 
 @broker.task()
@@ -94,7 +103,18 @@ async def get_video_info(
     await controller.set_user_language()
 
     # Пытаемся получить информацию по видосу
-    info_dict = await controller.get_video_info(url=resolution.url)
+    try:
+        info_dict = await controller.get_video_info(url=resolution.url)
+    except VideoIsPrivateError:
+        await state.telegram_bot_controller.delete_message(
+            telegram_id=telegram_id,
+            message_id=processing_message_id,
+        )
+        await state.telegram_bot_controller.send_video_is_private_error(
+            telegram_id=telegram_id,
+            language="en",
+        )
+        return
     if not info_dict:
         await state.telegram_bot_controller.edit_failed_video_info(
             telegram_id=telegram_id,

@@ -3,10 +3,17 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from aiogram.types import Video
+from sentry_sdk import capture_exception
+
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.entities.user import UserDTO
 from saver_backend.services.downloaders.exceptions import UserInfoNotFoundError
+from saver_backend.services.downloaders.schema import (
+    VideoCacheDTO,
+    VideoDTO,
+)
 
 if TYPE_CHECKING:
     from saver_backend.db.dao.user_dao import UserDAO
@@ -31,6 +38,7 @@ class BaseSourceController(ABC):
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()
+        self._video: VideoDTO | None = None
         self._video_cache_dao = video_cache_dao
         self._user_dao = user_dao
         self._user_info: UserDTO | None = None
@@ -140,6 +148,67 @@ class BaseSourceController(ABC):
                 telegram_id=self._telegram_id,
                 message_id=self._message_id,
             )
+
+    async def _send_video(
+        self,
+        video_dto: VideoDTO,
+        supports_streaming: bool = True,
+    ) -> None:
+        """
+        Sends the video to the user and then caches the result.
+
+        :param supports_streaming: Flag to indicate if the video supports streaming.
+        """
+        telegram_video = await self._telegram_bot_controller.send_finish_downloading(
+            video=video_dto,
+            telegram_id=self._telegram_id,
+            message_id=self._message_id,
+            supports_streaming=supports_streaming,
+        )
+
+        if telegram_video:
+            await self._save_video_to_cache(video_dto, telegram_video)
+
+    async def _save_video_to_cache(
+        self,
+        video_dto: VideoDTO,
+        telegram_video: Video,
+    ) -> None:
+        """
+        Save video details to the cache.
+
+        :param telegram_video: The Video object from aiogram after sending.
+        """
+        if not video_dto.source_id or not video_dto.quality:
+            logging.warning("Cannot cache video: source_id or quality is missing.")
+            return
+
+        dto_for_cache = video_dto.model_copy(
+            update={"path": None, "thumbnail": None},
+        )
+        cache_dto = VideoCacheDTO.from_yt_dlp(
+            source=self.SOURCE,
+            telegram_video=telegram_video,
+            video=dto_for_cache,
+        )
+        if not cache_dto:
+            return
+
+        try:
+            await self._video_cache_dao.create(cache_dto)
+            logging.info(
+                "Successfully cached video with source_id=%s, quality=%s",
+                cache_dto.source_id,
+                cache_dto.quality,
+            )
+        except Exception as e:
+            logging.error(
+                "Failed to save video cache for source_id=%s: %s",
+                video_dto.source_id,
+                e,
+                exc_info=True,
+            )
+            capture_exception(e)
 
     async def send_video_from_cache(self, source_id: str, quality: str) -> bool:
         """
