@@ -1,0 +1,73 @@
+# .github/workflows/deploy.yml
+name: Deploy saver_backend
+
+on:
+  workflow_run:
+    workflows: ["tests.yml"]
+    types: [completed]
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.workflow_run.head_branch == 'main' && 'prod' || 'dev' }}
+    concurrency:
+      group: deploy-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    env:
+      DEPLOY_PATH: /home/deploy/saver_backend
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Deploy over SSH (make deploy)
+        uses: appleboy/ssh-action@v1
+        env:
+          GH_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          host: ${{ secrets.SSH_HOST }}     # из env dev/prod
+          username: ${{ secrets.SSH_USER }} # из env dev/prod
+          key: ${{ secrets.SSH_KEY }}       # из env dev/prod
+          port: ${{ secrets.SSH_PORT }}     # (опц.) из env dev/prod
+          envs: GH_APP_TOKEN,DEPLOY_PATH
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            REPO="${{ github.repository }}"
+            SHA="${{ github.event.workflow_run.head_sha }}"
+
+            mkdir -p "$DEPLOY_PATH"
+
+            # Настраиваем git remote через токен GitHub App
+            if [ ! -d "$DEPLOY_PATH/.git" ]; then
+              git init "$DEPLOY_PATH"
+              git -C "$DEPLOY_PATH" remote add origin "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git"
+            else
+              git -C "$DEPLOY_PATH" remote set-url origin "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git"
+            fi
+
+            # Деплоим ровно тот коммит, который прошёл тесты
+            git -C "$DEPLOY_PATH" fetch --depth=1 origin "$SHA"
+            git -C "$DEPLOY_PATH" reset --hard "$SHA"
+
+            # Обновляем .env из секрета окружения
+            cat > "$DEPLOY_PATH/.env" <<'EOF'
+            ${{ secrets.ENV_FILE }}
+            EOF
+
+            # Проверяем наличие make и запускаем целевой таргет
+            if ! command -v make >/dev/null 2>&1; then
+              echo "make не установлен на сервере" >&2
+              exit 1
+            fi
+
+            make -C "$DEPLOY_PATH" deploy
