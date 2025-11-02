@@ -33,11 +33,9 @@ jobs:
           TOLGEE_PROJECT_ID: ${{ secrets.TOLGEE_PROJECT_ID }}
         run: |
           RAW_MSG="${{ github.event.head_commit.message }}"
-          CLEAN_MSG=$(echo "$RAW_MSG" | tr -dc '[:alnum:][:space:]_-' | tr ' ' '_' | cut -c1-40)
           DESC_PART=$(echo "$RAW_MSG" | awk -F':' '{if (NF>1) {print $2} else {print $1}}')
           DESC_PART=$(echo "$DESC_PART" | xargs)
           CLEAN_MSG=$(echo "$DESC_PART" | tr -dc '[:alnum:][:space:]_-' | tr ' ' '_' | cut -c1-40)
-          TAG="commit_${CLEAN_MSG}_${{ github.run_number }}"
 
           echo "🔹 Pushing translations with tag: $CLEAN_MSG"
           tolgee push \
