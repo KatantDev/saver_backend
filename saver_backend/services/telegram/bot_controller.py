@@ -656,26 +656,33 @@ class TelegramBotController:
         :param language: The language of the caption.
         """
         if video_dto.thumbnail_url:
-            coro = self._bot.send_photo(
-                chat_id=telegram_id,
-                photo=video_dto.thumbnail_url,
-                caption=_(
-                    "choose quality",
-                    locale=language or self.language,
-                ).format(title=video_dto.title),
-                reply_markup=inline.get_video_formats_keyboard(
-                    labels=video_dto.unique_labels,
-                ),
-            )
-        else:
-            coro = self._bot.send_message(
-                chat_id=telegram_id,
-                text=_(
-                    "choose quality",
-                    locale=language or self.language,
-                ).format(title=video_dto.title),
-                reply_markup=inline.get_video_formats_keyboard(
-                    labels=video_dto.unique_labels,
-                ),
-            )
+            try:
+                await self._bot.send_photo(
+                    chat_id=telegram_id,
+                    photo=video_dto.thumbnail_url,
+                    caption=_(
+                        "choose quality",
+                        locale=language or self.language,
+                    ).format(title=video_dto.title),
+                    reply_markup=inline.get_video_formats_keyboard(
+                        labels=video_dto.unique_labels,
+                    ),
+                )
+            except TelegramBadRequest as e:
+                if "wrong type" in e.message:
+                    pass
+                else:
+                    raise e
+            except Exception as e:
+                capture_exception(e)
+        coro = self._bot.send_message(
+            chat_id=telegram_id,
+            text=_(
+                "choose quality",
+                locale=language or self.language,
+            ).format(title=video_dto.title),
+            reply_markup=inline.get_video_formats_keyboard(
+                labels=video_dto.unique_labels,
+            ),
+        )
         await self._send(coro)
