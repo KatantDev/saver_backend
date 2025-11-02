@@ -10,6 +10,8 @@ LANG_CODE_COUNTRY = {
     "ja": "JP",
     "ko": "KR",
     "te": "IN",
+    "uk": "ua",
+    "fil": "ph",
 }
 
 
