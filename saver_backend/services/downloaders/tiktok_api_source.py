@@ -123,7 +123,11 @@ class TikTokAPIController(BaseSourceController):
             api_response = TikWMResponse.model_validate(response.json())
 
             if api_response.code != 0 or not api_response.data:
-                logging.error("TikWM API returned an error: %s", api_response.msg)
+                logging.error(
+                    "TikWM API returned an error: %s (URL: %s)",
+                    api_response.msg,
+                    self._resolution.url,
+                )
                 await self._send_error_message()
                 return
 
