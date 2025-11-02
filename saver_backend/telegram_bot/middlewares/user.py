@@ -36,7 +36,7 @@ class UserMiddleware(BaseMiddleware):
             user = await user_dao.create(
                 telegram_id=aiogram_user.id,
                 username=aiogram_user.username,
-                language_code=aiogram_user.language_code,
+                language_code=aiogram_user.language_code or "en",
                 first_name=aiogram_user.first_name,
                 last_name=aiogram_user.last_name,
             )
@@ -44,7 +44,7 @@ class UserMiddleware(BaseMiddleware):
             await user_dao.update(
                 telegram_id=aiogram_user.id,
                 username=aiogram_user.username,
-                language_code=aiogram_user.language_code,
+                language_code=aiogram_user.language_code or "en",
                 first_name=aiogram_user.first_name,
                 last_name=aiogram_user.last_name,
             )

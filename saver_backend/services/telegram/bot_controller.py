@@ -668,6 +668,7 @@ class TelegramBotController:
                         labels=video_dto.unique_labels,
                     ),
                 )
+                return
             except TelegramBadRequest as e:
                 if "wrong type" in e.message:
                     pass
