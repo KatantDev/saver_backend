@@ -163,7 +163,7 @@ class InstagramYdlDetector(Detector):
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         InstagramContentTypeEnum.REELS: re.compile(
-            r"^/reels?/(?P<code>[A-Za-z0-9_-]+)/?$",
+            r"^/(?:[^/]+/)?reels?/(?P<code>[A-Za-z0-9_-]+)/?$",
         ),
     }
 
@@ -252,7 +252,20 @@ class VKClipsDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
 
-        # Handle /clip links
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+        if "z" in query_params:
+            z_param = query_params["z"][0]
+            match = re.search(r"clip(-?\d+_\d+)", z_param)
+            if match:
+                clip_code = match.group(1)
+                clean_url = f"https://vk.com/clip{clip_code}"
+                return Resolution(
+                    source=self.SOURCE,
+                    url=clean_url,
+                    metadata={"code": clip_code},
+                )
+
         return self._match_regex(url)
 
 
@@ -315,18 +328,35 @@ class VKVideoDetector(Detector):
         "www.vk.com",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
-        "video": re.compile(r"^/video(?P<code>-?\d+_\d+)/?$"),
+        "video": re.compile(r".*?/video(?P<code>-?\d+_\d+)"),
     }
 
     def match(self, url: str) -> Optional[Resolution]:
         """
         Check if the url is a valid VK Video url.
 
+        Handles path-based URLs and URLs with video ID in the 'z' query parameter.
+
         :param url: URL to check.
         :return: Resolution if the url is valid, None otherwise.
         """
         if not self._host_in(url, *self.HOSTS):
             return None
+
+        # Handle URLs with 'z' parameter, e.g., vk.com/id...?z=video...
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+        if "z" in query_params:
+            z_param = query_params["z"][0]
+            match = re.search(r"video(-?\d+_\d+)", z_param)
+            if match:
+                video_code = match.group(1)
+                clean_url = f"https://vk.com/video{video_code}"
+                return Resolution(
+                    source=self.SOURCE,
+                    url=clean_url,
+                    metadata={"code": video_code},
+                )
 
         return self._match_regex(url)
 

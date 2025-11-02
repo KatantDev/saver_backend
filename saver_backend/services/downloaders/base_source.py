@@ -126,6 +126,18 @@ class BaseSourceController(ABC):
         """
         return None
 
+    @abstractmethod
+    async def get_video_dto(self) -> VideoDTO | None:
+        """
+        Fetch video information and return it as a standardized VideoDTO.
+
+        This is the primary method for getting video metadata in a uniform format,
+        regardless of the source.
+
+        :return: A VideoDTO instance or None if info could not be fetched.
+        """
+        raise NotImplementedError
+
     async def _send_error_message(self, with_delete: bool = True) -> None:
         """
         Send error message.
@@ -209,6 +221,19 @@ class BaseSourceController(ABC):
                 exc_info=True,
             )
             capture_exception(e)
+
+    async def save_video_to_cache(
+        self,
+        video_dto: VideoDTO,
+        telegram_video: Video,
+    ) -> None:
+        """
+        Public method to save video details to the cache.
+
+        :param video_dto: The original VideoDTO with metadata.
+        :param telegram_video: The Video object from aiogram after sending.
+        """
+        await self._save_video_to_cache(video_dto, telegram_video)
 
     async def send_video_from_cache(self, source_id: str, quality: str) -> bool:
         """

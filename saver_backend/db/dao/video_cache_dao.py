@@ -1,4 +1,5 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.video_cache_model import VideoCacheModel
@@ -18,16 +19,23 @@ class VideoCacheDAO(BaseDAO):
 
         :param video_cache: A VideoCacheDTO containing all necessary cache information.
         """
-        model = VideoCacheModel(
-            source=video_cache.source,
-            source_id=video_cache.source_id,
-            file_id=video_cache.file_id,
-            file_unique_id=video_cache.file_unique_id,
-            quality=video_cache.quality,
-            meta_data=video_cache.meta_data.model_dump(mode="json"),
-        )
-        self.session.add(model)
-        await self.session.flush()
+        async with self.session.begin_nested():
+            try:
+                model = VideoCacheModel(
+                    source=video_cache.source,
+                    source_id=video_cache.source_id,
+                    file_id=video_cache.file_id,
+                    file_unique_id=video_cache.file_unique_id,
+                    quality=video_cache.quality,
+                    meta_data=video_cache.meta_data.model_dump(mode="json"),
+                )
+                self.session.add(model)
+                await self.session.flush()
+            except IntegrityError:
+                # This can happen in a race condition where two tasks
+                # try to cache the same video simultaneously.
+                # We can safely ignore it, as the entry is already in the DB.
+                pass
 
     async def get_by_source_id_and_quality(
         self,

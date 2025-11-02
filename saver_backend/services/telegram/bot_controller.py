@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import re
+import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Sequence, cast
 
@@ -16,7 +18,16 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 from aiogram.fsm.storage.redis import RedisStorage
-from aiogram.types import FSInputFile, Update, URLInputFile, Video
+from aiogram.types import (
+    FSInputFile,
+    InlineQueryResultArticle,
+    InlineQueryResultCachedVideo,
+    InlineQueryResultVideo,
+    InputTextMessageContent,
+    Update,
+    URLInputFile,
+    Video,
+)
 from aiogram.utils.i18n import I18n, SimpleI18nMiddleware
 from aiogram.utils.media_group import MediaGroupBuilder
 from redis.asyncio import Redis
@@ -294,6 +305,153 @@ class TelegramBotController:
         )
         await self._send(coro)
 
+    async def send_video_to_pm_for_inline(
+        self,
+        video: VideoDTO,
+        telegram_id: int,
+    ) -> Video | None:
+        """
+        Try to send a video to user's PM to get a file_id. Fails silently.
+
+        :param video: VideoDTO to send.
+        :param telegram_id: User's Telegram ID.
+        :return: Sent Video object on success, None on failure.
+        """
+        try:
+            video_input: str | FSInputFile
+            if video.direct_download_url:
+                video_input = video.direct_download_url
+            elif video.path and video.path.exists():
+                video_input = FSInputFile(video.path)
+            else:
+                # Nothing to send
+                return None
+
+            message = await self._bot.send_video(
+                chat_id=telegram_id,
+                video=video_input,
+                caption=".",
+            )
+            # Clean up the temporary message immediately
+            await self.delete_message(telegram_id, message.message_id)
+            return message.video
+        except (TelegramForbiddenError, TelegramBadRequest):
+            logging.info(
+                "Failed to send PM to user %s for inline mode. Probably blocked.",
+                telegram_id,
+            )
+            return None
+        except Exception as e:
+            logging.error("Unexpected error sending PM for inline mode: %s", e)
+            return None
+
+    async def answer_inline_query_cached_video(
+        self,
+        inline_query_id: str,
+        video_dto: VideoDTO,
+        file_id: str,
+    ) -> None:
+        """Answer an inline query with a cached video using file_id."""
+        result = InlineQueryResultCachedVideo(
+            id=str(uuid.uuid4()),
+            video_file_id=file_id,
+            title=video_dto.title or "Video",
+            description="via @saver",
+            caption=_("result direct message").format(url=video_dto.url),
+        )
+        await self._send(self._bot.answer_inline_query(inline_query_id, [result]))
+
+    async def answer_inline_query_video(
+        self,
+        inline_query_id: str,
+        video_dto: VideoDTO,
+    ) -> None:
+        """Answer an inline query with a video using a direct URL."""
+        if not video_dto.direct_download_url or not video_dto.thumbnail_url:
+            await self.answer_inline_query_error(inline_query_id)
+            return
+
+        result = InlineQueryResultVideo(
+            id=str(uuid.uuid4()),
+            video_url=video_dto.direct_download_url,
+            thumbnail_url=video_dto.thumbnail_url,
+            mime_type="video/mp4",
+            title=video_dto.title or "Video",
+            description="via @saver",
+            caption=_("result direct message").format(url=video_dto.url),
+        )
+        await self._send(self._bot.answer_inline_query(inline_query_id, [result]))
+
+    async def answer_inline_query_error(
+        self,
+        inline_query_id: str,
+        error_text: str | None = None,
+    ) -> None:
+        """Answer an inline query with an error message."""
+        text = error_text or _("error downloading")
+        # Remove HTML tags for plain text display
+        plain_error_text = re.sub("<[^<]+?>", "", text)
+
+        result = InlineQueryResultArticle(
+            id=str(uuid.uuid4()),
+            title=_("Error"),
+            description=plain_error_text,
+            input_message_content=InputTextMessageContent(
+                message_text=text,
+                parse_mode=self._bot.default.parse_mode,
+            ),
+        )
+        await self._send(self._bot.answer_inline_query(inline_query_id, [result]))
+
+    async def _build_and_send_media_chunk(
+        self,
+        chunk: Sequence[PhotoDTO | VideoDTO],
+        chat_id: int,
+        caption: str | None = None,
+    ) -> None:
+        """
+        Build a MediaGroup from a chunk of files and send it.
+
+        :param chunk: A list of PhotoDTO or VideoDTO objects (max 10).
+        :param chat_id: The chat ID to send the media group to.
+        :param caption: The caption for the media group (if any).
+        """
+        media_group = MediaGroupBuilder(caption=caption)
+        for file in chunk:
+            media_input: str | FSInputFile | URLInputFile | None = None
+            if isinstance(file, PhotoDTO):
+                media_input = file.media_url or (
+                    FSInputFile(path=file.path) if file.path else None
+                )
+            elif isinstance(file, VideoDTO):
+                media_input = file.direct_download_url or (
+                    FSInputFile(path=file.path) if file.path else None
+                )
+
+            if not media_input:
+                continue
+
+            if isinstance(file, PhotoDTO):
+                media_group.add_photo(media=media_input)
+            elif isinstance(file, VideoDTO):
+                media_group.add_video(
+                    media=media_input,
+                    width=file.width,
+                    height=file.height,
+                    duration=file.duration,
+                    thumbnail=(
+                        FSInputFile(path=file.thumbnail) if file.thumbnail else None
+                    ),
+                    supports_streaming=True,
+                )
+
+        if media_group.build():
+            coro = self._bot.send_media_group(
+                chat_id=chat_id,
+                media=media_group.build(),
+            )
+            await self._send(coro)
+
     async def send_finish_downloading_group(
         self,
         files: Sequence[PhotoDTO | VideoDTO],
@@ -319,42 +477,12 @@ class TelegramBotController:
 
         for i in range(0, total_files, chunk_size):
             chunk = files[i : i + chunk_size]
-            media_group = MediaGroupBuilder(caption=caption)
 
-            for file in chunk:
-                media_input: str | FSInputFile | URLInputFile | None = None
-                if isinstance(file, (PhotoDTO, AudioDTO)):
-                    media_input = file.media_url or (
-                        FSInputFile(path=file.path) if file.path else None
-                    )
-                elif isinstance(file, VideoDTO):
-                    media_input = file.direct_download_url or (
-                        FSInputFile(path=file.path) if file.path else None
-                    )
-
-                if not media_input:
-                    continue
-
-                if isinstance(file, PhotoDTO):
-                    media_group.add_photo(media=media_input)
-                elif isinstance(file, VideoDTO):
-                    media_group.add_video(
-                        media=media_input,
-                        width=file.width,
-                        height=file.height,
-                        duration=file.duration,
-                        thumbnail=(
-                            FSInputFile(path=file.thumbnail) if file.thumbnail else None
-                        ),
-                        supports_streaming=True,
-                    )
-
-            if media_group.build():
-                coro = self._bot.send_media_group(
-                    chat_id=telegram_id,
-                    media=media_group.build(),
-                )
-                await self._send(coro)
+            await self._build_and_send_media_chunk(
+                chunk=chunk,
+                chat_id=telegram_id,
+                caption=caption,
+            )
 
         if message_id is not None:
             coro2 = self._bot.delete_message(
@@ -477,7 +605,7 @@ class TelegramBotController:
             )
             if video.thumbnail_url:
                 thumbnail_input = video.thumbnail_url
-        elif video.path and Path(video.path).exists():
+        elif video.path and video.path.exists():
             logging.info("Sending video via file upload: %s", video.path)
             video_input = FSInputFile(path=video.path)
             if video.thumbnail and Path(video.thumbnail).exists():

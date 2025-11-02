@@ -2,14 +2,18 @@ import re
 
 from aiogram import Bot, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineQuery, Message
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
-from saver_backend.task_manager.tasks import get_video_info, save_video
+from saver_backend.task_manager.tasks import (
+    get_video_info,
+    process_inline_query,
+    save_video,
+)
 from saver_backend.telegram_bot.filters.source import SourceFilter
 from saver_backend.telegram_bot.keyboards.callback import (
     VideoFormatCallback,
@@ -49,6 +53,28 @@ async def send_unknown_url(
     await bot.send_message(
         chat_id=settings.admin_chat_id,
         text=f"Unsupported URL: {resolution.url}",
+    )
+
+
+@download_router.inline_query(
+    SourceFilter(
+        sources=[
+            SourceEnum.TIKTOK,
+            SourceEnum.INSTAGRAM_YDL,
+        ],
+    ),
+)
+async def on_inline_query(query: InlineQuery, resolution: Resolution) -> None:
+    """
+    Handle inline queries for downloading videos.
+
+    :param query: The inline query object.
+    :param resolution: The resolved URL information.
+    """
+    await process_inline_query.kiq(
+        resolution=resolution,
+        telegram_id=query.from_user.id,
+        inline_query_id=query.id,
     )
 
 

@@ -2,12 +2,13 @@ import logging
 
 from taskiq import TaskiqDepends
 
+from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
-    VideoIsPrivateError,
 )
 from saver_backend.services.downloaders.schema import VideoDTO
+from saver_backend.services.i18n import gettext as _
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
 
@@ -61,11 +62,85 @@ async def save_video(
             telegram_id=telegram_id,
             language="en",
         )
-    except VideoIsPrivateError:
-        await controller.delete_processing_message()
-        await state.telegram_bot_controller.send_video_is_private_error(
+
+
+@broker.task(
+    result_timeout=60,
+    time_limit=120,
+)
+async def process_inline_query(
+    resolution: Resolution,
+    telegram_id: int,
+    inline_query_id: str,
+    state: SaverState = TaskiqDepends(),
+    db: DatabaseState = TaskiqDepends(),
+) -> None:
+    """
+    Process an inline query to download a video and return the result.
+
+    :param resolution: The resolved URL information.
+    :param telegram_id: The ID of the user who sent the query.
+    :param inline_query_id: The ID of the inline query to answer.
+    :param state: The application state.
+    :param db: The database state.
+    """
+    controller_class = state.source_resolver.get_controller(resolution)
+    if not controller_class:
+        return
+
+    controller = controller_class(
+        resolution=resolution,
+        telegram_bot_controller=state.telegram_bot_controller,
+        telegram_id=telegram_id,
+        video_cache_dao=db.video_cache_dao,
+        user_dao=db.user_dao,
+    )
+
+    video_dto = await controller.get_video_dto()
+    if not video_dto:
+        await state.telegram_bot_controller.answer_inline_query_error(
+            inline_query_id=inline_query_id,
+        )
+        return
+
+    # Slideshow case for TikTok
+    if resolution.source == SourceEnum.TIKTOK and not video_dto.direct_download_url:
+        await state.telegram_bot_controller.send_tiktok_error_downloading(
             telegram_id=telegram_id,
-            language="en",
+        )
+        await state.telegram_bot_controller.answer_inline_query_error(
+            inline_query_id=inline_query_id,
+            error_text=_("tiktok photo unsupported"),
+        )
+        return
+
+    # Try to send to PM to get file_id
+    sent_video = await state.telegram_bot_controller.send_video_to_pm_for_inline(
+        video=video_dto,
+        telegram_id=telegram_id,
+    )
+
+    if sent_video and sent_video.file_id:
+        # Success: answer with file_id
+        await controller.delete_processing_message()  # Clean up PM
+        await state.telegram_bot_controller.answer_inline_query_cached_video(
+            inline_query_id=inline_query_id,
+            video_dto=video_dto,
+            file_id=sent_video.file_id,
+        )
+        await controller.save_video_to_cache(video_dto, sent_video)
+    elif video_dto.direct_download_url:
+        # Fallback: answer with direct URL
+        await state.telegram_bot_controller.answer_inline_query_video(
+            inline_query_id=inline_query_id,
+            video_dto=video_dto,
+        )
+    else:
+        # Failure: show error, likely because PM is blocked and
+        # no direct URL is available
+        await state.telegram_bot_controller.answer_inline_query_error(
+            inline_query_id=inline_query_id,
+            error_text=_("inline mode blocked error"),
         )
 
 
@@ -103,18 +178,8 @@ async def get_video_info(
     await controller.set_user_language()
 
     # Пытаемся получить информацию по видосу
-    try:
-        info_dict = await controller.get_video_info(url=resolution.url)
-    except VideoIsPrivateError:
-        await state.telegram_bot_controller.delete_message(
-            telegram_id=telegram_id,
-            message_id=processing_message_id,
-        )
-        await state.telegram_bot_controller.send_video_is_private_error(
-            telegram_id=telegram_id,
-            language="en",
-        )
-        return
+    info_dict = await controller.get_video_info(url=resolution.url)
+
     if not info_dict:
         await state.telegram_bot_controller.edit_failed_video_info(
             telegram_id=telegram_id,

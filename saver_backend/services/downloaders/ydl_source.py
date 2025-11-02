@@ -252,10 +252,35 @@ class YtDlpController(BaseSourceController, ABC):
             ):
                 self._set_proxy()
                 return await self.get_video_info(url=url)
+
+            if "Access restricted" in str(e):
+                await self.delete_processing_message()
+                await self._telegram_bot_controller.send_video_is_private_error(
+                    telegram_id=self._telegram_id,
+                )
+                return None
+
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
         return None
+
+    async def get_video_dto(self) -> VideoDTO | None:
+        """
+        Fetch video info using yt-dlp and wrap it in a VideoDTO.
+
+        :return: A VideoDTO instance or None on failure.
+        """
+        info_dict = await self.get_video_info(url=self._resolution.url)
+        if not info_dict:
+            return None
+
+        return VideoDTO.from_yt_dlp(
+            info=info_dict,
+            file_path=self._video.path if self._video else None,
+            extract_direct_links=self.DIRECT_URL_DOWNLOAD,
+            quality=self._selected_format_id or "best",
+        )
 
     def _cleanup_files(self) -> None:
         """Safely deletes the downloaded video and thumbnail files."""
@@ -263,7 +288,7 @@ class YtDlpController(BaseSourceController, ABC):
             return
 
         if self._video.path:
-            video_path = Path(self._video.path)
+            video_path = self._video.path
             if video_path.exists():
                 try:
                     video_path.unlink(missing_ok=True)

@@ -129,7 +129,7 @@ class FormatDTO(BaseModel):
 class VideoDTO(BaseModel):
     """Data Transfer Object for Video."""
 
-    path: str | Path | None = None
+    path: Path | None = None
     thumbnail: str | Path | None = None
     thumbnail_url: str | None = None
 
@@ -337,7 +337,7 @@ class VideoCacheDTO(BaseModel):
 class PhotoDTO(BaseModel):
     """Data Transfer Object for Photo."""
 
-    path: str | Path | None = None
+    path: Path | None = None
     title: str | None = None
     media_url: str | None = None
     url: str | None = None

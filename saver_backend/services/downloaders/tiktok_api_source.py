@@ -20,6 +20,7 @@ class TikTokAPIController(BaseSourceController):
     """Controller for downloading videos from TikTok via tikwm.com API."""
 
     SOURCE = SourceEnum.TIKTOK
+    DIRECT_URL_DOWNLOAD = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -29,6 +30,59 @@ class TikTokAPIController(BaseSourceController):
 
         self._api_url = "https://www.tikwm.com/api/"
         self._client = AsyncClient()
+
+    async def get_video_info(self, url: str) -> dict[str, Any] | None:
+        """
+        Fetch video info from TikWM API.
+
+        This method acts as the info-gathering step for TikTok,
+        returning the raw API response data for further processing.
+
+        :param url: The TikTok video URL.
+        :return: The 'data' part of the TikWM API response or None on failure.
+        """
+        try:
+            response = await self._client.post(
+                self._api_url,
+                data={"url": url},
+                timeout=30,
+            )
+            response.raise_for_status()
+            api_response = TikWMResponse.model_validate(response.json())
+
+            if api_response.code == 0 and api_response.data:
+                return api_response.data.model_dump()
+
+            logging.error("TikWM API returned an error: %s", api_response.msg)
+            return None
+        except RequestError as e:
+            logging.error("Request to TikWM API failed: %s", e)
+            return None
+
+    async def get_video_dto(self) -> VideoDTO | None:
+        """
+        Fetch video info from TikWM API and wrap it in a VideoDTO.
+
+        Handles slideshows by returning a DTO without a direct video URL.
+
+        :return: A VideoDTO instance or None on failure.
+        """
+        info = await self.get_video_info(url=self._resolution.url)
+        if not info:
+            return None
+
+        tikwm_data = TikWMData.model_validate(info)
+
+        # For slideshows, we create a DTO that signals it's not a video.
+        if tikwm_data.images:
+            return VideoDTO(
+                source_id=tikwm_data.id,
+                url=self._resolution.url,
+                title=tikwm_data.title,
+                formats=[],  # Empty formats indicate it's not a standard video
+            )
+
+        return VideoDTO.from_tikwm(data=tikwm_data, url=self._resolution.url)
 
     async def _handle_slideshow(
         self,
@@ -52,16 +106,11 @@ class TikTokAPIController(BaseSourceController):
             for img_url in data.images
         ]
 
-        chunk_size = 10
-        total_photos = len(photos)
-        for i in range(0, total_photos, chunk_size):
-            chunk = photos[i : i + chunk_size]
-
-            await self._telegram_bot_controller.send_finish_downloading_group(
-                files=chunk,
-                telegram_id=self._telegram_id,
-                message_id=self._message_id,
-            )
+        await self._telegram_bot_controller.send_finish_downloading_group(
+            files=photos,
+            telegram_id=self._telegram_id,
+            message_id=self._message_id,
+        )
 
         # Create audio DTO and send it separately
         audio = AudioDTO.from_tikwm(data=data, resolution_url=self._resolution.url)
@@ -99,33 +148,16 @@ class TikTokAPIController(BaseSourceController):
 
     async def download_video(self) -> None:
         """Download video or photo set from TikTok using tikwm.com API."""
-        try:
-            response = await self._client.post(
-                self._api_url,
-                data={"url": self._resolution.url},
-                timeout=30,
-            )
-            response.raise_for_status()
-            api_response = TikWMResponse.model_validate(response.json())
-
-            if api_response.code != 0 or not api_response.data:
-                logging.error("TikWM API returned an error: %s", api_response.msg)
-                await self._send_error_message()
-                return
-
-            data = api_response.data
-            self._process_percent(80)
-
-            if data.images and data.music:
-                await self._handle_slideshow(data)
-            elif data.play and data.cover:
-                await self._handle_video(data)
-            else:
-                await self._send_error_message()
-
-        except RequestError as e:
-            logging.error("Request to TikWM API failed: %s", e)
+        info = await self.get_video_info(url=self._resolution.url)
+        if not info:
             await self._send_error_message()
-        except Exception as e:
-            logging.error("An unexpected error occurred in TikTok downloader: %s", e)
+            return
+
+        data = TikWMData.model_validate(info)
+
+        if data.images and data.music:
+            await self._handle_slideshow(data)
+        elif data.play and data.cover:
+            await self._handle_video(data)
+        else:
             await self._send_error_message()
