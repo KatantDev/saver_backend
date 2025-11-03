@@ -239,7 +239,7 @@ class VKClipsDetector(Detector):
         "www.vk.com",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
-        "clips": re.compile(r"^/clip(?P<code>-\d+_\d+)/?$"),
+        "clips": re.compile(r"^/clip(?P<code>-?\d+_\d+)/?$"),
     }
 
     def match(self, url: str) -> Optional[Resolution]:

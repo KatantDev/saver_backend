@@ -53,7 +53,11 @@ class TikTokAPIController(BaseSourceController):
             if api_response.code == 0 and api_response.data:
                 return api_response.data.model_dump()
 
-            logging.error("TikWM API returned an error: %s", api_response.msg)
+            logging.error(
+                "TikWM API returned an error: %s (URL: %s)",
+                api_response.msg,
+                self._resolution.url,
+            )
             return None
         except RequestError as e:
             logging.error("Request to TikWM API failed: %s", e)

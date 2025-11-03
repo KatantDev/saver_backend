@@ -79,4 +79,4 @@ jobs:
             pwd
             ls -la
 
-            make deploy
+            make -C "$DEPLOY_PATH" deploy
