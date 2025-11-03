@@ -33,6 +33,8 @@ class YtDlpController(BaseSourceController, ABC):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self._video: VideoDTO | None = None
+
         # Get download directory and create it
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._download_directory.mkdir(parents=True, exist_ok=True)

@@ -38,7 +38,6 @@ class BaseSourceController(ABC):
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()
-        self._video: VideoDTO | None = None
         self._video_cache_dao = video_cache_dao
         self._user_dao = user_dao
         self._user_info: UserDTO | None = None
