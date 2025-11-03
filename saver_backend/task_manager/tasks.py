@@ -105,24 +105,20 @@ async def process_inline_query(
 
     # Slideshow case for TikTok
     if resolution.source == SourceEnum.TIKTOK and not video_dto.direct_download_url:
-        await state.telegram_bot_controller.send_tiktok_error_downloading(
-            telegram_id=telegram_id,
-        )
         await state.telegram_bot_controller.answer_inline_query_error(
             inline_query_id=inline_query_id,
-            error_text=_("tiktok photo unsupported"),
+            error_text=_("tiktok photo unsupported in inline query"),
         )
         return
 
     # Try to send to PM to get file_id
-    sent_video = await state.telegram_bot_controller.send_video_to_pm_for_inline(
+    sent_video = await state.telegram_bot_controller.send_finish_downloading(
         video=video_dto,
         telegram_id=telegram_id,
     )
 
-    if sent_video and sent_video.file_id:
+    if sent_video:
         # Success: answer with file_id
-        await controller.delete_processing_message()  # Clean up PM
         await state.telegram_bot_controller.answer_inline_query_cached_video(
             inline_query_id=inline_query_id,
             video_dto=video_dto,

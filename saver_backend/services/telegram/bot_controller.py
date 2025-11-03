@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Sequence, cast
@@ -305,68 +304,44 @@ class TelegramBotController:
         )
         await self._send(coro)
 
-    async def send_video_to_pm_for_inline(
-        self,
-        video: VideoDTO,
-        telegram_id: int,
-    ) -> Video | None:
-        """
-        Try to send a video to user's PM to get a file_id. Fails silently.
-
-        :param video: VideoDTO to send.
-        :param telegram_id: User's Telegram ID.
-        :return: Sent Video object on success, None on failure.
-        """
-        try:
-            video_input: str | FSInputFile
-            if video.direct_download_url:
-                video_input = video.direct_download_url
-            elif video.path and video.path.exists():
-                video_input = FSInputFile(video.path)
-            else:
-                # Nothing to send
-                return None
-
-            message = await self._bot.send_video(
-                chat_id=telegram_id,
-                video=video_input,
-                caption=".",
-            )
-            # Clean up the temporary message immediately
-            await self.delete_message(telegram_id, message.message_id)
-            return message.video
-        except (TelegramForbiddenError, TelegramBadRequest):
-            logging.info(
-                "Failed to send PM to user %s for inline mode. Probably blocked.",
-                telegram_id,
-            )
-            return None
-        except Exception as e:
-            logging.error("Unexpected error sending PM for inline mode: %s", e)
-            return None
-
     async def answer_inline_query_cached_video(
         self,
         inline_query_id: str,
         video_dto: VideoDTO,
         file_id: str,
     ) -> None:
-        """Answer an inline query with a cached video using file_id."""
+        """
+        Answer an inline query with a cached video using file_id.
+
+        :param inline_query_id: ID of the inline query.
+        :param video_dto: DTO of the video.
+        :param file_id: ID of the file.
+        """
         result = InlineQueryResultCachedVideo(
             id=str(uuid.uuid4()),
             video_file_id=file_id,
             title=video_dto.title or "Video",
-            description="via @saver",
+            description=video_dto.description,
             caption=_("result direct message").format(url=video_dto.url),
         )
-        await self._send(self._bot.answer_inline_query(inline_query_id, [result]))
+        coro = self._bot.answer_inline_query(
+            inline_query_id=inline_query_id,
+            results=[result],
+            cache_time=0,
+        )
+        await self._send(coro)
 
     async def answer_inline_query_video(
         self,
         inline_query_id: str,
         video_dto: VideoDTO,
     ) -> None:
-        """Answer an inline query with a video using a direct URL."""
+        """
+        Answer an inline query with a video using a direct URL.
+
+        :param inline_query_id: ID of the inline query.
+        :param video_dto: DTO of the video.
+        """
         if not video_dto.direct_download_url or not video_dto.thumbnail_url:
             await self.answer_inline_query_error(inline_query_id)
             return
@@ -377,31 +352,44 @@ class TelegramBotController:
             thumbnail_url=video_dto.thumbnail_url,
             mime_type="video/mp4",
             title=video_dto.title or "Video",
-            description="via @saver",
+            description=video_dto.description or "via @saver",
             caption=_("result direct message").format(url=video_dto.url),
         )
-        await self._send(self._bot.answer_inline_query(inline_query_id, [result]))
+        coro = self._bot.answer_inline_query(
+            inline_query_id=inline_query_id,
+            results=[result],
+            cache_time=0,
+        )
+        await self._send(coro)
 
     async def answer_inline_query_error(
         self,
         inline_query_id: str,
         error_text: str | None = None,
     ) -> None:
-        """Answer an inline query with an error message."""
+        """
+        Answer an inline query with an error message.
+
+        :param inline_query_id: ID of the inline query.
+        :param error_text: Error message.
+        """
         text = error_text or _("error downloading")
-        # Remove HTML tags for plain text display
-        plain_error_text = re.sub("<[^<]+?>", "", text)
 
         result = InlineQueryResultArticle(
             id=str(uuid.uuid4()),
-            title=_("Error"),
-            description=plain_error_text,
+            title=_("error inline query"),
+            description=text,
             input_message_content=InputTextMessageContent(
                 message_text=text,
                 parse_mode=self._bot.default.parse_mode,
             ),
         )
-        await self._send(self._bot.answer_inline_query(inline_query_id, [result]))
+        coro = self._bot.answer_inline_query(
+            inline_query_id=inline_query_id,
+            results=[result],
+            cache_time=0,
+        )
+        await self._send(coro)
 
     async def _build_and_send_media_chunk(
         self,

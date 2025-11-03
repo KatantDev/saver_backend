@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Saver 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-02 23:38+1000\n"
+"POT-Creation-Date: 2025-11-03 16:21+1000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,59 +17,78 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
 
-#: saver_backend/services/telegram/bot_controller.py:251
+#: saver_backend/services/telegram/bot_controller.py:262
 #: saver_backend/telegram_bot/handlers/start.py:33
 msgid "welcome message"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:313
-#: saver_backend/services/telegram/bot_controller.py:385
-#: saver_backend/services/telegram/bot_controller.py:431
-#: saver_backend/services/telegram/bot_controller.py:488
-#: saver_backend/services/telegram/bot_controller.py:535
+#: saver_backend/services/telegram/bot_controller.py:366
+#: saver_backend/services/telegram/bot_controller.py:397
+#: saver_backend/services/telegram/bot_controller.py:503
+#: saver_backend/services/telegram/bot_controller.py:550
+#: saver_backend/services/telegram/bot_controller.py:596
+#: saver_backend/services/telegram/bot_controller.py:653
+#: saver_backend/services/telegram/bot_controller.py:700
 msgid "result direct message"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:568
-msgid "tiktok photo unsupported"
-msgstr ""
-
-#: saver_backend/services/telegram/bot_controller.py:585
+#: saver_backend/services/telegram/bot_controller.py:417
+#: saver_backend/services/telegram/bot_controller.py:767
 msgid "error downloading"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:618
+#: saver_backend/services/telegram/bot_controller.py:421
+msgid "error inline query"
+msgstr ""
+
+#: saver_backend/services/telegram/bot_controller.py:733
+msgid "video is private"
+msgstr ""
+
+#: saver_backend/services/telegram/bot_controller.py:750
+msgid "tiktok photo unsupported"
+msgstr ""
+
+#: saver_backend/services/telegram/bot_controller.py:800
 msgid "failed to get video info"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:638
+#: saver_backend/services/telegram/bot_controller.py:820
 msgid "video info without formats"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:664
-#: saver_backend/services/telegram/bot_controller.py:682
+#: saver_backend/services/telegram/bot_controller.py:846
+#: saver_backend/services/telegram/bot_controller.py:864
 msgid "choose quality"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:47
+#: saver_backend/task_manager/tasks.py:110
+msgid "tiktok photo unsupported in inline query"
+msgstr ""
+
+#: saver_backend/task_manager/tasks.py:139
+msgid "inline mode blocked error"
+msgstr ""
+
+#: saver_backend/telegram_bot/handlers/download.py:51
 msgid "unknown url"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:102
+#: saver_backend/telegram_bot/handlers/download.py:128
 msgid "get video info"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:132
-#: saver_backend/telegram_bot/handlers/download.py:187
+#: saver_backend/telegram_bot/handlers/download.py:158
+#: saver_backend/telegram_bot/handlers/download.py:213
 msgid "format selection expired"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:140
+#: saver_backend/telegram_bot/handlers/download.py:166
 msgid "choose language for download"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:158
-#: saver_backend/telegram_bot/handlers/download.py:195
+#: saver_backend/telegram_bot/handlers/download.py:184
+#: saver_backend/telegram_bot/handlers/download.py:221
 msgid "format not found"
 msgstr ""
 

@@ -134,6 +134,7 @@ class VideoDTO(BaseModel):
     thumbnail_url: str | None = None
 
     title: str | None = None
+    description: str | None = None
     url: str | None = None
     source_id: str | None = None
 
@@ -282,6 +283,7 @@ class VideoDTO(BaseModel):
             direct_download_url=data.play,
             thumbnail_url=data.cover,
             title=data.title,
+            description=data.author_name,
             url=url,
             source_id=data.id,
             duration=data.duration,
@@ -390,6 +392,13 @@ class AudioDTO(BaseModel):
         return safe_name[:150].strip() or str(uuid.uuid4())
 
 
+class TikWMAuthor(BaseModel):
+    """Data Transfer Object for TikWM."""
+
+    unique_id: str | None = None
+    nickname: str | None = None
+
+
 class TikWMData(BaseModel):
     """Pydantic model for the 'data' part of the TikWM API response."""
 
@@ -400,6 +409,18 @@ class TikWMData(BaseModel):
     music: str | None = None
     images: list[str] | None = None
     cover: str | None = None
+    author: TikWMAuthor | None = None
+
+    @property
+    def author_name(self) -> str | None:
+        """
+        Get author's name or None.
+
+        :return: Author name or None.
+        """
+        if not self.author:
+            return None
+        return self.author.nickname or self.author.unique_id
 
 
 class TikWMResponse(BaseModel):
