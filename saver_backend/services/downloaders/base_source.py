@@ -14,6 +14,7 @@ from saver_backend.services.downloaders.schema import (
     VideoCacheDTO,
     VideoDTO,
 )
+from saver_backend.services.i18n import gettext as _
 
 if TYPE_CHECKING:
     from saver_backend.db.dao.user_dao import UserDAO
@@ -35,6 +36,7 @@ class BaseSourceController(ABC):
         user_dao: "UserDAO",
         message_id: int | None = None,
         format_id: str | None = None,
+        inline_query_id: str | None = None,
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()
@@ -46,6 +48,7 @@ class BaseSourceController(ABC):
         self._telegram_bot_controller = telegram_bot_controller
         self._telegram_id = telegram_id
         self._message_id = message_id
+        self._inline_query_id = inline_query_id
         self._last_percent = 0
 
     async def set_user_language(self, language: str | None = None) -> None:
@@ -262,3 +265,73 @@ class BaseSourceController(ABC):
             url=self._resolution.url,
         )
         return True
+
+    async def handle_inline_query(self) -> None:
+        """Process an inline query and send the result."""
+        if not self._inline_query_id:
+            logging.warning("handle_inline_query called without an inline_query_id.")
+            return
+
+        video_dto = await self.get_video_dto()
+        if not video_dto or not video_dto.source_id:
+            await self._telegram_bot_controller.answer_inline_query_error(
+                inline_query_id=self._inline_query_id,
+            )
+            return
+
+        cached_video = await self._video_cache_dao.get_by_source_id_and_quality(
+            source=self.SOURCE,
+            source_id=video_dto.source_id,
+            quality=video_dto.quality or "best",
+        )
+        if cached_video:
+            logging.info(
+                "Cache hit for inline query: source_id=%s, quality=%s",
+                video_dto.source_id,
+                video_dto.quality,
+            )
+            await self._telegram_bot_controller.answer_inline_query_cached_video(
+                inline_query_id=self._inline_query_id,
+                video_dto=video_dto,
+                file_id=cached_video.file_id,
+            )
+            return
+
+        # Slideshow case for TikTok
+        if (
+            self._resolution.source == SourceEnum.TIKTOK
+            and not video_dto.direct_download_url
+        ):
+            await self._telegram_bot_controller.answer_inline_query_error(
+                inline_query_id=self._inline_query_id,
+                error_text=_("tiktok photo unsupported in inline query"),
+            )
+            return
+
+        # Try to send to PM to get file_id
+        sent_video = await self._telegram_bot_controller.send_finish_downloading(
+            video=video_dto,
+            telegram_id=self._telegram_id,
+        )
+
+        if sent_video:
+            # Success: answer with file_id
+            await self._telegram_bot_controller.answer_inline_query_cached_video(
+                inline_query_id=self._inline_query_id,
+                video_dto=video_dto,
+                file_id=sent_video.file_id,
+            )
+            await self.save_video_to_cache(video_dto, sent_video)
+        elif video_dto.direct_download_url:
+            # Fallback: answer with direct URL
+            await self._telegram_bot_controller.answer_inline_query_video(
+                inline_query_id=self._inline_query_id,
+                video_dto=video_dto,
+            )
+        else:
+            # Failure: show error, likely because PM is blocked and
+            # no direct URL is available
+            await self._telegram_bot_controller.answer_inline_query_error(
+                inline_query_id=self._inline_query_id,
+                error_text=_("inline mode blocked error"),
+            )

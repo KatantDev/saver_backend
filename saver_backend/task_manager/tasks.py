@@ -2,13 +2,11 @@ import logging
 
 from taskiq import TaskiqDepends
 
-from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
 )
 from saver_backend.services.downloaders.schema import VideoDTO
-from saver_backend.services.i18n import gettext as _
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
 
@@ -94,50 +92,10 @@ async def process_inline_query(
         telegram_id=telegram_id,
         video_cache_dao=db.video_cache_dao,
         user_dao=db.user_dao,
+        inline_query_id=inline_query_id,
     )
-
-    video_dto = await controller.get_video_dto()
-    if not video_dto:
-        await state.telegram_bot_controller.answer_inline_query_error(
-            inline_query_id=inline_query_id,
-        )
-        return
-
-    # Slideshow case for TikTok
-    if resolution.source == SourceEnum.TIKTOK and not video_dto.direct_download_url:
-        await state.telegram_bot_controller.answer_inline_query_error(
-            inline_query_id=inline_query_id,
-            error_text=_("tiktok photo unsupported in inline query"),
-        )
-        return
-
-    # Try to send to PM to get file_id
-    sent_video = await state.telegram_bot_controller.send_finish_downloading(
-        video=video_dto,
-        telegram_id=telegram_id,
-    )
-
-    if sent_video:
-        # Success: answer with file_id
-        await state.telegram_bot_controller.answer_inline_query_cached_video(
-            inline_query_id=inline_query_id,
-            video_dto=video_dto,
-            file_id=sent_video.file_id,
-        )
-        await controller.save_video_to_cache(video_dto, sent_video)
-    elif video_dto.direct_download_url:
-        # Fallback: answer with direct URL
-        await state.telegram_bot_controller.answer_inline_query_video(
-            inline_query_id=inline_query_id,
-            video_dto=video_dto,
-        )
-    else:
-        # Failure: show error, likely because PM is blocked and
-        # no direct URL is available
-        await state.telegram_bot_controller.answer_inline_query_error(
-            inline_query_id=inline_query_id,
-            error_text=_("inline mode blocked error"),
-        )
+    await controller.set_user_language()
+    await controller.handle_inline_query()
 
 
 @broker.task()

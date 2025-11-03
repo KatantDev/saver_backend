@@ -1,5 +1,5 @@
+import sqlalchemy as sa
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.video_cache_model import VideoCacheModel
@@ -19,23 +19,16 @@ class VideoCacheDAO(BaseDAO):
 
         :param video_cache: A VideoCacheDTO containing all necessary cache information.
         """
-        async with self.session.begin_nested():
-            try:
-                model = VideoCacheModel(
-                    source=video_cache.source,
-                    source_id=video_cache.source_id,
-                    file_id=video_cache.file_id,
-                    file_unique_id=video_cache.file_unique_id,
-                    quality=video_cache.quality,
-                    meta_data=video_cache.meta_data.model_dump(mode="json"),
-                )
-                self.session.add(model)
-                await self.session.flush()
-            except IntegrityError:
-                # This can happen in a race condition where two tasks
-                # try to cache the same video simultaneously.
-                # We can safely ignore it, as the entry is already in the DB.
-                pass
+        model = VideoCacheModel(
+            source=video_cache.source,
+            source_id=video_cache.source_id,
+            file_id=video_cache.file_id,
+            file_unique_id=video_cache.file_unique_id,
+            quality=video_cache.quality,
+            meta_data=video_cache.meta_data.model_dump(mode="json"),
+        )
+        self.session.add(model)
+        await self.session.flush()
 
     async def get_by_source_id_and_quality(
         self,
@@ -58,3 +51,14 @@ class VideoCacheDAO(BaseDAO):
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
+
+    async def get_random(self, limit: int = 20) -> list[VideoCacheModel]:
+        """
+        Get N random video cache entries.
+
+        :param limit: The maximum number of entries to return.
+        :return: A list of VideoCacheModel instances.
+        """
+        query = select(VideoCacheModel).order_by(sa.func.random()).limit(limit)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())

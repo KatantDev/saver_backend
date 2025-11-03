@@ -1,9 +1,18 @@
+import logging
 import re
+from uuid import uuid4
 
-from aiogram import Bot, Router
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineQuery,
+    InlineQueryResultCachedVideo,
+    Message,
+)
 
+from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
+from saver_backend.db.models.video_cache_model import VideoCacheModel
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO
@@ -56,7 +65,59 @@ async def send_unknown_url(
     )
 
 
+def _create_inline_result_from_cache(
+    cached_video: VideoCacheModel,
+) -> InlineQueryResultCachedVideo | None:
+    """
+    Safely create an InlineQueryResultCachedVideo from a cache model.
+
+    Returns None if metadata parsing fails.
+
+    :param cached_video: The VideoCacheModel instance from the database.
+    :return: An InlineQueryResultCachedVideo instance or None.
+    """
+    try:
+        video_dto = VideoDTO.model_validate(cached_video.meta_data)
+        return InlineQueryResultCachedVideo(
+            id=str(uuid4()),
+            video_file_id=cached_video.file_id,
+            title=video_dto.title or "Cached Video",
+            description=f"Source: {cached_video.source}",
+            caption=_("result direct message").format(url=video_dto.url),
+        )
+    except Exception as e:
+        logging.error(
+            "Failed to parse metadata for cached video %s: %s",
+            cached_video.id,
+            e,
+        )
+        return None
+
+
+@download_router.inline_query(F.query == "")
+async def on_empty_inline_query(
+    query: InlineQuery,
+    video_cache_dao: VideoCacheDAO,
+) -> None:
+    """
+    Handle empty inline query by showing latest cached videos.
+
+    :param query: The inline query object.
+    :param video_cache_dao: DAO for accessing video cache.
+    """
+    cached_videos = await video_cache_dao.get_random(limit=20)
+
+    results = [
+        result
+        for item in cached_videos
+        if (result := _create_inline_result_from_cache(item)) is not None
+    ]
+
+    await query.answer(results, cache_time=10, is_personal=True)  # type: ignore[arg-type]
+
+
 @download_router.inline_query(
+    (F.query != ""),
     SourceFilter(
         sources=[
             SourceEnum.TIKTOK,
