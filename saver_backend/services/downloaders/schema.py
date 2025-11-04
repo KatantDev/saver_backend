@@ -129,11 +129,12 @@ class FormatDTO(BaseModel):
 class VideoDTO(BaseModel):
     """Data Transfer Object for Video."""
 
-    path: str | Path | None = None
+    path: Path | None = None
     thumbnail: str | Path | None = None
     thumbnail_url: str | None = None
 
     title: str | None = None
+    description: str | None = None
     url: str | None = None
     source_id: str | None = None
 
@@ -268,26 +269,25 @@ class VideoDTO(BaseModel):
         cls,
         data: "TikWMData",
         url: str,
-        source_id: str,
-    ) -> Optional["VideoDTO"]:
+        quality: str = "default",
+    ) -> "VideoDTO":
         """
-        Create a VideoDTO instance from a TikWM data.
+        Create a VideoDTO instance from TikWM API data.
 
-        :param data: The TikWM data.
-        :param url: The URL of the video.
-        :param source_id: The ID of the video.
-        :return: A VideoDTO instance.
+        :param data: The 'data' object from the TikWM API response.
+        :param url: The original URL provided by the user.
+        :param quality: The quality identifier for this video.
+        :return: A populated VideoDTO instance.
         """
-        if data.play is None:
-            return None
         return cls(
             direct_download_url=data.play,
-            thumbnail=data.cover,
+            thumbnail_url=data.cover,
             title=data.title,
+            description=data.author_name,
             url=url,
-            source_id=source_id,
+            source_id=data.id,
             duration=data.duration,
-            quality="default",
+            quality=quality,
         )
 
 
@@ -329,17 +329,17 @@ class VideoCacheDTO(BaseModel):
         return cls(
             source=source,
             source_id=video.source_id,
-            file_id=telegram_video.file_id,
-            file_unique_id=telegram_video.file_unique_id,
             quality=video.quality or "best",
             meta_data=video,
+            file_id=telegram_video.file_id,
+            file_unique_id=telegram_video.file_unique_id,
         )
 
 
 class PhotoDTO(BaseModel):
     """Data Transfer Object for Photo."""
 
-    path: str | Path | None = None
+    path: Path | None = None
     title: str | None = None
     media_url: str | None = None
     url: str | None = None
@@ -392,6 +392,13 @@ class AudioDTO(BaseModel):
         return safe_name[:150].strip() or str(uuid.uuid4())
 
 
+class TikWMAuthor(BaseModel):
+    """Data Transfer Object for TikWM."""
+
+    unique_id: str | None = None
+    nickname: str | None = None
+
+
 class TikWMData(BaseModel):
     """Pydantic model for the 'data' part of the TikWM API response."""
 
@@ -402,6 +409,18 @@ class TikWMData(BaseModel):
     music: str | None = None
     images: list[str] | None = None
     cover: str | None = None
+    author: TikWMAuthor | None = None
+
+    @property
+    def author_name(self) -> str | None:
+        """
+        Get author's name or None.
+
+        :return: Author name or None.
+        """
+        if not self.author:
+            return None
+        return self.author.nickname or self.author.unique_id
 
 
 class TikWMResponse(BaseModel):

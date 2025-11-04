@@ -115,7 +115,6 @@ class Detector(ABC):
 
 _REGISTRY: list[Detector] = []
 
-
 T = TypeVar("T", bound=Type[Detector])
 
 
@@ -163,7 +162,7 @@ class InstagramYdlDetector(Detector):
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         InstagramContentTypeEnum.REELS: re.compile(
-            r"^/reels?/(?P<code>[A-Za-z0-9_-]+)/?$",
+            r"^/(?:[^/]+/)?reels?/(?P<code>[A-Za-z0-9_-]+)/?$",
         ),
     }
 
@@ -242,6 +241,8 @@ class VKClipsDetector(Detector):
         "clips": re.compile(r"^/clip(?P<code>-?\d+_\d+)/?$"),
     }
 
+    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"clip-?\d+_\d+")
+
     def match(self, url: str) -> Optional[Resolution]:
         """
         Check if the url is a valid VK Clip url.
@@ -252,7 +253,13 @@ class VKClipsDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
 
-        # Handle /clip links
+        parsed = urlparse(url)
+
+        if parsed.query:
+            match = self._CODE_RE.search(parsed.query)
+            if match:
+                url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
+
         return self._match_regex(url)
 
 
@@ -315,19 +322,26 @@ class VKVideoDetector(Detector):
         "www.vk.com",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
-        "video": re.compile(r"^/video(?P<code>-?\d+_\d+)/?$"),
+        "video_path": re.compile(r"/video(?P<code>-?\d+_\d+)"),
     }
 
-    def match(self, url: str) -> Optional[Resolution]:
-        """
-        Check if the url is a valid VK Video url.
+    _PLAYLIST_REGEX: ClassVar[re.Pattern[str]] = re.compile(
+        r"/playlist/[^/?#]+/(video-?\d+_\d+)",
+    )
+    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"video-?\d+_\d+")
 
-        :param url: URL to check.
-        :return: Resolution if the url is valid, None otherwise.
-        """
+    def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
             return None
 
+        parsed = urlparse(url)
+        match = self._PLAYLIST_REGEX.search(parsed.path)
+        if match:
+            url = f"{parsed.scheme}://{parsed.netloc}/{match.group(1)}"
+        if parsed.query:
+            match = self._CODE_RE.search(parsed.query)
+            if match:
+                url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
         return self._match_regex(url)
 
 

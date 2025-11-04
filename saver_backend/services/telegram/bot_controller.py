@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Sequence, cast
 
@@ -16,7 +17,16 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 from aiogram.fsm.storage.redis import RedisStorage
-from aiogram.types import FSInputFile, Update, URLInputFile, Video
+from aiogram.types import (
+    FSInputFile,
+    InlineQueryResultArticle,
+    InlineQueryResultCachedVideo,
+    InlineQueryResultVideo,
+    InputTextMessageContent,
+    Update,
+    URLInputFile,
+    Video,
+)
 from aiogram.utils.i18n import I18n, SimpleI18nMiddleware
 from aiogram.utils.media_group import MediaGroupBuilder
 from redis.asyncio import Redis
@@ -294,30 +304,110 @@ class TelegramBotController:
         )
         await self._send(coro)
 
-    async def send_finish_downloading_group(
+    async def answer_inline_query_cached_video(
         self,
-        files: Sequence[PhotoDTO | VideoDTO],
-        telegram_id: int,
-        message_id: int | None = None,
-        language: str | None = None,
+        inline_query_id: str,
+        video_dto: VideoDTO,
+        file_id: str,
     ) -> None:
         """
-        Send finish downloading group message.
+        Answer an inline query with a cached video using file_id.
 
-        :param files: List of files.
-        :param telegram_id: Telegram ID of the user.
-        :param message_id: Message ID.
-        :param language: Language code.
+        :param inline_query_id: ID of the inline query.
+        :param video_dto: DTO of the video.
+        :param file_id: ID of the file.
         """
-        caption = _(
-            "result direct message",
-            locale=language or self.language,
-        ).format(url=files[0].url)
-        media_group = MediaGroupBuilder(caption=caption)
+        result = InlineQueryResultCachedVideo(
+            id=str(uuid.uuid4()),
+            video_file_id=file_id,
+            title=video_dto.title or "Video",
+            description=video_dto.description,
+            caption=_("result direct message").format(url=video_dto.url),
+        )
+        coro = self._bot.answer_inline_query(
+            inline_query_id=inline_query_id,
+            results=[result],
+            cache_time=0,
+        )
+        await self._send(coro)
 
-        for file in files:
+    async def answer_inline_query_video(
+        self,
+        inline_query_id: str,
+        video_dto: VideoDTO,
+    ) -> None:
+        """
+        Answer an inline query with a video using a direct URL.
+
+        :param inline_query_id: ID of the inline query.
+        :param video_dto: DTO of the video.
+        """
+        if not video_dto.direct_download_url or not video_dto.thumbnail_url:
+            await self.answer_inline_query_error(inline_query_id)
+            return
+
+        result = InlineQueryResultVideo(
+            id=str(uuid.uuid4()),
+            video_url=video_dto.direct_download_url,
+            thumbnail_url=video_dto.thumbnail_url,
+            mime_type="video/mp4",
+            title=video_dto.title or "Video",
+            description=video_dto.description or "via @saver",
+            caption=_("result direct message").format(url=video_dto.url),
+        )
+        coro = self._bot.answer_inline_query(
+            inline_query_id=inline_query_id,
+            results=[result],
+            cache_time=0,
+        )
+        await self._send(coro)
+
+    async def answer_inline_query_error(
+        self,
+        inline_query_id: str,
+        error_text: str | None = None,
+    ) -> None:
+        """
+        Answer an inline query with an error message.
+
+        :param inline_query_id: ID of the inline query.
+        :param error_text: Error message.
+        """
+        text = error_text or _("error downloading")
+
+        result = InlineQueryResultArticle(
+            id=str(uuid.uuid4()),
+            title=_("error inline query"),
+            description=text,
+            input_message_content=InputTextMessageContent(
+                message_text=text,
+                parse_mode=self._bot.default.parse_mode,
+            ),
+        )
+        coro = self._bot.answer_inline_query(
+            inline_query_id=inline_query_id,
+            results=[result],
+            cache_time=0,
+        )
+        await self._send(coro)
+
+    async def _build_and_send_media_chunk(
+        self,
+        chunk: Sequence[PhotoDTO | VideoDTO],
+        chat_id: int,
+        caption: str | None = None,
+    ) -> None:
+        """
+        Build a MediaGroup from a chunk of files and send it.
+
+        :param chunk: A list of PhotoDTO or VideoDTO objects (max 10).
+        :param chat_id: The chat ID to send the media group to.
+        :param caption: The caption for the media group (if any).
+        """
+        media_group = MediaGroupBuilder(caption=caption)
+        for file in chunk:
             media_input: str | FSInputFile | URLInputFile | None = None
-            if isinstance(file, (PhotoDTO, AudioDTO)):
+            if isinstance(file, PhotoDTO):
                 media_input = file.media_url or (
                     FSInputFile(path=file.path) if file.path else None
                 )
@@ -343,11 +433,45 @@ class TelegramBotController:
                     supports_streaming=True,
                 )
 
-        coro = self._bot.send_media_group(
-            chat_id=telegram_id,
-            media=media_group.build(),
-        )
-        await self._send(coro)
+        if media_group.build():
+            coro = self._bot.send_media_group(
+                chat_id=chat_id,
+                media=media_group.build(),
+            )
+            await self._send(coro)
+
+    async def send_finish_downloading_group(
+        self,
+        files: Sequence[PhotoDTO | VideoDTO],
+        telegram_id: int,
+        message_id: int | None = None,
+        language: str | None = None,
+    ) -> None:
+        """
+        Send finish downloading group message.
+
+        :param files: List of files.
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID.
+        :param language: Language code.
+        """
+        chunk_size = 10
+        total_files = len(files)
+
+        caption = _(
+            "result direct message",
+            locale=language or self.language,
+        ).format(url=files[0].url)
+
+        for i in range(0, total_files, chunk_size):
+            chunk = files[i : i + chunk_size]
+
+            await self._build_and_send_media_chunk(
+                chunk=chunk,
+                chat_id=telegram_id,
+                caption=caption,
+            )
+
         if message_id is not None:
             coro2 = self._bot.delete_message(
                 message_id=message_id,
@@ -469,7 +593,7 @@ class TelegramBotController:
             )
             if video.thumbnail_url:
                 thumbnail_input = video.thumbnail_url
-        elif video.path and Path(video.path).exists():
+        elif video.path and video.path.exists():
             logging.info("Sending video via file upload: %s", video.path)
             video_input = FSInputFile(path=video.path)
             if video.thumbnail and Path(video.thumbnail).exists():
@@ -551,6 +675,23 @@ class TelegramBotController:
                 logging.exception(e)
             capture_exception(e)
             return None
+
+    async def send_video_is_private_error(
+        self,
+        telegram_id: int,
+        language: str | None = None,
+    ) -> None:
+        """
+        Send a message indicating the video is private or region-locked.
+
+        :param telegram_id: Telegram ID of the user.
+        :param language: Language for the message.
+        """
+        coro = self._bot.send_message(
+            chat_id=telegram_id,
+            text=_("video is private", locale=language or self.language),
+        )
+        await self._send(coro)
 
     async def send_tiktok_error_downloading(
         self,
