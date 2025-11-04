@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Saver 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-04 21:18+1000\n"
+"POT-Creation-Date: 2025-11-04 21:33+1000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -42,8 +42,7 @@ msgid "result direct message"
 msgstr ""
 
 #: saver_backend/services/telegram/bot_controller.py:376
-#: saver_backend/services/telegram/bot_controller.py:726
-msgid "error downloading"
+msgid "error downloading inline query"
 msgstr ""
 
 #: saver_backend/services/telegram/bot_controller.py:380
@@ -56,6 +55,10 @@ msgstr ""
 
 #: saver_backend/services/telegram/bot_controller.py:709
 msgid "tiktok photo unsupported"
+msgstr ""
+
+#: saver_backend/services/telegram/bot_controller.py:726
+msgid "error downloading"
 msgstr ""
 
 #: saver_backend/services/telegram/bot_controller.py:759

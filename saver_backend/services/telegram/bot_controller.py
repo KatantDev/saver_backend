@@ -373,7 +373,7 @@ class TelegramBotController:
         :param inline_query_id: ID of the inline query.
         :param error_text: Error message.
         """
-        text = error_text or _("error downloading")
+        text = error_text or _("error downloading inline query")
 
         result = InlineQueryResultArticle(
             id=str(uuid.uuid4()),

@@ -4,7 +4,7 @@ set -euo pipefail
 echo "🔧 Fixing plural forms and escaped newlines in .po files..."
 
 # Исправляем plural-формулы и двойные обратные слэши в \n
-sed -i \
+gsed -i \
   -e 's/===/==/g' \
   -e 's/!==/!=/g' \
   -e 's/\\\\n/\\n/g' \
