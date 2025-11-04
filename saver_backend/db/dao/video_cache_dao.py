@@ -1,3 +1,4 @@
+import sqlalchemy as sa
 from sqlalchemy import select
 
 from saver_backend.db.dao.base_dao import BaseDAO
@@ -50,3 +51,14 @@ class VideoCacheDAO(BaseDAO):
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
+
+    async def get_random(self, limit: int = 20) -> list[VideoCacheModel]:
+        """
+        Get N random video cache entries.
+
+        :param limit: The maximum number of entries to return.
+        :return: A list of VideoCacheModel instances.
+        """
+        query = select(VideoCacheModel).order_by(sa.func.random()).limit(limit)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())

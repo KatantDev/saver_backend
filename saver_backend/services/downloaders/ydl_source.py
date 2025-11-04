@@ -8,7 +8,6 @@ from typing import Any, ClassVar, Dict
 
 import sentry_sdk
 import yt_dlp
-from aiogram.types import Video
 from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import SourceEnum
@@ -19,7 +18,6 @@ from saver_backend.services.downloaders.exceptions import (
     VideoInfoNotSetError,
 )
 from saver_backend.services.downloaders.schema import (
-    VideoCacheDTO,
     VideoDTO,
 )
 from saver_backend.settings import settings
@@ -121,11 +119,7 @@ class YtDlpController(BaseSourceController, ABC):
         # Получаем информацию о видео, в случае, если данные не получены - останавливаем
         info_dict = await self.get_video_info(url=self._resolution.url)
         if not self._video or not info_dict:
-            if self._message_id:
-                await self._telegram_bot_controller.bot.delete_message(
-                    chat_id=self._telegram_id,
-                    message_id=self._message_id,
-                )
+            await self._send_error_message()
             return
 
         if not self._video.source_id:
@@ -149,7 +143,10 @@ class YtDlpController(BaseSourceController, ABC):
 
         if self._video.direct_download_url:
             logging.info("Attempting direct URL send for source %s.", self.SOURCE)
-            await self._send_and_cache_video()
+            await self._send_video(
+                self._video,
+                supports_streaming=self.SUPPORTS_STREAMING,
+            )
         else:
             logging.info("Starting full download for source %s.", self.SOURCE)
             await self._execute_download(info_dict)
@@ -186,13 +183,18 @@ class YtDlpController(BaseSourceController, ABC):
             await self._send_error_message()
             logging.error(
                 "yt-dlp reported success, but file %s does not exist.",
-                self._video,
+                self._video.path,
             )
             return
 
         thumbnail = self._get_thumbnail(source_id=self._video.source_id)
         self._video = self._video.model_copy(update={"thumbnail": thumbnail})
-        await self._send_and_cache_video()
+
+        await self._send_video(
+            video_dto=self._video,
+            supports_streaming=self.SUPPORTS_STREAMING,
+        )
+        self._cleanup_files()
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         """This hook's only job is to report download progress."""
@@ -248,100 +250,48 @@ class YtDlpController(BaseSourceController, ABC):
             ):
                 self._set_proxy()
                 return await self.get_video_info(url=url)
+
+            if "Access restricted" in str(e):
+                await self.delete_processing_message()
+                await self._telegram_bot_controller.send_video_is_private_error(
+                    telegram_id=self._telegram_id,
+                )
+                return None
+
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
         return None
 
-    async def _send_and_cache_video(self) -> None:
-        """Sends the video to the user and then caches the result."""
-        if not self._video:
-            logging.error("Cannot send video: self._video is not set.")
-            return
-
-        telegram_video = await self._telegram_bot_controller.send_finish_downloading(
-            video=self._video,
-            telegram_id=self._telegram_id,
-            message_id=self._message_id,
-            supports_streaming=self.SUPPORTS_STREAMING,
-        )
-        await self.delete_processing_message()
-
-        if telegram_video:
-            if not self._video.source_id:
-                logging.warning("Cannot cache video: source_id is missing.")
-                return
-
-            logging.info(
-                "Attempting to cache video with source_id=%s and quality=%s",
-                self._video.source_id,
-                self._video.quality,
-            )
-            await self._save_to_cache(telegram_video)
-
-        self._cleanup_files()
-
-    async def _save_to_cache(
-        self,
-        telegram_video: Video,
-    ) -> None:
+    async def get_video_dto(self) -> VideoDTO | None:
         """
-        Save video details to cache.
+        Fetch video info using yt-dlp and wrap it in a VideoDTO.
 
-        :param telegram_video: The Video object from aiogram after sending.
+        :return: A VideoDTO instance or None on failure.
         """
-        if not self._video:
-            logging.warning("Cannot save to cache: self._video is not set.")
-            return
+        info_dict = await self.get_video_info(url=self._resolution.url)
+        if not info_dict:
+            return None
 
-        video_cache = VideoCacheDTO.from_yt_dlp(
-            source=self.SOURCE,
-            telegram_video=telegram_video,
-            video=self._video,
+        return VideoDTO.from_yt_dlp(
+            info=info_dict,
+            file_path=self._video.path if self._video else None,
+            extract_direct_links=self.DIRECT_URL_DOWNLOAD,
+            quality=self._selected_format_id or "best",
         )
-        if not video_cache:
-            return
-
-        try:
-            logging.info("Saving video details to cache, %s", video_cache)
-            await self._video_cache_dao.create(video_cache=video_cache)
-            logging.info(
-                "Successfully cached video with source_id=%s and quality=%s",
-                self._video.source_id,
-                video_cache.quality,
-            )
-        except Exception as e:
-            logging.error(
-                "Failed to save video cache for source_id=%s and quality=%s: %s",
-                self._video.source_id,
-                video_cache.quality,
-                e,
-                exc_info=True,
-            )
-            sentry_sdk.capture_exception(e)
 
     def _cleanup_files(self) -> None:
         """Safely deletes the downloaded video and thumbnail files."""
         if not self._video:
             return
 
-        if self._video.path:
-            video_path = Path(self._video.path)
-            if video_path.exists():
-                try:
-                    video_path.unlink(missing_ok=True)
-                    logging.info("Successfully deleted video file: %s", video_path)
-                except OSError as e:
-                    logging.error("Error deleting video file %s: %s", video_path, e)
+        if self._video.path and self._video.path.exists():
+            self._video.path.unlink(missing_ok=True)
 
         if self._video.thumbnail:
             thumb_path = Path(self._video.thumbnail)
             if thumb_path.exists():
-                try:
-                    thumb_path.unlink(missing_ok=True)
-                    logging.info("Successfully deleted thumbnail file: %s", thumb_path)
-                except OSError as e:
-                    logging.error("Error deleting thumbnail file %s: %s", thumb_path, e)
+                thumb_path.unlink(missing_ok=True)
 
     def _get_thumbnail(self, source_id: str | None) -> Path | None:
         if not source_id:

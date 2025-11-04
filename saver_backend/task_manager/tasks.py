@@ -3,7 +3,9 @@ import logging
 from taskiq import TaskiqDepends
 
 from saver_backend.entities.resolution import Resolution
-from saver_backend.services.downloaders.exceptions import TikTokYtDlpDownloaderError
+from saver_backend.services.downloaders.exceptions import (
+    TikTokYtDlpDownloaderError,
+)
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
@@ -60,6 +62,42 @@ async def save_video(
         )
 
 
+@broker.task(
+    result_timeout=60,
+    time_limit=120,
+)
+async def process_inline_query(
+    resolution: Resolution,
+    telegram_id: int,
+    inline_query_id: str,
+    state: SaverState = TaskiqDepends(),
+    db: DatabaseState = TaskiqDepends(),
+) -> None:
+    """
+    Process an inline query to download a video and return the result.
+
+    :param resolution: The resolved URL information.
+    :param telegram_id: The ID of the user who sent the query.
+    :param inline_query_id: The ID of the inline query to answer.
+    :param state: The application state.
+    :param db: The database state.
+    """
+    controller_class = state.source_resolver.get_controller(resolution)
+    if not controller_class:
+        return
+
+    controller = controller_class(
+        resolution=resolution,
+        telegram_bot_controller=state.telegram_bot_controller,
+        telegram_id=telegram_id,
+        video_cache_dao=db.video_cache_dao,
+        user_dao=db.user_dao,
+        inline_query_id=inline_query_id,
+    )
+    await controller.set_user_language()
+    await controller.handle_inline_query()
+
+
 @broker.task()
 async def get_video_info(
     resolution: Resolution,
@@ -95,6 +133,7 @@ async def get_video_info(
 
     # Пытаемся получить информацию по видосу
     info_dict = await controller.get_video_info(url=resolution.url)
+
     if not info_dict:
         await state.telegram_bot_controller.edit_failed_video_info(
             telegram_id=telegram_id,
