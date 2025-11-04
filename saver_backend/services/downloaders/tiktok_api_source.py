@@ -152,6 +152,10 @@ class TikTokAPIController(BaseSourceController):
 
     async def download_video(self) -> None:
         """Download video or photo set from TikTok using tikwm.com API."""
+        if self._inline_query_id:
+            await self._handle_inline_query()
+            return
+
         info = await self.get_video_info(url=self._resolution.url)
         if not info:
             await self._send_error_message()

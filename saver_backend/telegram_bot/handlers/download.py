@@ -12,7 +12,6 @@ from aiogram.types import (
 )
 
 from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
-from saver_backend.db.models.video_cache_model import VideoCacheModel
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO
@@ -31,6 +30,8 @@ from saver_backend.telegram_bot.keyboards.callback import (
 from saver_backend.telegram_bot.keyboards.inline import (
     get_language_keyboard,
 )
+
+INLINE_SUPPORTED_SOURCES = [SourceEnum.TIKTOK, SourceEnum.INSTAGRAM_YDL]
 
 download_router = Router()
 
@@ -65,35 +66,6 @@ async def send_unknown_url(
     )
 
 
-def _create_inline_result_from_cache(
-    cached_video: VideoCacheModel,
-) -> InlineQueryResultCachedVideo | None:
-    """
-    Safely create an InlineQueryResultCachedVideo from a cache model.
-
-    Returns None if metadata parsing fails.
-
-    :param cached_video: The VideoCacheModel instance from the database.
-    :return: An InlineQueryResultCachedVideo instance or None.
-    """
-    try:
-        video_dto = VideoDTO.model_validate(cached_video.meta_data)
-        return InlineQueryResultCachedVideo(
-            id=str(uuid4()),
-            video_file_id=cached_video.file_id,
-            title=video_dto.title or "Cached Video",
-            description=f"Source: {cached_video.source}",
-            caption=_("result direct message").format(url=video_dto.url),
-        )
-    except Exception as e:
-        logging.error(
-            "Failed to parse metadata for cached video %s: %s",
-            cached_video.id,
-            e,
-        )
-        return None
-
-
 @download_router.inline_query(F.query == "")
 async def on_empty_inline_query(
     query: InlineQuery,
@@ -105,24 +77,41 @@ async def on_empty_inline_query(
     :param query: The inline query object.
     :param video_cache_dao: DAO for accessing video cache.
     """
-    cached_videos = await video_cache_dao.get_random(limit=20)
+    cached_videos = await video_cache_dao.get_latest(
+        limit=20,
+        sources=INLINE_SUPPORTED_SOURCES,
+    )
 
-    results = [
-        result
-        for item in cached_videos
-        if (result := _create_inline_result_from_cache(item)) is not None
-    ]
+    results: list[InlineQueryResultCachedVideo] = []
+    for item in cached_videos:
+        try:
+            video_dto = VideoDTO.model_validate(item.meta_data)
+            results.append(
+                InlineQueryResultCachedVideo(
+                    id=str(uuid4()),
+                    video_file_id=item.file_id,
+                    title=video_dto.title or "Cached Video",
+                    description=f"Source: {item.source}",
+                    caption=_(
+                        "result direct message",
+                    ).format(url=video_dto.url),
+                ),
+            )
+        except Exception as e:
+            logging.error(
+                "Failed to parse metadata for cached video %s: %s",
+                item.id,
+                e,
+            )
+            continue
 
     await query.answer(results, cache_time=10, is_personal=True)  # type: ignore[arg-type]
 
 
 @download_router.inline_query(
-    (F.query != ""),
+    F.query != "",
     SourceFilter(
-        sources=[
-            SourceEnum.TIKTOK,
-            SourceEnum.INSTAGRAM_YDL,
-        ],
+        sources=INLINE_SUPPORTED_SOURCES,
     ),
 )
 async def on_inline_query(query: InlineQuery, resolution: Resolution) -> None:

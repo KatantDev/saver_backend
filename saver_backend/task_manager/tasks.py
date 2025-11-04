@@ -95,7 +95,7 @@ async def process_inline_query(
         inline_query_id=inline_query_id,
     )
     await controller.set_user_language()
-    await controller.handle_inline_query()
+    await controller.download_video()
 
 
 @broker.task()

@@ -266,7 +266,7 @@ class BaseSourceController(ABC):
         )
         return True
 
-    async def handle_inline_query(self) -> None:
+    async def _handle_inline_query(self) -> None:
         """Process an inline query and send the result."""
         if not self._inline_query_id:
             logging.warning("handle_inline_query called without an inline_query_id.")

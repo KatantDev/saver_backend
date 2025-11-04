@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-04 15:12+1000\n"
+"POT-Creation-Date: 2025-11-04 15:50+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -42,7 +42,7 @@ msgstr ""
 #: saver_backend/services/telegram/bot_controller.py:555
 #: saver_backend/services/telegram/bot_controller.py:612
 #: saver_backend/services/telegram/bot_controller.py:659
-#: saver_backend/telegram_bot/handlers/download.py:86
+#: saver_backend/telegram_bot/handlers/download.py:96
 msgid "result direct message"
 msgstr ""
 "{url}\n"
@@ -84,30 +84,30 @@ msgstr ""
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Choose desired quality:"
 
-#: saver_backend/telegram_bot/handlers/download.py:60
+#: saver_backend/telegram_bot/handlers/download.py:61
 msgid "unknown url"
 msgstr ""
 "This URL is not supported for downloading.\n"
 "But we are already working on its support."
 
-#: saver_backend/telegram_bot/handlers/download.py:189
+#: saver_backend/telegram_bot/handlers/download.py:178
 msgid "get video info"
 msgstr "🔍 Getting video info... This may take about 5 seconds."
 
-#: saver_backend/telegram_bot/handlers/download.py:219
-#: saver_backend/telegram_bot/handlers/download.py:274
+#: saver_backend/telegram_bot/handlers/download.py:208
+#: saver_backend/telegram_bot/handlers/download.py:263
 msgid "format selection expired"
 msgstr "Selection time expired. Please send the link again."
 
-#: saver_backend/telegram_bot/handlers/download.py:227
+#: saver_backend/telegram_bot/handlers/download.py:216
 msgid "choose language for download"
 msgstr ""
 "<b>{title}</b>\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Choose desired language:"
 
-#: saver_backend/telegram_bot/handlers/download.py:245
-#: saver_backend/telegram_bot/handlers/download.py:282
+#: saver_backend/telegram_bot/handlers/download.py:234
+#: saver_backend/telegram_bot/handlers/download.py:271
 msgid "format not found"
 msgstr "An error occurred, the format was not found. Please try again."
 
