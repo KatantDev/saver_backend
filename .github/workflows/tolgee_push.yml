@@ -25,6 +25,32 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+
+      - name: Compute Tolgee tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Safely read the latest commit message without interpolation
+          RAW_MSG="$(git log -1 --pretty=%B || true)"
+          RAW_MSG="${RAW_MSG:-manual run}"
+
+          # Use only the part after the first colon (or the whole first line if no colon)
+          FIRST_LINE="$(printf '%s' "$RAW_MSG" | head -n1)"
+          DESC_PART="$(printf '%s' "$FIRST_LINE" | awk -F':' '{ if (NF>1) {print $2} else {print $1} }' | xargs)"
+
+          # Sanitize -> keep alnum/space/_- ; spaces -> underscores ; limit to 40 chars
+          CLEAN_MSG="$(printf '%s' "$DESC_PART" \
+            | tr -dc '[:alnum:][:space:]_-' \
+            | tr ' ' '_' \
+            | cut -c1-40)"
+
+          # Fallback if empty after sanitization
+          CLEAN_MSG="${CLEAN_MSG:-auto_tag}"
+
+          echo "tag=$CLEAN_MSG" >> "$GITHUB_OUTPUT"
+          echo "Using tag: $CLEAN_MSG"
+
       - name: Push new translation keys to Tolgee
         working-directory: locales
         env:
@@ -32,18 +58,13 @@ jobs:
           TOLGEE_API_KEY: ${{ secrets.TOLGEE_API_KEY }}
           TOLGEE_PROJECT_ID: ${{ secrets.TOLGEE_PROJECT_ID }}
         run: |
-          RAW_MSG="${{ github.event.head_commit.message }}"
-          DESC_PART=$(echo "$RAW_MSG" | awk -F':' '{if (NF>1) {print $2} else {print $1}}')
-          DESC_PART=$(echo "$DESC_PART" | xargs)
-          CLEAN_MSG=$(echo "$DESC_PART" | tr -dc '[:alnum:][:space:]_-' | tr ' ' '_' | cut -c1-40)
-
-          echo "🔹 Pushing translations with tag: $CLEAN_MSG"
+          echo "🔹 Pushing translations with tag: ${{ steps.tag.outputs.tag }}"
           tolgee push \
-            --api-url $TOLGEE_API_URL \
-            --api-key $TOLGEE_API_KEY \
-            --project-id $TOLGEE_PROJECT_ID \
+            --api-url "$TOLGEE_API_URL" \
+            --api-key "$TOLGEE_API_KEY" \
+            --project-id "$TOLGEE_PROJECT_ID" \
             --verbose \
             --force-mode KEEP \
             --files-template "{languageTag}/LC_MESSAGES/messages.po" \
             --format PO_ICU \
-            --tag-new-keys "$CLEAN_MSG"
+            --tag-new-keys "${{ steps.tag.outputs.tag }}"
