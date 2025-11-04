@@ -263,23 +263,6 @@ class YtDlpController(BaseSourceController, ABC):
             sentry_sdk.capture_exception(e)
         return None
 
-    async def get_video_dto(self) -> VideoDTO | None:
-        """
-        Fetch video info using yt-dlp and wrap it in a VideoDTO.
-
-        :return: A VideoDTO instance or None on failure.
-        """
-        info_dict = await self.get_video_info(url=self._resolution.url)
-        if not info_dict:
-            return None
-
-        return VideoDTO.from_yt_dlp(
-            info=info_dict,
-            file_path=self._video.path if self._video else None,
-            extract_direct_links=self.DIRECT_URL_DOWNLOAD,
-            quality=self._selected_format_id or "best",
-        )
-
     def _cleanup_files(self) -> None:
         """Safely deletes the downloaded video and thumbnail files."""
         if not self._video:

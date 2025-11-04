@@ -65,33 +65,6 @@ class TikTokAPIController(BaseSourceController):
             logging.error("Request to TikWM API failed: %s", e)
             return None
 
-    async def get_video_dto(self) -> VideoDTO | None:
-        """
-        Fetch video info from TikWM API and wrap it in a VideoDTO.
-
-        Handles slideshows by returning a DTO without a direct video URL.
-
-        :return: A VideoDTO instance or None on failure.
-        """
-        info = await self.get_video_info(url=self._resolution.url)
-        if not info:
-            return None
-
-        tikwm_data = TikWMData.model_validate(info)
-
-        # For slideshows, we create a DTO that signals it's not a video.
-        if tikwm_data.images:
-            self._video = VideoDTO(
-                source_id=tikwm_data.id,
-                url=self._resolution.url,
-                title=tikwm_data.title,
-                formats=[],  # Empty formats indicate it's not a standard video
-            )
-            return self._video
-
-        self._video = VideoDTO.from_tikwm(data=tikwm_data, url=self._resolution.url)
-        return self._video
-
     async def _handle_slideshow(
         self,
         data: TikWMData,

@@ -128,18 +128,6 @@ class BaseSourceController(ABC):
         """
         return None
 
-    @abstractmethod
-    async def get_video_dto(self) -> VideoDTO | None:
-        """
-        Fetch video information and return it as a standardized VideoDTO.
-
-        This is the primary method for getting video metadata in a uniform format,
-        regardless of the source.
-
-        :return: A VideoDTO instance or None if info could not be fetched.
-        """
-        raise NotImplementedError
-
     async def _send_error_message(self, with_delete: bool = True) -> None:
         """
         Send error message, handling both direct messages and inline queries.
@@ -189,29 +177,10 @@ class BaseSourceController(ABC):
         if telegram_video:
             await self._save_video_to_cache(video_dto, telegram_video)
 
-        if not self._inline_query_id:
-            return
-
-        # --- Inline Query Response Logic ---
-        if telegram_video:
-            # Success: we got a file_id, now we can answer the query.
-            await self._telegram_bot_controller.answer_inline_query_cached_video(
-                inline_query_id=self._inline_query_id,
+        if self._inline_query_id:
+            await self._answer_inline_query(
                 video_dto=video_dto,
-                file_id=telegram_video.file_id,
-            )
-        elif video_dto.direct_download_url:
-            # Fallback for when upload failed but we have a direct URL
-            await self._telegram_bot_controller.answer_inline_query_video(
-                inline_query_id=self._inline_query_id,
-                video_dto=video_dto,
-            )
-        else:
-            # Total failure: couldn't upload, no direct URL.
-            # This happens if the bot is blocked by the user.
-            await self._telegram_bot_controller.answer_inline_query_error(
-                inline_query_id=self._inline_query_id,
-                error_text=_("inline mode blocked error"),
+                telegram_video=telegram_video,
             )
 
     async def _save_video_to_cache(
@@ -304,3 +273,40 @@ class BaseSourceController(ABC):
                 url=self._resolution.url,
             )
         return True
+
+    async def _answer_inline_query(
+        self,
+        video_dto: VideoDTO,
+        telegram_video: Video | None,
+    ) -> None:
+        """
+        Encapsulates the logic for responding to an inline query.
+
+        It uses the result of the video sending attempt to determine how to answer.
+
+        :param video_dto: The DTO containing video metadata.
+        :param telegram_video: The result from the bot send operation, or None if failed
+        """
+        if not self._inline_query_id:
+            return
+
+        if telegram_video:
+            # Success: we got a file_id, now we can answer the query.
+            await self._telegram_bot_controller.answer_inline_query_cached_video(
+                inline_query_id=self._inline_query_id,
+                video_dto=video_dto,
+                file_id=telegram_video.file_id,
+            )
+        elif video_dto.direct_download_url:
+            # Fallback for when upload failed but we have a direct URL
+            await self._telegram_bot_controller.answer_inline_query_video(
+                inline_query_id=self._inline_query_id,
+                video_dto=video_dto,
+            )
+        else:
+            # Total failure: couldn't upload, no direct URL.
+            # This happens if the bot is blocked by the user.
+            await self._telegram_bot_controller.answer_inline_query_error(
+                inline_query_id=self._inline_query_id,
+                error_text=_("inline mode blocked error"),
+            )
