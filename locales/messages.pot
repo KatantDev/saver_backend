@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Saver 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-04 02:49+1000\n"
+"POT-Creation-Date: 2025-11-04 15:12+1000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -75,21 +75,21 @@ msgstr ""
 msgid "unknown url"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:190
+#: saver_backend/telegram_bot/handlers/download.py:189
 msgid "get video info"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:220
-#: saver_backend/telegram_bot/handlers/download.py:275
+#: saver_backend/telegram_bot/handlers/download.py:219
+#: saver_backend/telegram_bot/handlers/download.py:274
 msgid "format selection expired"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:228
+#: saver_backend/telegram_bot/handlers/download.py:227
 msgid "choose language for download"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:246
-#: saver_backend/telegram_bot/handlers/download.py:283
+#: saver_backend/telegram_bot/handlers/download.py:245
+#: saver_backend/telegram_bot/handlers/download.py:282
 msgid "format not found"
 msgstr ""
 

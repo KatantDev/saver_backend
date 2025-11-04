@@ -241,9 +241,25 @@ class VKClipsDetector(Detector):
         "clips": re.compile(r"^/clip(?P<code>-?\d+_\d+)/?$"),
     }
 
+    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"clip-?\d+_\d+")
+
     def match(self, url: str) -> Optional[Resolution]:
+        """
+        Check if the url is a valid VK Clip url.
+
+        :param url: URL to check.
+        :return: Resolution if the url is valid, None otherwise.
+        """
         if not self._host_in(url, *self.HOSTS):
             return None
+
+        parsed = urlparse(url)
+
+        if parsed.query:
+            match = self._CODE_RE.search(parsed.query)
+            if match:
+                url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
+
         return self._match_regex(url)
 
 

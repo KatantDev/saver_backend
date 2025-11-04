@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-04 02:49+1000\n"
+"POT-Creation-Date: 2025-11-04 15:12+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -90,24 +90,24 @@ msgstr ""
 "This URL is not supported for downloading.\n"
 "But we are already working on its support."
 
-#: saver_backend/telegram_bot/handlers/download.py:190
+#: saver_backend/telegram_bot/handlers/download.py:189
 msgid "get video info"
 msgstr "🔍 Getting video info... This may take about 5 seconds."
 
-#: saver_backend/telegram_bot/handlers/download.py:220
-#: saver_backend/telegram_bot/handlers/download.py:275
+#: saver_backend/telegram_bot/handlers/download.py:219
+#: saver_backend/telegram_bot/handlers/download.py:274
 msgid "format selection expired"
 msgstr "Selection time expired. Please send the link again."
 
-#: saver_backend/telegram_bot/handlers/download.py:228
+#: saver_backend/telegram_bot/handlers/download.py:227
 msgid "choose language for download"
 msgstr ""
 "<b>{title}</b>\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Choose desired language:"
 
-#: saver_backend/telegram_bot/handlers/download.py:246
-#: saver_backend/telegram_bot/handlers/download.py:283
+#: saver_backend/telegram_bot/handlers/download.py:245
+#: saver_backend/telegram_bot/handlers/download.py:282
 msgid "format not found"
 msgstr "An error occurred, the format was not found. Please try again."
 
