@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -15,6 +16,7 @@ from saver_backend.services.downloaders.schema import (
     VideoDTO,
 )
 from saver_backend.services.i18n import gettext as _
+from saver_backend.settings import settings
 
 if TYPE_CHECKING:
     from saver_backend.db.dao.user_dao import UserDAO
@@ -50,6 +52,16 @@ class BaseSourceController(ABC):
         self._message_id = message_id
         self._inline_query_id = inline_query_id
         self._last_percent = 0
+
+        # Proxies
+        proxies = settings.proxies
+        random.shuffle(proxies)
+        self._proxy: str | None = None
+        if settings.environment != "local":
+            self.proxy = proxies[0]
+            self._proxies = proxies[1:]
+        else:
+            self._proxies = []
 
     async def set_user_language(self, language: str | None = None) -> None:
         """

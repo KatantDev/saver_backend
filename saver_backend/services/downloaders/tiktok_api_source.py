@@ -31,7 +31,7 @@ class TikTokAPIController(BaseSourceController):
         self._video: VideoDTO | None = None
 
         self._api_url = "https://www.tikwm.com/api/"
-        self._client = AsyncClient()
+        self._client = AsyncClient(proxy=self._proxy)
 
     async def get_video_info(self, url: str) -> dict[str, Any] | None:
         """

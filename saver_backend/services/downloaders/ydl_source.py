@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import random
 import secrets
 from abc import ABC
 from pathlib import Path
@@ -40,6 +39,7 @@ class YtDlpController(BaseSourceController, ABC):
         self._download_directory.mkdir(parents=True, exist_ok=True)
 
         self._base_options: dict[str, Any] = {
+            "proxy": self._proxy,
             "format": "best",
             "outtmpl": str(self._download_directory / "%(id)s.%(ext)s"),
             "noplaylist": True,
@@ -53,15 +53,6 @@ class YtDlpController(BaseSourceController, ABC):
         }
         if self._selected_format_id:
             self._base_options["format"] = self._selected_format_id
-
-        # Proxies
-        proxies = settings.proxies
-        random.shuffle(proxies)
-        if settings.environment != "local":
-            self._base_options["proxy"] = proxies[0]
-            self._proxies = proxies[1:]
-        else:
-            self._proxies = []
 
         # Set cookies if needed and initialize yt-dlp controller
         self._set_cookies()
