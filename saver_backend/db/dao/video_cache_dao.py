@@ -60,6 +60,7 @@ class VideoCacheDAO(BaseDAO):
         Get the latest N video cache entries.
 
         :param limit: The maximum number of entries to return.
+        :param sources: The list of sources.
         :return: A list of VideoCacheModel instances.
         """
         query = select(VideoCacheModel).order_by(VideoCacheModel.created_at.desc())

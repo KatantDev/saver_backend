@@ -30,7 +30,15 @@ async def on_empty_inline_query(
     :param query: The inline query object.
     :param video_cache_dao: DAO for accessing video cache.
     """
-    cached_videos = await video_cache_dao.get_latest(limit=20)
+    cached_videos = await video_cache_dao.get_latest(
+        limit=20,
+        sources=[
+            SourceEnum.TIKTOK,
+            SourceEnum.INSTAGRAM_YDL,
+            SourceEnum.VK_CLIPS_YDL,
+            SourceEnum.YOUTUBE_SHORTS_YDL,
+        ],
+    )
 
     results: list[InlineQueryResultCachedMpeg4Gif] = []
     for item in cached_videos:
