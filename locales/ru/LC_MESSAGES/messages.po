@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-04 15:50+1000\n"
+"POT-Creation-Date: 2025-11-04 16:44+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -42,7 +42,7 @@ msgstr ""
 #: saver_backend/services/telegram/bot_controller.py:555
 #: saver_backend/services/telegram/bot_controller.py:612
 #: saver_backend/services/telegram/bot_controller.py:659
-#: saver_backend/telegram_bot/handlers/download.py:96
+#: saver_backend/telegram_bot/handlers/inline.py:43
 msgid "result direct message"
 msgstr ""
 "{url}\n"
@@ -84,32 +84,41 @@ msgstr ""
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Выберите желаемое качество:"
 
-#: saver_backend/telegram_bot/handlers/download.py:61
+#: saver_backend/telegram_bot/handlers/download.py:51
 msgid "unknown url"
 msgstr ""
 "Эта ссылка не поддерживается для скачивания.\n"
 "Но мы уже работаем над её поддержкой."
 
-#: saver_backend/telegram_bot/handlers/download.py:178
+#: saver_backend/telegram_bot/handlers/download.py:106
 msgid "get video info"
 msgstr "🔍 Получаю информацию о видео... Это может занять порядка 5 секунд."
 
-#: saver_backend/telegram_bot/handlers/download.py:208
-#: saver_backend/telegram_bot/handlers/download.py:263
+#: saver_backend/telegram_bot/handlers/download.py:136
+#: saver_backend/telegram_bot/handlers/download.py:191
 msgid "format selection expired"
 msgstr "Время выбора истекло. Пожалуйста, отправьте ссылку заново."
 
-#: saver_backend/telegram_bot/handlers/download.py:216
+#: saver_backend/telegram_bot/handlers/download.py:144
 msgid "choose language for download"
 msgstr ""
 "<b>{title}</b>\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Выберите желаемый язык:"
 
-#: saver_backend/telegram_bot/handlers/download.py:234
-#: saver_backend/telegram_bot/handlers/download.py:271
+#: saver_backend/telegram_bot/handlers/download.py:162
+#: saver_backend/telegram_bot/handlers/download.py:199
 msgid "format not found"
 msgstr "Произошла ошибка, формат не найден. Пожалуйста, попробуйте ещё раз."
+
+#: saver_backend/telegram_bot/handlers/inline.py:88
+#: saver_backend/telegram_bot/handlers/inline.py:91
+msgid "unsupported inline query"
+msgstr "Пожалуйста, введите корректную ссылку."
+
+#: saver_backend/telegram_bot/handlers/inline.py:89
+msgid "supported inline query urls"
+msgstr "Поддерживаемые сервисы: TikTok, Instagram Рилсы."
 
 #: saver_backend/telegram_bot/handlers/start.py:58
 #: saver_backend/telegram_bot/handlers/subscribe.py:36
