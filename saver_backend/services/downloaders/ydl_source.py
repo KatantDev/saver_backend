@@ -119,11 +119,7 @@ class YtDlpController(BaseSourceController, ABC):
         # Получаем информацию о видео, в случае, если данные не получены - останавливаем
         info_dict = await self.get_video_info(url=self._resolution.url)
         if not self._video or not info_dict:
-            if self._message_id:
-                await self._telegram_bot_controller.bot.delete_message(
-                    chat_id=self._telegram_id,
-                    message_id=self._message_id,
-                )
+            await self._send_error_message()
             return
 
         if not self._video.source_id:
@@ -289,23 +285,13 @@ class YtDlpController(BaseSourceController, ABC):
         if not self._video:
             return
 
-        if self._video.path:
-            video_path = self._video.path
-            if video_path.exists():
-                try:
-                    video_path.unlink(missing_ok=True)
-                    logging.info("Successfully deleted video file: %s", video_path)
-                except OSError as e:
-                    logging.error("Error deleting video file %s: %s", video_path, e)
+        if self._video.path and self._video.path.exists():
+            self._video.path.unlink(missing_ok=True)
 
         if self._video.thumbnail:
             thumb_path = Path(self._video.thumbnail)
             if thumb_path.exists():
-                try:
-                    thumb_path.unlink(missing_ok=True)
-                    logging.info("Successfully deleted thumbnail file: %s", thumb_path)
-                except OSError as e:
-                    logging.error("Error deleting thumbnail file %s: %s", thumb_path, e)
+                thumb_path.unlink(missing_ok=True)
 
     def _get_thumbnail(self, source_id: str | None) -> Path | None:
         if not source_id:
