@@ -116,10 +116,6 @@ class YtDlpController(BaseSourceController, ABC):
         If a cached version (file_id) exists, it sends it directly.
         Otherwise, it proceeds with the full download process.
         """
-        if self._inline_query_id:
-            await self._handle_inline_query()
-            return
-
         # Получаем информацию о видео, в случае, если данные не получены - останавливаем
         info_dict = await self.get_video_info(url=self._resolution.url)
         if not self._video or not info_dict:

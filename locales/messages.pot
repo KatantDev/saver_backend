@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Saver 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-04 15:50+1000\n"
+"POT-Creation-Date: 2025-11-04 17:10+1000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,12 +17,12 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
 
-#: saver_backend/services/downloaders/base_source.py:307
-msgid "tiktok photo unsupported in inline query"
+#: saver_backend/services/downloaders/base_source.py:214
+msgid "inline mode blocked error"
 msgstr ""
 
-#: saver_backend/services/downloaders/base_source.py:336
-msgid "inline mode blocked error"
+#: saver_backend/services/downloaders/tiktok_api_source.py:107
+msgid "tiktok photo unsupported in inline query"
 msgstr ""
 
 #: saver_backend/services/telegram/bot_controller.py:261

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sounds 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-04 15:50+1000\n"
+"POT-Creation-Date: 2025-11-04 17:10+1000\n"
 "PO-Revision-Date: 2025-10-05 11:52+1000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -18,13 +18,13 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
 
-#: saver_backend/services/downloaders/base_source.py:307
-msgid "tiktok photo unsupported in inline query"
-msgstr "Photo downloading is not supported in inline mode"
-
-#: saver_backend/services/downloaders/base_source.py:336
+#: saver_backend/services/downloaders/base_source.py:214
 msgid "inline mode blocked error"
 msgstr "To use inline mode, please start or unblock the bot."
+
+#: saver_backend/services/downloaders/tiktok_api_source.py:107
+msgid "tiktok photo unsupported in inline query"
+msgstr "Photo downloading is not supported in inline mode"
 
 #: saver_backend/services/telegram/bot_controller.py:261
 #: saver_backend/telegram_bot/handlers/start.py:33

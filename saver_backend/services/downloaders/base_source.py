@@ -142,10 +142,16 @@ class BaseSourceController(ABC):
 
     async def _send_error_message(self, with_delete: bool = True) -> None:
         """
-        Send error message.
+        Send error message, handling both direct messages and inline queries.
 
         :param with_delete: If true, delete by message_id progress.
         """
+        if self._inline_query_id:
+            await self._telegram_bot_controller.answer_inline_query_error(
+                inline_query_id=self._inline_query_id,
+            )
+            return
+
         if self._message_id and with_delete:
             await self._telegram_bot_controller.delete_message(
                 telegram_id=self._telegram_id,
@@ -182,6 +188,31 @@ class BaseSourceController(ABC):
 
         if telegram_video:
             await self._save_video_to_cache(video_dto, telegram_video)
+
+        if not self._inline_query_id:
+            return
+
+        # --- Inline Query Response Logic ---
+        if telegram_video:
+            # Success: we got a file_id, now we can answer the query.
+            await self._telegram_bot_controller.answer_inline_query_cached_video(
+                inline_query_id=self._inline_query_id,
+                video_dto=video_dto,
+                file_id=telegram_video.file_id,
+            )
+        elif video_dto.direct_download_url:
+            # Fallback for when upload failed but we have a direct URL
+            await self._telegram_bot_controller.answer_inline_query_video(
+                inline_query_id=self._inline_query_id,
+                video_dto=video_dto,
+            )
+        else:
+            # Total failure: couldn't upload, no direct URL.
+            # This happens if the bot is blocked by the user.
+            await self._telegram_bot_controller.answer_inline_query_error(
+                inline_query_id=self._inline_query_id,
+                error_text=_("inline mode blocked error"),
+            )
 
     async def _save_video_to_cache(
         self,
@@ -258,80 +289,18 @@ class BaseSourceController(ABC):
             source_id,
             quality,
         )
-        await self.delete_processing_message()
-        await self._telegram_bot_controller.send_video_by_file_id(
-            telegram_id=self._telegram_id,
-            file_id=cached_video.file_id,
-            url=self._resolution.url,
-        )
-        return True
-
-    async def _handle_inline_query(self) -> None:
-        """Process an inline query and send the result."""
-        if not self._inline_query_id:
-            logging.warning("handle_inline_query called without an inline_query_id.")
-            return
-
-        video_dto = await self.get_video_dto()
-        if not video_dto or not video_dto.source_id:
-            await self._telegram_bot_controller.answer_inline_query_error(
-                inline_query_id=self._inline_query_id,
-            )
-            return
-
-        cached_video = await self._video_cache_dao.get_by_source_id_and_quality(
-            source=self.SOURCE,
-            source_id=video_dto.source_id,
-            quality=video_dto.quality or "best",
-        )
-        if cached_video:
-            logging.info(
-                "Cache hit for inline query: source_id=%s, quality=%s",
-                video_dto.source_id,
-                video_dto.quality,
-            )
+        if self._inline_query_id:
+            video_dto = VideoDTO.model_validate(cached_video.meta_data)
             await self._telegram_bot_controller.answer_inline_query_cached_video(
                 inline_query_id=self._inline_query_id,
                 video_dto=video_dto,
                 file_id=cached_video.file_id,
             )
-            return
-
-        # Slideshow case for TikTok
-        if (
-            self._resolution.source == SourceEnum.TIKTOK
-            and not video_dto.direct_download_url
-        ):
-            await self._telegram_bot_controller.answer_inline_query_error(
-                inline_query_id=self._inline_query_id,
-                error_text=_("tiktok photo unsupported in inline query"),
-            )
-            return
-
-        # Try to send to PM to get file_id
-        sent_video = await self._telegram_bot_controller.send_finish_downloading(
-            video=video_dto,
-            telegram_id=self._telegram_id,
-        )
-
-        if sent_video:
-            # Success: answer with file_id
-            await self._telegram_bot_controller.answer_inline_query_cached_video(
-                inline_query_id=self._inline_query_id,
-                video_dto=video_dto,
-                file_id=sent_video.file_id,
-            )
-            await self.save_video_to_cache(video_dto, sent_video)
-        elif video_dto.direct_download_url:
-            # Fallback: answer with direct URL
-            await self._telegram_bot_controller.answer_inline_query_video(
-                inline_query_id=self._inline_query_id,
-                video_dto=video_dto,
-            )
         else:
-            # Failure: show error, likely because PM is blocked and
-            # no direct URL is available
-            await self._telegram_bot_controller.answer_inline_query_error(
-                inline_query_id=self._inline_query_id,
-                error_text=_("inline mode blocked error"),
+            await self.delete_processing_message()
+            await self._telegram_bot_controller.send_video_by_file_id(
+                telegram_id=self._telegram_id,
+                file_id=cached_video.file_id,
+                url=self._resolution.url,
             )
+        return True

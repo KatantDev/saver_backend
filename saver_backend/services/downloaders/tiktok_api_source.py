@@ -14,6 +14,7 @@ from saver_backend.services.downloaders.schema import (
     TikWMResponse,
     VideoDTO,
 )
+from saver_backend.services.i18n import gettext as _
 
 
 class TikTokAPIController(BaseSourceController):
@@ -27,6 +28,7 @@ class TikTokAPIController(BaseSourceController):
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._download_directory.mkdir(parents=True, exist_ok=True)
         self._temp_files: list[Path] = []
+        self._video: VideoDTO | None = None
 
         self._api_url = "https://www.tikwm.com/api/"
         self._client = AsyncClient()
@@ -79,14 +81,16 @@ class TikTokAPIController(BaseSourceController):
 
         # For slideshows, we create a DTO that signals it's not a video.
         if tikwm_data.images:
-            return VideoDTO(
+            self._video = VideoDTO(
                 source_id=tikwm_data.id,
                 url=self._resolution.url,
                 title=tikwm_data.title,
                 formats=[],  # Empty formats indicate it's not a standard video
             )
+            return self._video
 
-        return VideoDTO.from_tikwm(data=tikwm_data, url=self._resolution.url)
+        self._video = VideoDTO.from_tikwm(data=tikwm_data, url=self._resolution.url)
+        return self._video
 
     async def _handle_slideshow(
         self,
@@ -97,6 +101,13 @@ class TikTokAPIController(BaseSourceController):
 
         :param data: The data to send.
         """
+        if self._inline_query_id:
+            await self._telegram_bot_controller.answer_inline_query_error(
+                inline_query_id=self._inline_query_id,
+                error_text=_("tiktok photo unsupported in inline query"),
+            )
+            return
+
         if not data.images or not data.music:
             await self._send_error_message()
             return
@@ -152,10 +163,6 @@ class TikTokAPIController(BaseSourceController):
 
     async def download_video(self) -> None:
         """Download video or photo set from TikTok using tikwm.com API."""
-        if self._inline_query_id:
-            await self._handle_inline_query()
-            return
-
         info = await self.get_video_info(url=self._resolution.url)
         if not info:
             await self._send_error_message()
