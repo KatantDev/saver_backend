@@ -58,17 +58,29 @@ class YtDlpController(BaseSourceController, ABC):
         self._set_cookies()
         self._yt_dlp = self._create_yt_dlp(self._base_options)
 
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        self._yt_dlp.close()
+
     def _create_yt_dlp(self, params: dict[str, Any]) -> yt_dlp.YoutubeDL:
+        if hasattr(self, "_yt_dlp"):
+            self._yt_dlp.close()
+
         controller = yt_dlp.YoutubeDL(params)
         controller.add_progress_hook(self._progress_hook)
         return controller
 
     def _set_proxy(self) -> None:
-        if len(self._proxies) == 0:
-            raise IPAddressBlockedError
-        params = {**self._yt_dlp.params, "proxy": self._proxies[0]}
-        self._proxies.pop(0)
-        self._yt_dlp = self._create_yt_dlp(params)
+        try:
+            self._proxy = self._proxies.pop(0)
+        except IndexError as error:
+            raise IPAddressBlockedError from error
+        self._yt_dlp = self._create_yt_dlp(
+            {
+                **self._yt_dlp.params,
+                "proxy": self._proxy,
+            },
+        )
 
     @property
     def video_info(self) -> VideoDTO:
@@ -162,7 +174,7 @@ class YtDlpController(BaseSourceController, ABC):
         except Exception as e:
             await self._send_error_message()
             if settings.environment == "local":
-                logging.error("yt-dlp download process failed: %s", e, exc_info=True)
+                logging.exception(e)
             sentry_sdk.capture_exception(e)
 
         if not self._video or not self._video.path:

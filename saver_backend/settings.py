@@ -59,11 +59,11 @@ class Settings(BaseSettings):
     sentry_sample_rate: float = 1.0
 
     # Telegram bot configuration.
-    telegram_bot_token: str = "7929882587:AAEKgw4y9YBVlpFsFrXemlu9Q-jCxHsjFY4"
-    telegram_secret_token: str = "82-Ma_KyYj6hkMAvN6j-2J7lJg7Lgua"
-    subscription_channels: list[str] = ["expensive_gifts_channel"]
+    telegram_bot_token: str = "42:TOKEN"
+    telegram_secret_token: str = "verysecrettoken"
+    subscription_channels: list[str] = ["channel_username"]
     admin_chat_id: int = -4816121008
-    instagram_accounts: list[str] = ["katantdev@yandex.ru:coxdib-2nyxki-Kofwuh"]
+    instagram_accounts: list[str] = ["username:password"]
 
     # Telegram bot API URL
     telegram_bot_api_url: str = "http://bot-api:8081"

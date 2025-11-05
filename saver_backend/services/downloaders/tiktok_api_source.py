@@ -33,6 +33,10 @@ class TikTokAPIController(BaseSourceController):
         self._api_url = "https://www.tikwm.com/api/"
         self._client = AsyncClient(proxy=self._proxy)
 
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        await self._client.aclose()
+
     async def get_video_info(self, url: str) -> dict[str, Any] | None:
         """
         Fetch video info from TikWM API.
@@ -62,7 +66,7 @@ class TikTokAPIController(BaseSourceController):
             )
             return None
         except RequestError as e:
-            logging.error("Request to TikWM API failed: %s", e)
+            logging.exception(e)
             return None
 
     async def _handle_slideshow(

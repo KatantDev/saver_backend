@@ -1,5 +1,6 @@
 import logging
 
+from sentry_sdk import capture_exception
 from taskiq import TaskiqDepends
 
 from saver_backend.entities.resolution import Resolution
@@ -7,6 +8,7 @@ from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
 )
 from saver_backend.services.downloaders.schema import VideoDTO
+from saver_backend.settings import settings
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
 
@@ -60,6 +62,11 @@ async def save_video(
             telegram_id=telegram_id,
             language="en",
         )
+    except Exception as e:
+        if settings.environment == "local":
+            logging.exception(e)
+        capture_exception(e)
+        await controller.close()
 
 
 @broker.task(

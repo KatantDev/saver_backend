@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from aiogram.types import Video
-from sentry_sdk import capture_exception
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
@@ -57,11 +56,13 @@ class BaseSourceController(ABC):
         proxies = settings.proxies
         random.shuffle(proxies)
         self._proxy: str | None = None
-        if settings.environment != "local":
-            self.proxy = proxies[0]
-            self._proxies = proxies[1:]
-        else:
-            self._proxies = []
+        self._proxies: list[str] = []
+        if proxies:
+            self._proxy, *self._proxies = proxies
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close resources if needed."""
 
     async def set_user_language(self, language: str | None = None) -> None:
         """
@@ -234,7 +235,6 @@ class BaseSourceController(ABC):
                 e,
                 exc_info=True,
             )
-            capture_exception(e)
 
     async def save_video_to_cache(
         self,

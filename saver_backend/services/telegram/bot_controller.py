@@ -148,8 +148,7 @@ class TelegramBotController:
         except TelegramRetryAfter:
             pass
         except TelegramAPIError as e:
-            capture_exception(e)
-            logging.error(f"Failed to set webhook: {e}")
+            logging.exception(e)
             return False
         logging.info(f"Set webhook to {settings.webhook_telegram_url}")
         return True
@@ -281,8 +280,7 @@ class TelegramBotController:
             )
             return message.message_id
         except AiogramError as e:
-            capture_exception(e)
-            logging.error(f"Failed to send start downloading message: {e}")
+            logging.error(e)
             return None
 
     async def send_update_downloading(
@@ -585,7 +583,7 @@ class TelegramBotController:
         :param retry: Retry count for network errors.
         :return: Sent video or None on failure.
         """
-        if retry > 3:
+        if retry > 5:
             logging.error("Max retries reached for sending video to %s", telegram_id)
             return None
 
@@ -627,6 +625,7 @@ class TelegramBotController:
         except (TelegramForbiddenError, TelegramBadRequest):
             return None
         except TelegramNetworkError:
+            await asyncio.sleep(2)
             return await self.send_finish_downloading(
                 video=video,
                 telegram_id=telegram_id,

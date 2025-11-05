@@ -40,7 +40,7 @@ class LanguageResolver:
                 locale.script = self.territory
             return locale.get_display_name()
         except (ValueError, TypeError, AttributeError) as e:
-            logging.error(e)
+            logging.exception(e)
             return None
 
     @property
