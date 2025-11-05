@@ -1,6 +1,8 @@
 import re
+from contextlib import suppress
 
 from aiogram import Bot, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -73,7 +75,8 @@ async def _trigger_download(
 
     # Delete the message with the format/language selection buttons
     if isinstance(query.message, Message):
-        await query.message.delete()
+        with suppress(TelegramBadRequest):
+            await query.message.delete()
 
     await save_video.kiq(
         resolution=resolution,

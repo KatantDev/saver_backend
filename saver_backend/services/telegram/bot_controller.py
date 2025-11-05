@@ -14,6 +14,7 @@ from aiogram.exceptions import (
     TelegramAPIError,
     TelegramBadRequest,
     TelegramForbiddenError,
+    TelegramNetworkError,
     TelegramRetryAfter,
 )
 from aiogram.fsm.storage.redis import RedisStorage
@@ -571,6 +572,7 @@ class TelegramBotController:
         message_id: int | None = None,
         supports_streaming: bool = True,
         language: str | None = None,
+        retry: int = 0,
     ) -> Video | None:
         """
         Send finish downloading message.
@@ -580,10 +582,15 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param supports_streaming: Supports streaming.
         :param language: Language of the video.
+        :param retry: Retry count for network errors.
+        :return: Sent video or None on failure.
         """
+        if retry > 3:
+            logging.error("Max retries reached for sending video to %s", telegram_id)
+            return None
+
         video_input: str | FSInputFile | URLInputFile
         thumbnail_input: str | FSInputFile | None = None
-
         if video.direct_download_url:
             logging.info("Sending video via direct URL: %s", video.direct_download_url)
             video_input = (
@@ -591,8 +598,7 @@ class TelegramBotController:
                 if video.duration and video.duration < 180
                 else URLInputFile(url=video.direct_download_url)
             )
-            if video.thumbnail_url:
-                thumbnail_input = video.thumbnail_url
+            thumbnail_input = video.thumbnail_url
         elif video.path and video.path.exists():
             logging.info("Sending video via file upload: %s", video.path)
             video_input = FSInputFile(path=video.path)
@@ -620,6 +626,15 @@ class TelegramBotController:
             )
         except (TelegramForbiddenError, TelegramBadRequest):
             return None
+        except TelegramNetworkError:
+            return await self.send_finish_downloading(
+                video=video,
+                telegram_id=telegram_id,
+                message_id=message_id,
+                supports_streaming=supports_streaming,
+                language=language,
+                retry=retry + 1,
+            )
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
