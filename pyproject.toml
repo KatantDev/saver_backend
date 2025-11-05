@@ -39,7 +39,7 @@ yt-dlp = {extras = ["default","curl-cffi"], version = "^2025.10"}
 bgutil-ytdlp-pot-provider = "^1.2.2"
 pycountry = {extras = ["locales"], version = "^24.6.1"}
 emoji-country-flag = "^2.1.0"
-httpx = {extras = ["socks"], version = "^0.28.1"}
+httpx = {extras = ["socks"], version = "^0.27"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8"
