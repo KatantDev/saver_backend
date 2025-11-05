@@ -1,6 +1,5 @@
 import logging
 
-from sentry_sdk import capture_exception
 from taskiq import TaskiqDepends
 
 from saver_backend.entities.resolution import Resolution
@@ -8,7 +7,6 @@ from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
 )
 from saver_backend.services.downloaders.schema import VideoDTO
-from saver_backend.settings import settings
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
 
@@ -62,10 +60,8 @@ async def save_video(
             telegram_id=telegram_id,
             language="en",
         )
-    except Exception as e:
-        if settings.environment == "local":
-            logging.exception(e)
-        capture_exception(e)
+    except Exception as error:
+        logging.exception(error)
         await controller.close()
 
 
@@ -102,7 +98,11 @@ async def process_inline_query(
         inline_query_id=inline_query_id,
     )
     await controller.set_user_language()
-    await controller.download_video()
+    try:
+        await controller.download_video()
+    except Exception as error:
+        logging.exception(error)
+        await controller.close()
 
 
 @broker.task()
@@ -139,7 +139,12 @@ async def get_video_info(
     await controller.set_user_language()
 
     # Пытаемся получить информацию по видосу
-    info_dict = await controller.get_video_info(url=resolution.url)
+    try:
+        info_dict = await controller.get_video_info(url=resolution.url)
+    except Exception as error:
+        logging.exception(error)
+        await controller.close()
+        info_dict = None
 
     if not info_dict:
         await state.telegram_bot_controller.edit_failed_video_info(
