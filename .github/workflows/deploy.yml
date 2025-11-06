@@ -47,6 +47,8 @@ jobs:
 
       - name: Prepare target directory (SSH)
         uses: appleboy/ssh-action@v1
+        env:
+           DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -72,6 +74,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           ENV_FILE: ${{ secrets.ENV_FILE }}
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
