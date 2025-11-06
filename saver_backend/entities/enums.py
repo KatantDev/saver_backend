@@ -12,6 +12,7 @@ class SourceEnum(str, Enum):
     VK_CLIPS_YDL = "vk_clips_ydl"
     VK_VIDEO_YDL = "vk_video_ydl"
     PINTEREST_YDL = "pinterest_ydl"
+    RUTUBE_YDL = "rutube_ydl"
     UNSUPPORTED = "unsupported"
 
 

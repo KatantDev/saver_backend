@@ -1,5 +1,4 @@
 import logging
-from importlib import metadata
 
 import sentry_sdk
 from fastapi import FastAPI
@@ -44,14 +43,13 @@ def get_app() -> FastAPI:
                 StdlibIntegration(),
                 RedisIntegration(),
             ],
-            enable_logs=True,
             enable_tracing=True,
             profile_session_sample_rate=1.0,
             profile_lifecycle="trace",
         )
     app = FastAPI(
         title="saver_backend",
-        version=metadata.version("saver_backend"),
+        version="0.0.1",
         lifespan=lifespan_setup,
         docs_url="/api/docs",
         redoc_url="/api/redoc",

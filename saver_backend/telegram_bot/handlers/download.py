@@ -1,3 +1,4 @@
+import logging
 import re
 from contextlib import suppress
 
@@ -42,11 +43,9 @@ async def send_unknown_url(
     :param resolution: Resolution.
     """
     # Check if the url is a valid url
-    pattern = re.compile(
-        r"^(https?://)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(/[^\s]*)?$",
-        re.IGNORECASE,
-    )
-    if not message.text or not pattern.match(message.text):
+    pattern = re.compile(r"(https?://\S+)", re.IGNORECASE)
+    if not message.text or not pattern.match(resolution.url):
+        logging.info("User sent message: %s", message.text)
         return
 
     await message.answer(
@@ -90,6 +89,7 @@ async def _trigger_download(
         sources=[
             SourceEnum.YOUTUBE_VIDEO_YDL,
             SourceEnum.VK_VIDEO_YDL,
+            SourceEnum.RUTUBE_YDL,
         ],
     ),
 )
