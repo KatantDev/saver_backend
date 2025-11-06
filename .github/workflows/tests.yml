@@ -27,6 +27,10 @@ jobs:
             poetry.lock
             pyproject.toml
 
+      - name: Set Poetry environment
+        run: |
+          poetry env use 3.11
+
       - name: Install deps
         run: poetry install --no-interaction --no-ansi
 
