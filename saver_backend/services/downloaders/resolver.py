@@ -2,7 +2,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar
-from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
@@ -94,8 +94,6 @@ class Detector(ABC):
         """
         Clean URL by removing query parameters and fragments.
 
-        For YouTube, it specifically preserves the 'v' parameter.
-
         :param url: The URL to clean.
         :return: The cleaned URL.
         """
@@ -103,14 +101,8 @@ class Detector(ABC):
             url = "https://" + url
 
         p = urlparse(url)
-        query = ""
 
-        if "youtube.com" in p.netloc:
-            query_params = parse_qs(p.query)
-            if "v" in query_params:
-                query = f"v={query_params['v'][0]}"
-
-        return urlunparse((p.scheme or "https", p.netloc, p.path, "", query, ""))
+        return urlunparse((p.scheme or "https", p.netloc, p.path, "", "", ""))
 
 
 _REGISTRY: list[Detector] = []
@@ -275,10 +267,15 @@ class YouTubeVideoDetector(Detector):
         "m.youtube.com",
         "youtu.be",
     )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"[?&]v=(?P<code>[a-zA-Z0-9_-]{11})"),
+        "short": re.compile(r"youtu\.be/(?P<code>[a-zA-Z0-9_-]{11})"),
+        "live": re.compile(r"/live/(?P<code>[a-zA-Z0-9_-]{11})"),
+    }
 
     def match(self, url: str) -> Optional[Resolution]:
         """
-        Check if the url is a valid YouTube video url.
+        Check for a valid YouTube video URL using various regex patterns.
 
         :param url: URL to check.
         :return: Resolution if the url is valid, None otherwise.
@@ -286,25 +283,30 @@ class YouTubeVideoDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
 
-        parsed = urlparse(url)
-        query_params = parse_qs(parsed.query)
+        for key, regex in self.REGEX.items():
+            search_result = regex.search(url)
+            if search_result:
+                code = search_result.group("code")
 
-        if "youtu.be" in parsed.netloc:
-            video_code = parsed.path.strip("/")
-            if video_code:
+                parsed = urlparse(url)
+                netloc = parsed.netloc
+                path = ""
+                query = ""
+
+                if key == "video":
+                    path = "/watch"
+                    query = f"v={code}"
+                elif key == "short":
+                    path = f"/{code}"
+                elif key == "live":
+                    path = f"/live/{code}"
+
+                canonical_url = urlunparse((parsed.scheme, netloc, path, "", query, ""))
                 return Resolution(
                     source=self.SOURCE,
-                    url=self._clean_url(url),
-                    metadata={"code": video_code},
+                    url=canonical_url,
+                    metadata={"type": key, "code": code},
                 )
-
-        if parsed.path == "/watch" and "v" in query_params:
-            video_code = query_params["v"][0]
-            return Resolution(
-                source=self.SOURCE,
-                url=self._clean_url(url),
-                metadata={"code": video_code},
-            )
 
         return None
 
