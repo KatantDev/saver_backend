@@ -724,22 +724,6 @@ class TelegramBotController:
         )
         await self._send(coro)
 
-    async def send_photo_unsupported_error(
-        self,
-        telegram_id: int,
-        source_name: str,
-        language: str | None = None,
-    ) -> None:
-        """Send an error for unsupported photo downloads from a source."""
-        coro = self._bot.send_message(
-            chat_id=telegram_id,
-            text=_(
-                "photo unsupported error",
-                locale=language or self.language,
-            ).format(source_name=source_name),
-        )
-        await self._send(coro)
-
     async def send_error_downloading(
         self,
         telegram_id: int,
