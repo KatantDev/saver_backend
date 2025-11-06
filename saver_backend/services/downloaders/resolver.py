@@ -13,6 +13,9 @@ from saver_backend.services.downloaders.instagram_api_source import (
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
+from saver_backend.services.downloaders.pinterest_ydl_source import (
+    PinterestYdlController,
+)
 from saver_backend.services.downloaders.rutube_ydl_source import (
     RutubeYdlController,
 )
@@ -255,6 +258,28 @@ class VKClipsDetector(Detector):
             if match:
                 url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
 
+        return self._match_regex(url)
+
+
+@register_detector()
+class PinterestDetector(Detector):
+    """Detector for Pinterest videos."""
+
+    SOURCE = SourceEnum.PINTEREST_YDL
+    CONTROLLER = PinterestYdlController
+    HOSTS = (
+        "pinterest.com",
+        "pin.it",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "pin": re.compile(r"/pin/(?P<code>\d+)"),
+        "short": re.compile(r"^/(?P<code>[a-zA-Z0-9]+)$"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Pinterest pin url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
         return self._match_regex(url)
 
 

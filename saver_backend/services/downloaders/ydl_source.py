@@ -122,7 +122,6 @@ class YtDlpController(BaseSourceController, ABC):
         # Получаем информацию о видео, в случае, если данные не получены - останавливаем
         info_dict = await self.get_video_info(url=self._resolution.url)
         if not self._video or not info_dict:
-            await self._send_error_message()
             return
 
         if not self._video.source_id:
@@ -130,7 +129,7 @@ class YtDlpController(BaseSourceController, ABC):
             return
 
         # Отправляем видео из кэша, если уже скачивалось, иначе - идем дальше
-        cache_quality_key = self._selected_format_id or "best"
+        cache_quality_key = self._yt_dlp.params["format"] or "best"
         is_sent_from_cache = await self.send_video_from_cache(
             source_id=self._video.source_id,
             quality=cache_quality_key,
@@ -241,7 +240,7 @@ class YtDlpController(BaseSourceController, ABC):
                 info=info_dict,
                 file_path=predicted_path,
                 extract_direct_links=self.DIRECT_URL_DOWNLOAD,
-                quality=self._selected_format_id or "best",
+                quality=self._yt_dlp.params["format"] or "best",
             )
 
             return info_dict
@@ -264,6 +263,7 @@ class YtDlpController(BaseSourceController, ABC):
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
+            await self._send_error_message()
         return None
 
     def _cleanup_files(self) -> None:
