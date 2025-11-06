@@ -58,11 +58,8 @@ jobs:
             fi
 
             echo "📥 Fetching commit $SHA..."
-            git -C "$DEPLOY_PATH" \
-              -c credential.helper='!f() { echo "username=x-access-token"; echo "password=${GH_APP_TOKEN}"; }; f' \
-              fetch --depth=1 origin "$SHA"
+            git -C "$DEPLOY_PATH" fetch --depth=1 "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git" "$SHA"
 
-            git -C "$DEPLOY_PATH" fetch --depth=1 origin "$SHA"
             git -C "$DEPLOY_PATH" reset --hard "$SHA"
 
             # Обновляем .env из секрета окружения
