@@ -1,128 +1,72 @@
-# Translations template for Saver.
-# Copyright (C) 2025 ORGANIZATION
-# This file is distributed under the same license as the Saver project.
-# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
-#
-#, fuzzy
-msgid ""
-msgstr ""
-"Project-Id-Version: Saver 0.0.1\n"
-"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-06 19:05+1000\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=utf-8\n"
-"Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.17.0\n"
-
-#: saver_backend/services/downloaders/base_source.py:323
 msgid "inline mode blocked error"
 msgstr ""
 
-#: saver_backend/services/downloaders/tiktok_api_source.py:84
 msgid "tiktok photo unsupported in inline query"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:261
-#: saver_backend/telegram_bot/handlers/start.py:33
 msgid "welcome message"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:324
-#: saver_backend/services/telegram/bot_controller.py:355
-#: saver_backend/services/telegram/bot_controller.py:461
-#: saver_backend/services/telegram/bot_controller.py:508
-#: saver_backend/services/telegram/bot_controller.py:554
-#: saver_backend/services/telegram/bot_controller.py:616
-#: saver_backend/services/telegram/bot_controller.py:673
-#: saver_backend/telegram_bot/handlers/inline.py:51
 msgid "result direct message"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:375
 msgid "error downloading inline query"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:379
 msgid "error inline query"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:706
 msgid "video is private"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:723
 msgid "tiktok photo unsupported"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:740
 msgid "error downloading"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:773
 msgid "failed to get video info"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:793
 msgid "video info without formats"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:819
-#: saver_backend/services/telegram/bot_controller.py:837
 msgid "choose quality"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:53
 msgid "unknown url"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:109
 msgid "get video info"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:139
-#: saver_backend/telegram_bot/handlers/download.py:194
 msgid "format selection expired"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:147
 msgid "choose language for download"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/download.py:165
-#: saver_backend/telegram_bot/handlers/download.py:202
 msgid "format not found"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/inline.py:96
-#: saver_backend/telegram_bot/handlers/inline.py:99
 msgid "unsupported inline query"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/inline.py:97
 msgid "supported inline query urls"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/start.py:58
-#: saver_backend/telegram_bot/handlers/subscribe.py:36
 msgid "information message"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/start.py:62
 msgid "not subscribed to channels"
 msgstr ""
 
-#: saver_backend/telegram_bot/handlers/subscribe.py:19
 msgid "left from channels"
 msgstr ""
 
-#: saver_backend/telegram_bot/keyboards/inline.py:49
 msgid "subscribe to channel"
 msgstr ""
 
-#: saver_backend/telegram_bot/keyboards/inline.py:52
 msgid "check subscriptions"
 msgstr ""
 

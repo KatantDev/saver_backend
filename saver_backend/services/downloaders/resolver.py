@@ -268,10 +268,11 @@ class YouTubeVideoDetector(Detector):
         "youtu.be",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
-        "video": re.compile(r"[?&]v=(?P<code>[a-zA-Z0-9_-]{11})"),
-        "short": re.compile(r"youtu\.be/(?P<code>[a-zA-Z0-9_-]{11})"),
-        "live": re.compile(r"/live/(?P<code>[a-zA-Z0-9_-]{11})"),
+        "short": re.compile(r"^/(?P<code>[a-zA-Z0-9_-]{11})$"),
+        "live": re.compile(r"^/live/(?P<code>[a-zA-Z0-9_-]{11})$"),
     }
+
+    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]{11}")
 
     def match(self, url: str) -> Optional[Resolution]:
         """
@@ -283,32 +284,11 @@ class YouTubeVideoDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
 
-        for key, regex in self.REGEX.items():
-            search_result = regex.search(url)
-            if search_result:
-                code = search_result.group("code")
-
-                parsed = urlparse(url)
-                netloc = parsed.netloc
-                path = ""
-                query = ""
-
-                if key == "video":
-                    path = "/watch"
-                    query = f"v={code}"
-                elif key == "short":
-                    path = f"/{code}"
-                elif key == "live":
-                    path = f"/live/{code}"
-
-                canonical_url = urlunparse((parsed.scheme, netloc, path, "", query, ""))
-                return Resolution(
-                    source=self.SOURCE,
-                    url=canonical_url,
-                    metadata={"type": key, "code": code},
-                )
-
-        return None
+        parsed = urlparse(url)
+        match = self._CODE_RE.search(parsed.query)
+        if parsed.query and match:
+            url = f"https://youtu.be/{match.group(0)}"
+        return self._match_regex(url)
 
 
 @register_detector()
@@ -340,15 +320,17 @@ class VKVideoDetector(Detector):
         match = self._PLAYLIST_REGEX.search(parsed.path)
         if match:
             url = f"{parsed.scheme}://{parsed.netloc}/{match.group(1)}"
-        if parsed.query:
-            match = self._CODE_RE.search(parsed.query)
-            if match:
-                url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
+
+        match = self._CODE_RE.search(parsed.query)
+        if match:
+            url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
         return self._match_regex(url)
 
 
 class SourceResolver:
     """Resolver for source of the message."""
+
+    _URL_RE = re.compile(r"(https?://\S+)", re.IGNORECASE)
 
     def __init__(self, detectors: Optional[Iterable[Detector]] = None) -> None:
         detectors_list = list(detectors) if detectors else list(_REGISTRY)
@@ -356,13 +338,16 @@ class SourceResolver:
             detector.SOURCE: detector for detector in detectors_list
         }
 
-    def resolve(self, url: str) -> Resolution:
+    def resolve(self, text: str) -> Resolution:
         """
         Resolve the source of the message.
 
-        :param url: URL to check.
+        :param text: Message text to check.
         :return: Resolution if the url is a valid url for the detector, None otherwise.
         """
+        url_match = self._URL_RE.search(text)
+        url = url_match.group(1) if url_match else text
+
         for detector in self._detectors.values():
             res = detector.match(url)
             if res is not None:
