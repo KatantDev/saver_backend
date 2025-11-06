@@ -39,7 +39,12 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          tar --exclude=.git -czf release.tgz .
+
+          git archive \
+            --format=tar.gz \
+            --output="$RUNNER_TEMP/release.tgz" \
+            --prefix="saver_backend/" \
+            HEAD
 
       - name: Prepare target directory (SSH)
         uses: appleboy/ssh-action@v1
