@@ -73,10 +73,7 @@ class Settings(BaseSettings):
     webhook_telegram_path: str = "/telegram"
 
     # Downloader settings
-    proxies: list[str] = [
-        "socks5://katant:katant@host.docker.internal:1080",
-        "socks5://katant:katant@host.docker.internal:1081",
-    ]
+    proxies: list[str] = []
 
     @property
     def webhook_telegram_url(self) -> str:

@@ -2,7 +2,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar
-from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
@@ -94,8 +94,6 @@ class Detector(ABC):
         """
         Clean URL by removing query parameters and fragments.
 
-        For YouTube, it specifically preserves the 'v' parameter.
-
         :param url: The URL to clean.
         :return: The cleaned URL.
         """
@@ -103,14 +101,8 @@ class Detector(ABC):
             url = "https://" + url
 
         p = urlparse(url)
-        query = ""
 
-        if "youtube.com" in p.netloc:
-            query_params = parse_qs(p.query)
-            if "v" in query_params:
-                query = f"v={query_params['v'][0]}"
-
-        return urlunparse((p.scheme or "https", p.netloc, p.path, "", query, ""))
+        return urlunparse((p.scheme or "https", p.netloc, p.path, "", "", ""))
 
 
 _REGISTRY: list[Detector] = []
@@ -275,10 +267,16 @@ class YouTubeVideoDetector(Detector):
         "m.youtube.com",
         "youtu.be",
     )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "short": re.compile(r"^/(?P<code>[a-zA-Z0-9_-]{11})$"),
+        "live": re.compile(r"^/live/(?P<code>[a-zA-Z0-9_-]{11})$"),
+    }
+
+    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]{11}")
 
     def match(self, url: str) -> Optional[Resolution]:
         """
-        Check if the url is a valid YouTube video url.
+        Check for a valid YouTube video URL using various regex patterns.
 
         :param url: URL to check.
         :return: Resolution if the url is valid, None otherwise.
@@ -287,26 +285,10 @@ class YouTubeVideoDetector(Detector):
             return None
 
         parsed = urlparse(url)
-        query_params = parse_qs(parsed.query)
-
-        if "youtu.be" in parsed.netloc:
-            video_code = parsed.path.strip("/")
-            if video_code:
-                return Resolution(
-                    source=self.SOURCE,
-                    url=self._clean_url(url),
-                    metadata={"code": video_code},
-                )
-
-        if parsed.path == "/watch" and "v" in query_params:
-            video_code = query_params["v"][0]
-            return Resolution(
-                source=self.SOURCE,
-                url=self._clean_url(url),
-                metadata={"code": video_code},
-            )
-
-        return None
+        match = self._CODE_RE.search(parsed.query)
+        if parsed.query and match:
+            url = f"https://youtu.be/{match.group(0)}"
+        return self._match_regex(url)
 
 
 @register_detector()
@@ -338,15 +320,17 @@ class VKVideoDetector(Detector):
         match = self._PLAYLIST_REGEX.search(parsed.path)
         if match:
             url = f"{parsed.scheme}://{parsed.netloc}/{match.group(1)}"
-        if parsed.query:
-            match = self._CODE_RE.search(parsed.query)
-            if match:
-                url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
+
+        match = self._CODE_RE.search(parsed.query)
+        if match:
+            url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
         return self._match_regex(url)
 
 
 class SourceResolver:
     """Resolver for source of the message."""
+
+    _URL_RE = re.compile(r"(https?://\S+)", re.IGNORECASE)
 
     def __init__(self, detectors: Optional[Iterable[Detector]] = None) -> None:
         detectors_list = list(detectors) if detectors else list(_REGISTRY)
@@ -354,13 +338,16 @@ class SourceResolver:
             detector.SOURCE: detector for detector in detectors_list
         }
 
-    def resolve(self, url: str) -> Resolution:
+    def resolve(self, text: str) -> Resolution:
         """
         Resolve the source of the message.
 
-        :param url: URL to check.
+        :param text: Message text to check.
         :return: Resolution if the url is a valid url for the detector, None otherwise.
         """
+        url_match = self._URL_RE.search(text)
+        url = url_match.group(1) if url_match else text
+
         for detector in self._detectors.values():
             res = detector.match(url)
             if res is not None:
