@@ -76,4 +76,4 @@ jobs:
               task --version
             fi
 
-            task -C "$DEPLOY_PATH" deploy
+            task -d "$DEPLOY_PATH" deploy
