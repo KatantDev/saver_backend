@@ -18,90 +18,63 @@ jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     environment: ${{ github.event.workflow_run.head_branch == 'main' && 'prod' || 'dev' }}
     concurrency:
       group: deploy-${{ github.event.workflow_run.head_branch }}
       cancel-in-progress: false
     env:
       DEPLOY_PATH: /home/deploy/saver_backend
-
     steps:
-      - name: Checkout tested commit
-        uses: actions/checkout@v5
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
         with:
-            ref: ${{ github.event.workflow_run.head_sha }}
-            fetch-depth: 1
-            persist-credentials: false
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Build release archive
-        run: |
-          set -euo pipefail
-          umask 077
-
-          git archive \
-            --format=tar.gz \
-            --output="$RUNNER_TEMP/release.tgz" \
-            --prefix="saver_backend/" \
-            HEAD
-
-      - name: Prepare target directory (SSH)
+      - name: Deploy over SSH (make deploy)
         uses: appleboy/ssh-action@v1
         env:
-           DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          GH_APP_TOKEN: ${{ steps.app-token.outputs.token }}
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          fingerprint: ${{ secrets.SSH_HOST_KEY }}
-          envs: DEPLOY_PATH
+          host: ${{ secrets.SSH_HOST }}     # из env dev/prod
+          username: ${{ secrets.SSH_USER }} # из env dev/prod
+          key: ${{ secrets.SSH_KEY }}       # из env dev/prod
+          port: ${{ secrets.SSH_PORT }}     # (опц.) из env dev/prod
+          envs: GH_APP_TOKEN,DEPLOY_PATH
+          script_stop: true
           script: |
             set -euo pipefail
+
+            REPO="${{ github.repository }}"
+            SHA="${{ github.event.workflow_run.head_sha }}"
+
             mkdir -p "$DEPLOY_PATH"
 
-      - name: Upload release (SCP)
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          fingerprint: ${{ secrets.SSH_HOST_KEY }}
-          source: "${{ runner.temp }}/release.tgz"
-          target: "${{ env.DEPLOY_PATH }}"
-
-      - name: Deploy on server (SSH)
-        uses: appleboy/ssh-action@v1
-        env:
-          ENV_FILE: ${{ secrets.ENV_FILE }}
-          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          fingerprint: ${{ secrets.SSH_HOST_KEY }}
-          envs: ENV_FILE,DEPLOY_PATH
-          script: |
-            set -euo pipefail
-            umask 077
-            cd "$DEPLOY_PATH"
-
-            tar -xzf release.tgz --overwrite
-            rm -f release.tgz
-
-            if [ -n "${ENV_FILE:-}" ]; then
-              printf "%s" "$ENV_FILE" > .env
-              chmod 600 .env
+            if [ ! -d "$DEPLOY_PATH/.git" ]; then
+              echo "⚙️ Initializing git repository..."
+              git init "$DEPLOY_PATH"
             fi
 
-            if ! command -v make >/dev/null 2>&1; then
-              echo "make не установлен на сервере" >&2
-              exit 1
+            echo "📥 Fetching commit $SHA..."
+            git -C "$DEPLOY_PATH" fetch --depth=1 "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git" "$SHA"
+            git -C "$DEPLOY_PATH" reset --hard "$SHA"
+
+            cat > "$DEPLOY_PATH/.env" <<EOF
+              ${{ secrets.ENV_FILE }}
+            EOF
+            chmod 600 "$DEPLOY_PATH/.env"
+
+            if ! command -v task >/dev/null 2>&1; then
+              echo "⚙️ Installing go-task..."
+              sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
+              source ~/.profile || true
+              sudo apt-get update && sudo apt-get install -y task
+            else
+              echo "✅ go-task already installed"
+              task --version
             fi
 
-            make -C "$DEPLOY_PATH" deploy
+            task -C "$DEPLOY_PATH" deploy
 
-      - name: Clean up workspace
-        run: rm -f release.tgz
+            unset GH_APP_TOKEN
