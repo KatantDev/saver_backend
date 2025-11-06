@@ -68,7 +68,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           fingerprint: ${{ secrets.SSH_HOST_KEY }}
-          source: "release.tgz"
+          source: "${{ runner.temp }}/release.tgz"
           target: "${{ env.DEPLOY_PATH }}"
 
       - name: Deploy on server (SSH)

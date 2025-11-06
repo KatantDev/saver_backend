@@ -17,10 +17,12 @@ RUN poetry config cache-dir /tmp/poetry_cache
 COPY pyproject.toml poetry.lock /app/src/
 WORKDIR /app/src
 
-# Installing requirements and removing gcc
-RUN --mount=type=cache,target=/tmp/poetry_cache poetry install --only main \
-  && apt-get purge -y gcc \
-  && apt-get autoremove -y \
+# Installing requirements
+RUN --mount=type=cache,target=/tmp/poetry_cache poetry install --only main
+
+# Removing gcc
+RUN apt-get purge -y \
+  gcc \
   && rm -rf /var/lib/apt/lists/*
 
 # Copying actuall application
