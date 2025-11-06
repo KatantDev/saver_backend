@@ -45,8 +45,11 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
+            umask 077
+            set +x
 
             REPO="${{ github.repository }}"
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
             SHA="${{ github.event.workflow_run.head_sha }}"
 
             mkdir -p "$DEPLOY_PATH"
@@ -57,8 +60,27 @@ jobs:
               git -C "$DEPLOY_PATH" remote add origin "https://github.com/$REPO.git"
             fi
 
-            echo "📥 Fetching commit $SHA..."
-            git -C "$DEPLOY_PATH" fetch --depth=1 "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git" "$SHA"
+            git -C "$DEPLOY_PATH" remote set-url origin "https://github.com/$REPO.git"
+
+            AUTH="$(printf "x-access-token:%s" "$GH_APP_TOKEN" | base64 -w0 | tr -d '\n')"
+            trap 'unset AUTH GH_APP_TOKEN' EXIT
+
+            echo "📥 Fetching $BRANCH..."
+            git -C "$DEPLOY_PATH" \
+              -c credential.helper= \
+              -c http.https://github.com/.extraheader="Authorization: Basic $AUTH" \
+              fetch --no-tags --depth=1 origin "$BRANCH"
+
+            echo "📦 Checking out $SHA..."
+            git -C "$DEPLOY_PATH" checkout -B "$BRANCH" "origin/$BRANCH" || true
+
+            if ! git -C "$DEPLOY_PATH" cat-file -e "$SHA^{commit}" 2>/dev/null; then
+              echo "🔁 Deepening history..."
+              git -C "$DEPLOY_PATH" \
+                -c credential.helper= \
+                -c http.https://github.com/.extraheader="Authorization: Basic $AUTH" \
+                fetch --no-tags --depth=0 origin "$BRANCH"
+            fi
 
             git -C "$DEPLOY_PATH" reset --hard "$SHA"
 

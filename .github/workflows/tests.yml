@@ -13,31 +13,50 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install poetry
-        run: pipx install poetry
-      - name: Set up Python
+
+      - name: Set up Python (with Poetry cache)
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'poetry'
+          cache-dependency-path: |
+            poetry.lock
+            pyproject.toml
+
+      - name: Install poetry
+        run: pipx install poetry
+
       - name: Install deps
-        run: poetry install
+        run: poetry install --no-interaction --no-ansi
+
       - name: Run lint check
         run: poetry run pre-commit run -a ${{ matrix.cmd }}
+
   pytest:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
       - name: Create .env
         run: touch .env
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Update docker-compose
-        uses: KengoTODA/actions-setup-docker-compose@v1
-        with:
-          version: "2.28.0"
-      - name: run tests
-        run: docker-compose run --rm api pytest -vv
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build api image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          tags: saver_backend:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Show compose version (debug)
+        run: docker compose version
+
+      - name: run tests
+        env:
+          SAVER_BACKEND_VERSION: ci
+        run: docker compose run --rm api pytest -vv
