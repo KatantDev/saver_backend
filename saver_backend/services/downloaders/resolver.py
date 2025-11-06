@@ -272,7 +272,7 @@ class YouTubeVideoDetector(Detector):
         "live": re.compile(r"^/live/(?P<code>[a-zA-Z0-9_-]{11})$"),
     }
 
-    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]{11}")
+    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"v=([A-Za-z0-9_-]{11})")
 
     def match(self, url: str) -> Optional[Resolution]:
         """
@@ -287,7 +287,8 @@ class YouTubeVideoDetector(Detector):
         parsed = urlparse(url)
         match = self._CODE_RE.search(parsed.query)
         if parsed.query and match:
-            url = f"https://youtu.be/{match.group(0)}"
+            url = f"https://youtu.be/{match.group(1)}"
+
         return self._match_regex(url)
 
 
