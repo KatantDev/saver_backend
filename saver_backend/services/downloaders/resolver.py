@@ -13,6 +13,9 @@ from saver_backend.services.downloaders.instagram_api_source import (
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
+from saver_backend.services.downloaders.rutube_ydl_source import (
+    RutubeYdlController,
+)
 from saver_backend.services.downloaders.tiktok_api_source import TikTokAPIController
 from saver_backend.services.downloaders.vk_clips_ydl_source import (
     VKClipsYdlController,
@@ -325,6 +328,28 @@ class VKVideoDetector(Detector):
         match = self._CODE_RE.search(parsed.query)
         if match:
             url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
+        return self._match_regex(url)
+
+
+@register_detector()
+class RutubeDetector(Detector):
+    """Detector for Rutube videos."""
+
+    SOURCE = SourceEnum.RUTUBE_YDL
+    CONTROLLER = RutubeYdlController
+    HOSTS = (
+        "rutube.ru",
+        "www.rutube.ru",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video/(?P<code>[a-zA-Z0-9]+)/?"),
+        "embed": re.compile(r"^/play/embed/(?P<code>[a-zA-Z0-9]+)/?"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Rutube video url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
         return self._match_regex(url)
 
 

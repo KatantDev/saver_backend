@@ -89,6 +89,7 @@ async def _trigger_download(
         sources=[
             SourceEnum.YOUTUBE_VIDEO_YDL,
             SourceEnum.VK_VIDEO_YDL,
+            SourceEnum.RUTUBE_YDL,
         ],
     ),
 )
