@@ -3,27 +3,23 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-06 19:34+1000\n"
+"POT-Creation-Date: 2025-11-06 19:05+1000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
 "Language-Team: ru <LL@li.org>\n"
-"Plural-Forms: nplurals=3; plural=(n % 10 == 1 && n % 100 != 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2);\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
 
-#: saver_backend/services/downloaders/base_source.py:323
 msgid "inline mode blocked error"
 msgstr "⚡️ Чтобы использовать инлайн-режим, запустите или разблокируйте бота."
 
-#: saver_backend/services/downloaders/tiktok_api_source.py:84
 msgid "tiktok photo unsupported in inline query"
 msgstr "🌀 Скачивание фото не поддерживается в инлайн-режиме"
 
-#: saver_backend/services/telegram/bot_controller.py:261
-#: saver_backend/telegram_bot/handlers/start.py:33
 msgid "welcome message"
 msgstr ""
 "<b>🎬 Этот бот создан, чтобы скачивать видео из:</b> YouTube | TikTok | Instagram | ВКонтакте\n"
@@ -31,100 +27,71 @@ msgstr ""
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Бот — полностью бесплатный.</b>.\n"
 "Чтобы пользоваться им — просто подпишитесь на два наших канала:"
 
-#: saver_backend/services/telegram/bot_controller.py:324
-#: saver_backend/services/telegram/bot_controller.py:355
-#: saver_backend/services/telegram/bot_controller.py:461
-#: saver_backend/services/telegram/bot_controller.py:508
-#: saver_backend/services/telegram/bot_controller.py:554
-#: saver_backend/services/telegram/bot_controller.py:616
-#: saver_backend/services/telegram/bot_controller.py:673
-#: saver_backend/telegram_bot/handlers/inline.py:51
 msgid "result direct message"
 msgstr ""
 "{url}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
 
-#: saver_backend/services/telegram/bot_controller.py:375
 msgid "error downloading inline query"
 msgstr "Мы уже сообщили об ошибке разработчикам."
 
-#: saver_backend/services/telegram/bot_controller.py:379
 msgid "error inline query"
 msgstr "⚠️ Не получилось скачать видео."
 
-#: saver_backend/services/telegram/bot_controller.py:706
 msgid "video is private"
 msgstr "⚠️ Это видео приватное, поэтому его нельзя скачать."
 
-#: saver_backend/services/telegram/bot_controller.py:723
 msgid "tiktok photo unsupported"
 msgstr "🌀 Скачивание фото не поддерживается для TikTok прямо сейчас, но мы уже работаем над его поддержкой."
 
-#: saver_backend/services/telegram/bot_controller.py:740
 msgid "error downloading"
 msgstr ""
 "⚠️<b>Ошибка.</b>\n"
 "Мы уже сообщили об ошибке разработчикам."
 
-#: saver_backend/services/telegram/bot_controller.py:773
 msgid "failed to get video info"
 msgstr ""
 "⚠️<b>Ошибка.</b>\n"
 "Не удалось загрузить данные о видео."
 
-#: saver_backend/services/telegram/bot_controller.py:793
 msgid "video info without formats"
 msgstr "⚠️ Не найдено доступных форматов для скачивания. Пожалуйста, попробуйте ещё раз позже."
 
-#: saver_backend/services/telegram/bot_controller.py:819
-#: saver_backend/services/telegram/bot_controller.py:837
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🎥</tg-emoji> Выберите качество видео:"
 
-#: saver_backend/telegram_bot/handlers/download.py:53
 msgid "unknown url"
 msgstr ""
 "🌀 Эта ссылка не поддерживается для скачивания.\n"
 "Но мы уже работаем над её поддержкой."
 
-#: saver_backend/telegram_bot/handlers/download.py:110
 msgid "get video info"
 msgstr "☁️ Загружаем информацию о видео."
 
-#: saver_backend/telegram_bot/handlers/download.py:140
-#: saver_backend/telegram_bot/handlers/download.py:195
 msgid "format selection expired"
 msgstr "⏳ Время истекло. Пожалуйста, отправьте ссылку заново."
 
-#: saver_backend/telegram_bot/handlers/download.py:148
 msgid "choose language for download"
 msgstr ""
 "<b>{title}</b>\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Выберите язык:"
 
-#: saver_backend/telegram_bot/handlers/download.py:166
-#: saver_backend/telegram_bot/handlers/download.py:203
 msgid "format not found"
 msgstr ""
 "⚠️<b>Ошибка.</b>\n"
 "Что-то пошло не так. Попробуйте ещё раз."
 
-#: saver_backend/telegram_bot/handlers/inline.py:96
-#: saver_backend/telegram_bot/handlers/inline.py:99
 msgid "unsupported inline query"
 msgstr "⚠️ Пожалуйста, введите корректную ссылку."
 
-#: saver_backend/telegram_bot/handlers/inline.py:97
 msgid "supported inline query urls"
 msgstr "💫 Поддерживаемые сервисы: TikTok, Instagram Рилсы."
 
-#: saver_backend/telegram_bot/handlers/start.py:58
-#: saver_backend/telegram_bot/handlers/subscribe.py:36
 msgid "information message"
 msgstr ""
 "<b>🎬 Этот бот создан, чтобы скачивать видео из:</b> YouTube | TikTok | Instagram | ВКонтакте\n"
@@ -133,11 +100,9 @@ msgstr ""
 "\n"
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Также работает в инлайн-режиме:</b> откройте любой чат, введите @saver и вставьте ссылку."
 
-#: saver_backend/telegram_bot/handlers/start.py:62
 msgid "not subscribed to channels"
 msgstr "⚠️ Вы не подписаны на каналы"
 
-#: saver_backend/telegram_bot/handlers/subscribe.py:19
 msgid "left from channels"
 msgstr ""
 "🎬 Мы обнаружили, что вы <b>не подписаны</b> на наши каналы\n"
@@ -145,11 +110,9 @@ msgstr ""
 "<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Бот — полностью бесплатный.</b>.\n"
 "Чтобы пользоваться им — просто подпишитесь на два наших канала:"
 
-#: saver_backend/telegram_bot/keyboards/inline.py:49
 msgid "subscribe to channel"
 msgstr "➕ Подписаться на @{channel}"
 
-#: saver_backend/telegram_bot/keyboards/inline.py:52
 msgid "check subscriptions"
 msgstr "✅ Проверить подписки"
 
