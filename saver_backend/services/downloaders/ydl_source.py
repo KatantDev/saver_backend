@@ -253,16 +253,6 @@ class YtDlpController(BaseSourceController, ABC):
                 self._set_proxy()
                 return await self.get_video_info(url=url)
 
-            if "No video formats found" in str(e):
-                logging.warning("URL contains no video: %s", url)
-                await self.delete_processing_message()
-                source_name = self.SOURCE.value.replace("_ydl", "").capitalize()
-                await self._telegram_bot_controller.send_photo_unsupported_error(
-                    telegram_id=self._telegram_id,
-                    source_name=source_name,
-                )
-                return None
-
             if "Access restricted" in str(e):
                 await self.delete_processing_message()
                 await self._telegram_bot_controller.send_video_is_private_error(
