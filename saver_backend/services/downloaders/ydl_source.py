@@ -128,8 +128,8 @@ class YtDlpController(BaseSourceController, ABC):
             logging.error("Could not determine source_id.")
             return
 
-        # Отправляем видео из кэша, если уже скачивалось, иначе - идем дальше
-        cache_quality_key = self._yt_dlp.params["format"] or "best"
+        # Get the video from the cache if it was previously downloaded
+        cache_quality_key = self._selected_format_id or "best"
         is_sent_from_cache = await self.send_video_from_cache(
             source_id=self._video.source_id,
             quality=cache_quality_key,
@@ -240,7 +240,7 @@ class YtDlpController(BaseSourceController, ABC):
                 info=info_dict,
                 file_path=predicted_path,
                 extract_direct_links=self.DIRECT_URL_DOWNLOAD,
-                quality=self._yt_dlp.params["format"] or "best",
+                quality=self._selected_format_id or "best",
             )
 
             return info_dict
