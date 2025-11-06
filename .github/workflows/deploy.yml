@@ -10,6 +10,7 @@ on:
     branches:
       - dev
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -54,30 +55,25 @@ jobs:
             if [ ! -d "$DEPLOY_PATH/.git" ]; then
               echo "⚙️ Initializing git repository..."
               git init "$DEPLOY_PATH"
-              git -C "$DEPLOY_PATH" remote add origin "https://github.com/$REPO.git"
             fi
 
             echo "📥 Fetching commit $SHA..."
-            git -C "$DEPLOY_PATH" \
-              -c credential.helper='!f() { echo "username=x-access-token"; echo "password=${GH_APP_TOKEN}"; }; f' \
-              fetch --depth=1 origin "$SHA"
-
-            git -C "$DEPLOY_PATH" fetch --depth=1 origin "$SHA"
+            git -C "$DEPLOY_PATH" fetch --depth=1 "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git" "$SHA"
             git -C "$DEPLOY_PATH" reset --hard "$SHA"
+            unset GH_APP_TOKEN
 
-            # Обновляем .env из секрета окружения
-            echo "🔧 Updating environment configuration..."
-            cat > "$DEPLOY_PATH/.env" <<'ENVFILE_END'
-            ${{ secrets.ENV_FILE }}
-            ENVFILE_END
+            cat > "$DEPLOY_PATH/.env" <<EOF
+              ${{ secrets.ENV_FILE }}
+            EOF
             chmod 600 "$DEPLOY_PATH/.env"
 
             if ! command -v task >/dev/null 2>&1; then
               echo "⚙️ Installing go-task..."
-              curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.deb.sh' | sudo -E bash
-              sudo apt-get update && sudo apt-get install -y task
+              sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
+              source ~/.profile || true
             else
               echo "✅ go-task already installed"
+              task --version
             fi
 
-            task -C "$DEPLOY_PATH" deploy
+            task -d "$DEPLOY_PATH" deploy

@@ -16,6 +16,12 @@ from saver_backend.services.downloaders.instagram_ydl_source import (
 from saver_backend.services.downloaders.ok_ydl_source import (
     OkYdlController,
 )
+from saver_backend.services.downloaders.pinterest_ydl_source import (
+    PinterestYdlController,
+)
+from saver_backend.services.downloaders.rutube_ydl_source import (
+    RutubeYdlController,
+)
 from saver_backend.services.downloaders.tiktok_api_source import TikTokAPIController
 from saver_backend.services.downloaders.vk_clips_ydl_source import (
     VKClipsYdlController,
@@ -259,6 +265,28 @@ class VKClipsDetector(Detector):
 
 
 @register_detector()
+class PinterestDetector(Detector):
+    """Detector for Pinterest videos."""
+
+    SOURCE = SourceEnum.PINTEREST_YDL
+    CONTROLLER = PinterestYdlController
+    HOSTS = (
+        "pinterest.com",
+        "pin.it",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "pin": re.compile(r"/pin/(?P<code>\d+)"),
+        "short": re.compile(r"^/(?P<code>[a-zA-Z0-9]+)$"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Pinterest pin url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
 class YouTubeVideoDetector(Detector):
     """Detector for standard YouTube videos."""
 
@@ -275,7 +303,7 @@ class YouTubeVideoDetector(Detector):
         "live": re.compile(r"^/live/(?P<code>[a-zA-Z0-9_-]{11})$"),
     }
 
-    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]{11}")
+    _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"v=([A-Za-z0-9_-]{11})")
 
     def match(self, url: str) -> Optional[Resolution]:
         """
@@ -290,7 +318,8 @@ class YouTubeVideoDetector(Detector):
         parsed = urlparse(url)
         match = self._CODE_RE.search(parsed.query)
         if parsed.query and match:
-            url = f"https://youtu.be/{match.group(0)}"
+            url = f"https://youtu.be/{match.group(1)}"
+
         return self._match_regex(url)
 
 
@@ -327,6 +356,28 @@ class VKVideoDetector(Detector):
         match = self._CODE_RE.search(parsed.query)
         if match:
             url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
+        return self._match_regex(url)
+
+
+@register_detector()
+class RutubeDetector(Detector):
+    """Detector for Rutube videos."""
+
+    SOURCE = SourceEnum.RUTUBE_YDL
+    CONTROLLER = RutubeYdlController
+    HOSTS = (
+        "rutube.ru",
+        "www.rutube.ru",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video/(?P<code>[a-zA-Z0-9]+)/?"),
+        "embed": re.compile(r"^/play/embed/(?P<code>[a-zA-Z0-9]+)/?"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Rutube video url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
         return self._match_regex(url)
 
 

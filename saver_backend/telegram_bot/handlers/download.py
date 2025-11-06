@@ -89,6 +89,7 @@ async def _trigger_download(
         sources=[
             SourceEnum.YOUTUBE_VIDEO_YDL,
             SourceEnum.VK_VIDEO_YDL,
+            SourceEnum.RUTUBE_YDL,
             SourceEnum.OK_YDL,
         ],
     ),
@@ -220,6 +221,7 @@ async def on_language_select(
             SourceEnum.INSTAGRAM_API,
             SourceEnum.YOUTUBE_SHORTS_YDL,
             SourceEnum.VK_CLIPS_YDL,
+            SourceEnum.PINTEREST_YDL,
         ],
     ),
 )

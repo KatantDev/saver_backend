@@ -122,7 +122,6 @@ class YtDlpController(BaseSourceController, ABC):
         # Получаем информацию о видео, в случае, если данные не получены - останавливаем
         info_dict = await self.get_video_info(url=self._resolution.url)
         if not self._video or not info_dict:
-            await self._send_error_message()
             return
 
         if not self._video.source_id:
@@ -264,6 +263,7 @@ class YtDlpController(BaseSourceController, ABC):
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
+            await self._send_error_message()
         return None
 
     def _cleanup_files(self) -> None:
