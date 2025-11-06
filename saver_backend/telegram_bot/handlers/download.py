@@ -220,6 +220,7 @@ async def on_language_select(
             SourceEnum.INSTAGRAM_API,
             SourceEnum.YOUTUBE_SHORTS_YDL,
             SourceEnum.VK_CLIPS_YDL,
+            SourceEnum.PINTEREST_YDL,
         ],
     ),
 )
