@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-06 23:38+1000\n"
+"POT-Creation-Date: 2025-11-07 20:26+1000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -54,35 +54,31 @@ msgid "error inline query"
 msgstr "⚠️ Failed to download the video."
 
 #: saver_backend/services/telegram/bot_controller.py:706
-msgid "video is private"
-msgstr "⚠️ Sorry, this video is private and not available for download."
+msgid "content private or not found"
+msgstr "⚠️ Sorry, this video/photo is private or has been deleted."
 
 #: saver_backend/services/telegram/bot_controller.py:723
 msgid "tiktok photo unsupported"
 msgstr "🌀 Photo downloading is not supported for TikTok right now, but we are already working on it."
 
-#: saver_backend/services/telegram/bot_controller.py:737
-msgid "photo unsupported error"
-msgstr "🌀 This link leads to an image. For {source_name}, only video downloads are currently supported."
-
-#: saver_backend/services/telegram/bot_controller.py:756
+#: saver_backend/services/telegram/bot_controller.py:740
 msgid "error downloading"
 msgstr ""
 "⚠️<b>Error.</b>\n"
 "We’ve already reported it to our developers."
 
-#: saver_backend/services/telegram/bot_controller.py:789
+#: saver_backend/services/telegram/bot_controller.py:773
 msgid "failed to get video info"
 msgstr ""
 "⚠️<b>Error.</b>\n"
 "Failed to get video information. We’ve already reported it to our developers."
 
-#: saver_backend/services/telegram/bot_controller.py:809
+#: saver_backend/services/telegram/bot_controller.py:793
 msgid "video info without formats"
 msgstr "⚠️ No formats available for download. Please try again later."
 
-#: saver_backend/services/telegram/bot_controller.py:835
-#: saver_backend/services/telegram/bot_controller.py:853
+#: saver_backend/services/telegram/bot_controller.py:819
+#: saver_backend/services/telegram/bot_controller.py:837
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"
@@ -156,4 +152,7 @@ msgstr "➕ Subscribe to @{channel}"
 #: saver_backend/telegram_bot/keyboards/inline.py:52
 msgid "check subscriptions"
 msgstr "✅ Check subscriptions"
+
+#~ msgid "photo unsupported error"
+#~ msgstr "🌀 This link leads to an image. For {source_name}, only video downloads are currently supported."
 

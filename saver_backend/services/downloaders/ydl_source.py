@@ -120,7 +120,12 @@ class YtDlpController(BaseSourceController, ABC):
         Otherwise, it proceeds with the full download process.
         """
         # Получаем информацию о видео, в случае, если данные не получены - останавливаем
-        info_dict = await self.get_video_info(url=self._resolution.url)
+        try:
+            info_dict = await self.get_video_info(url=self._resolution.url)
+        except DownloadError as e:
+            await self._handle_download_error(e)
+            return
+
         if not self._video or not info_dict:
             return
 
@@ -252,29 +257,27 @@ class YtDlpController(BaseSourceController, ABC):
             ):
                 self._set_proxy()
                 return await self.get_video_info(url=url)
+            raise
 
-            if "No video formats found" in str(e):
-                logging.warning("URL contains no video: %s", url)
-                await self.delete_processing_message()
-                source_name = self.SOURCE.value.replace("_ydl", "").capitalize()
-                await self._telegram_bot_controller.send_photo_unsupported_error(
-                    telegram_id=self._telegram_id,
-                    source_name=source_name,
-                )
-                return None
+    async def _handle_download_error(self, error: DownloadError) -> None:
+        """
+        Handle download errors from yt-dlp.
 
-            if "Access restricted" in str(e):
-                await self.delete_processing_message()
-                await self._telegram_bot_controller.send_video_is_private_error(
-                    telegram_id=self._telegram_id,
-                )
-                return None
+        This method can be overridden by subclasses for source-specific error handling.
 
-            if settings.environment == "local":
-                logging.exception(e)
-            sentry_sdk.capture_exception(e)
-            await self._send_error_message()
-        return None
+        :param error: The DownloadError exception instance.
+        """
+        if "Access restricted" in str(error):
+            await self.delete_processing_message()
+            await self._telegram_bot_controller.send_content_not_found_error(
+                telegram_id=self._telegram_id,
+            )
+            return
+
+        if settings.environment == "local":
+            logging.exception(error)
+        sentry_sdk.capture_exception(error)
+        await self._send_error_message()
 
     def _cleanup_files(self) -> None:
         """Safely deletes the downloaded video and thumbnail files."""

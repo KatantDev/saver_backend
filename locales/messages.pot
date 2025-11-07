@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Saver 0.0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-06 23:38+1000\n"
+"POT-Creation-Date: 2025-11-07 20:26+1000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -50,31 +50,27 @@ msgid "error inline query"
 msgstr ""
 
 #: saver_backend/services/telegram/bot_controller.py:706
-msgid "video is private"
+msgid "content private or not found"
 msgstr ""
 
 #: saver_backend/services/telegram/bot_controller.py:723
 msgid "tiktok photo unsupported"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:737
-msgid "photo unsupported error"
-msgstr ""
-
-#: saver_backend/services/telegram/bot_controller.py:756
+#: saver_backend/services/telegram/bot_controller.py:740
 msgid "error downloading"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:789
+#: saver_backend/services/telegram/bot_controller.py:773
 msgid "failed to get video info"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:809
+#: saver_backend/services/telegram/bot_controller.py:793
 msgid "video info without formats"
 msgstr ""
 
-#: saver_backend/services/telegram/bot_controller.py:835
-#: saver_backend/services/telegram/bot_controller.py:853
+#: saver_backend/services/telegram/bot_controller.py:819
+#: saver_backend/services/telegram/bot_controller.py:837
 msgid "choose quality"
 msgstr ""
 

@@ -690,20 +690,20 @@ class TelegramBotController:
             capture_exception(e)
             return None
 
-    async def send_video_is_private_error(
+    async def send_content_not_found_error(
         self,
         telegram_id: int,
         language: str | None = None,
     ) -> None:
         """
-        Send a message indicating the video is private or region-locked.
+        Send a message indicating the content is private, deleted or not found.
 
         :param telegram_id: Telegram ID of the user.
         :param language: Language for the message.
         """
         coro = self._bot.send_message(
             chat_id=telegram_id,
-            text=_("video is private", locale=language or self.language),
+            text=_("content private or not found", locale=language or self.language),
         )
         await self._send(coro)
 
@@ -721,22 +721,6 @@ class TelegramBotController:
         coro = self._bot.send_message(
             chat_id=telegram_id,
             text=_("tiktok photo unsupported", locale=language or self.language),
-        )
-        await self._send(coro)
-
-    async def send_photo_unsupported_error(
-        self,
-        telegram_id: int,
-        source_name: str,
-        language: str | None = None,
-    ) -> None:
-        """Send an error for unsupported photo downloads from a source."""
-        coro = self._bot.send_message(
-            chat_id=telegram_id,
-            text=_(
-                "photo unsupported error",
-                locale=language or self.language,
-            ).format(source_name=source_name),
         )
         await self._send(coro)
 
