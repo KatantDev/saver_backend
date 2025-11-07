@@ -624,16 +624,13 @@ class TelegramBotController:
             )
         except (TelegramForbiddenError, TelegramBadRequest):
             return None
-        except TelegramNetworkError:
-            await asyncio.sleep(2)
-            return await self.send_finish_downloading(
-                video=video,
-                telegram_id=telegram_id,
-                message_id=message_id,
-                supports_streaming=supports_streaming,
-                language=language,
-                retry=retry + 1,
+        except TelegramNetworkError as e:
+            logging.error(
+                "Network error while sending video to user %s: %s",
+                telegram_id,
+                e,
             )
+            return None
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
