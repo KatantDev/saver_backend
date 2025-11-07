@@ -1,6 +1,15 @@
 from enum import Enum
 
 
+class ContentTypeEnum(str, Enum):
+    """Enum for content type of cached item."""
+
+    VIDEO = "video"
+    PHOTO = "photo"
+    AUDIO = "audio"
+    PHOTO_LIST = "photo_list"
+
+
 class SourceEnum(str, Enum):
     """Enum for source to download."""
 

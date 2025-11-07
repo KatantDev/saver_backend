@@ -10,6 +10,7 @@ from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
     PhotoDTO,
+    PhotoListDTO,
     TikWMData,
     TikWMResponse,
     VideoDTO,
@@ -97,18 +98,18 @@ class TikTokAPIController(BaseSourceController):
             )
             for img_url in data.images
         ]
+        audio = AudioDTO.from_tikwm(data=data, resolution_url=self._resolution.url)
+        slideshow_dto = PhotoListDTO(photos=photos, audio=audio)
 
         await self._telegram_bot_controller.send_finish_downloading_group(
-            files=photos,
+            files=slideshow_dto.photos,
             telegram_id=self._telegram_id,
             message_id=self._message_id,
         )
 
-        # Create audio DTO and send it separately
-        audio = AudioDTO.from_tikwm(data=data, resolution_url=self._resolution.url)
-        if audio:
+        if slideshow_dto.audio:
             await self._telegram_bot_controller.send_finish_downloading_audio(
-                audio=audio,
+                audio=slideshow_dto.audio,
                 telegram_id=self._telegram_id,
             )
 

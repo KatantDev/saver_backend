@@ -45,7 +45,7 @@ async def save_video(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
-        video_cache_dao=db.video_cache_dao,
+        cache_dao=db.cache_dao,
         user_dao=db.user_dao,
         message_id=message_id,
         format_id=format_id,
@@ -93,7 +93,7 @@ async def process_inline_query(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
-        video_cache_dao=db.video_cache_dao,
+        cache_dao=db.cache_dao,
         user_dao=db.user_dao,
         inline_query_id=inline_query_id,
     )
@@ -133,7 +133,7 @@ async def get_video_info(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
-        video_cache_dao=db.video_cache_dao,
+        cache_dao=db.cache_dao,
         user_dao=db.user_dao,
     )
     await controller.set_user_language()
