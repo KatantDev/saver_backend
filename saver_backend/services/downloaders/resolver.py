@@ -26,6 +26,9 @@ from saver_backend.services.downloaders.vk_clips_ydl_source import (
 from saver_backend.services.downloaders.vk_video_ydl_source import (
     VKVideoYdlController,
 )
+from saver_backend.services.downloaders.x_ydl_source import (
+    XYdlController,
+)
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
 )
@@ -278,6 +281,27 @@ class PinterestDetector(Detector):
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Pinterest pin url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class XDetector(Detector):
+    """Detector for X / Twitter."""
+
+    SOURCE = SourceEnum.X_YDL
+    CONTROLLER = XYdlController
+    HOSTS = (
+        "x.com",
+        "twitter.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "status": re.compile(r"^/(?:[^/]+)/status/(?P<code>\d+)"),
+    }
+
+    def match(self, url: str) -> Resolution | None:
+        """Check if the url is a valid X status url."""
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)

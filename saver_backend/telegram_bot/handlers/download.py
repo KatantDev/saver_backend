@@ -221,6 +221,7 @@ async def on_language_select(
             SourceEnum.YOUTUBE_SHORTS_YDL,
             SourceEnum.VK_CLIPS_YDL,
             SourceEnum.PINTEREST_YDL,
+            SourceEnum.X_YDL,
         ],
     ),
 )

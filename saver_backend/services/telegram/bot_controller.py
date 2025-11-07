@@ -690,6 +690,20 @@ class TelegramBotController:
             capture_exception(e)
             return None
 
+    async def send_x_fallback_message(
+        self,
+        telegram_id: int,
+        fixed_url: str,
+    ) -> None:
+        """
+        Send a fallback message with a modified URL for X/Twitter.
+
+        :param telegram_id: Telegram ID of the user.
+        :param fixed_url: The URL with the domain replaced by 'fixupx.com'.
+        """
+        coro = self._bot.send_message(chat_id=telegram_id, text=fixed_url)
+        await self._send(coro)
+
     async def send_video_is_private_error(
         self,
         telegram_id: int,
