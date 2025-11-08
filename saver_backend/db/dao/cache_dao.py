@@ -15,7 +15,7 @@ class CacheDAO(BaseDAO):
     async def create(
         self,
         cache_dto: CacheDTO,
-    ) -> None:
+    ) -> CacheModel:
         """
         Create a new cache entry from a DTO.
 
@@ -36,6 +36,7 @@ class CacheDAO(BaseDAO):
         )
         self.session.add(model)
         await self.session.flush()
+        return model
 
     async def get_by_filters(
         self,

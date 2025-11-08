@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from aiogram.types import Video
 
+from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.entities.user import UserDTO
@@ -22,6 +23,7 @@ from saver_backend.settings import settings
 
 if TYPE_CHECKING:
     from saver_backend.db.dao.cache_dao import CacheDAO
+    from saver_backend.db.dao.history_dao import HistoryDAO
     from saver_backend.db.dao.user_dao import UserDAO
     from saver_backend.services.telegram.bot_controller import TelegramBotController
 
@@ -36,16 +38,18 @@ class BaseSourceController(ABC):
         resolution: Resolution,
         telegram_bot_controller: "TelegramBotController",
         telegram_id: int,
-        cache_dao: "CacheDAO",
         user_dao: "UserDAO",
+        history_dao: "HistoryDAO",
+        cache_dao: "CacheDAO",
         message_id: int | None = None,
         format_id: str | None = None,
         inline_query_id: str | None = None,
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()
-        self._cache_dao = cache_dao
         self._user_dao = user_dao
+        self._history_dao = history_dao
+        self._cache_dao = cache_dao
         self._user_info: UserDTO | None = None
 
         self._selected_format_id = format_id
@@ -191,7 +195,8 @@ class BaseSourceController(ABC):
         )
 
         if telegram_video:
-            await self._save_content_to_cache(video_dto, telegram_video)
+            cache_model = await self._save_content_to_cache(video_dto, telegram_video)
+            await self._create_history_entry(cache_model)
 
         if self._inline_query_id:
             await self._answer_inline_query(
@@ -203,7 +208,7 @@ class BaseSourceController(ABC):
         self,
         content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO,
         telegram_video: Video,
-    ) -> None:
+    ) -> CacheModel | None:
         """
         Save content details to the cache.
 
@@ -220,24 +225,24 @@ class BaseSourceController(ABC):
             quality=content_dto.quality,
         )
         if not cache_dto:
-            return
+            return None
 
         cached_video = await self._cache_dao.get_by_filters(
             source=self.SOURCE,
             source_id=cache_dto.source_id,
             quality=cache_dto.quality,
-            content_type=ContentTypeEnum.VIDEO,
         )
         if cached_video:
-            return
+            return None
 
         try:
-            await self._cache_dao.create(cache_dto)
+            created_model = await self._cache_dao.create(cache_dto)
             logging.info(
                 "Successfully cached content with source_id=%s, quality=%s",
                 cache_dto.source_id,
                 cache_dto.quality,
             )
+            return created_model
         except Exception as e:
             logging.error(
                 "Failed to save cache for source_id=%s: %s",
@@ -245,6 +250,7 @@ class BaseSourceController(ABC):
                 e,
                 exc_info=True,
             )
+        return None
 
     async def send_video_from_cache(self, source_id: str, quality: str) -> bool:
         """
@@ -262,6 +268,8 @@ class BaseSourceController(ABC):
         )
         if not cached_item or not isinstance(cached_item.meta_data_dto, VideoDTO):
             return False
+
+        await self._create_history_entry(cached_item)
 
         logging.info(
             "Cache hit for source_id=%s, quality=%s. Sending by file_id.",
@@ -284,6 +292,32 @@ class BaseSourceController(ABC):
                 url=self._resolution.url,
             )
         return True
+
+    async def _create_history_entry(
+        self,
+        cache_model: CacheModel | None = None,
+    ) -> None:
+        """
+        Create a history entry for the current request.
+
+        :param cache_model: An optional CacheModel instance if the content was cached.
+        """
+        try:
+            user = await self._get_user_info()
+            await self._history_dao.create(
+                user_id=user.id,
+                cache_id=cache_model.id if cache_model else None,
+                source=self.SOURCE,
+                url=self._resolution.url,
+            )
+            logging.info(
+                "History entry created for user %s, url=%s, cache_linked=%s",
+                user.telegram_id,
+                self._resolution.url,
+                bool(cache_model),
+            )
+        except Exception:
+            logging.exception("Failed to create history entry.")
 
     async def _answer_inline_query(
         self,
