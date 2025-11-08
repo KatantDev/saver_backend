@@ -1,4 +1,3 @@
-import logging
 from typing import Any, ClassVar
 
 from yt_dlp.utils import DownloadError
@@ -40,10 +39,6 @@ class VKVideoYdlController(YtDlpController):
             return await super().get_video_info(url)
         except DownloadError as e:
             if "Access restricted" in str(e):
-                logging.warning(
-                    "Handled private/restricted VK video for URL: %s",
-                    self._resolution.url,
-                )
                 await self.delete_processing_message()
                 await self._telegram_bot_controller.send_content_not_found_error(
                     telegram_id=self._telegram_id,

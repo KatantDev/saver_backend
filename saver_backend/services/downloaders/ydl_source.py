@@ -123,9 +123,7 @@ class YtDlpController(BaseSourceController, ABC):
         try:
             info_dict = await self.get_video_info(url=self._resolution.url)
         except DownloadError as e:
-            if settings.environment == "local":
-                logging.exception(e)
-            sentry_sdk.capture_exception(e)
+            logging.exception(e)
             await self._send_error_message()
             return
 

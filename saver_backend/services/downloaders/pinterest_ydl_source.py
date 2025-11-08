@@ -1,4 +1,3 @@
-import logging
 from typing import Any, ClassVar
 
 from yt_dlp import DownloadError
@@ -38,10 +37,6 @@ class PinterestYdlController(YtDlpController):
             return await super().get_video_info(url)
         except DownloadError as e:
             if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):
-                logging.warning(
-                    "Handled deleted/private Pinterest pin for URL: %s",
-                    self._resolution.url,
-                )
                 await self.delete_processing_message()
                 await self._telegram_bot_controller.send_content_not_found_error(
                     telegram_id=self._telegram_id,
