@@ -687,6 +687,7 @@ class TelegramBotController:
 
         :param telegram_id: Telegram ID of the user.
         :param fixed_url: The URL with the domain replaced by 'fixupx.com'.
+        :param language: The language for the message.
         """
         text = _("result direct message", locale=language or self.language).format(
             url=fixed_url,
