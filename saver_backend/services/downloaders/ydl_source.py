@@ -258,6 +258,12 @@ class YtDlpController(BaseSourceController, ABC):
             ):
                 self._set_proxy()
                 return await self.get_video_info(url=url)
+            if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):
+                await self.delete_processing_message()
+                await self._telegram_bot_controller.send_content_not_found_error(
+                    telegram_id=self._telegram_id,
+                )
+                return None
             raise
 
     def _cleanup_files(self) -> None:
