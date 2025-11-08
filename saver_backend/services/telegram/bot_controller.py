@@ -70,6 +70,7 @@ class TelegramBotController:
         self._i18n = i18n
         self._session = AiohttpSession(
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
+            timeout=180,
         )
         self._bot = Bot(
             session=self._session,
