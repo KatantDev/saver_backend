@@ -3,12 +3,9 @@ from sqlalchemy import select
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
+from saver_backend.entities.mappers import DTO_TO_CONTENT_TYPE_MAP
 from saver_backend.services.downloaders.schema import (
-    AudioDTO,
     CacheDTO,
-    PhotoDTO,
-    PhotoListDTO,
-    VideoDTO,
 )
 
 
@@ -24,13 +21,7 @@ class CacheDAO(BaseDAO):
 
         :param cache_dto: A CacheDTO containing all necessary cache information.
         """
-        content_type_map = {
-            VideoDTO: ContentTypeEnum.VIDEO,
-            PhotoDTO: ContentTypeEnum.PHOTO,
-            AudioDTO: ContentTypeEnum.AUDIO,
-            PhotoListDTO: ContentTypeEnum.PHOTO_LIST,
-        }
-        content_type = content_type_map.get(type(cache_dto.meta_data))
+        content_type = DTO_TO_CONTENT_TYPE_MAP.get(type(cache_dto.meta_data))
         if not content_type:
             raise ValueError("Unsupported meta_data type for caching")
 

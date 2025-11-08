@@ -4,7 +4,7 @@ import re
 import uuid
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,15 @@ from saver_backend.services.language_resolver import LanguageResolver
 
 if TYPE_CHECKING:
     from aiogram.types import Video as TgVideo
+
+
+class BaseContentDTO(BaseModel):
+    """Base DTO for any cachable content."""
+
+    source_id: str | None = None
+    url: str | None = None
+    title: str | None = None
+    quality: str | None = "best"
 
 
 class FormatDTO(BaseModel):
@@ -126,22 +135,18 @@ class FormatDTO(BaseModel):
         )
 
 
-class VideoDTO(BaseModel):
+class VideoDTO(BaseContentDTO):
     """Data Transfer Object for Video."""
 
     path: Path | None = None
     thumbnail: str | Path | None = None
     thumbnail_url: str | None = None
 
-    title: str | None = None
     description: str | None = None
-    url: str | None = None
-    source_id: str | None = None
 
     duration: int | None = None
     width: int | None = None
     height: int | None = None
-    quality: str | None = None
 
     direct_download_url: str | None = None
 
@@ -291,13 +296,11 @@ class VideoDTO(BaseModel):
         )
 
 
-class PhotoDTO(BaseModel):
+class PhotoDTO(BaseContentDTO):
     """Data Transfer Object for Photo."""
 
     path: Path | None = None
-    title: str | None = None
     media_url: str | None = None
-    url: str | None = None
 
     @classmethod
     def from_tikwm(
@@ -311,16 +314,15 @@ class PhotoDTO(BaseModel):
             media_url=image_url,
             url=resolution_url,
             title=data.title,
+            source_id=data.id,
         )
 
 
-class AudioDTO(BaseModel):
+class AudioDTO(BaseContentDTO):
     """Data Transfer Object for Audio."""
 
     path: str | Path | None = None
     media_url: str | None = None
-    url: str | None = None
-    title: str | None = None
     duration: int | None = None
 
     @classmethod
@@ -334,6 +336,7 @@ class AudioDTO(BaseModel):
             title=cls._get_audio_title(data, resolution_url),
             duration=data.duration,
             url=resolution_url,
+            source_id=data.id,
         )
 
     @staticmethod
@@ -347,18 +350,42 @@ class AudioDTO(BaseModel):
         return safe_name[:150].strip() or str(uuid.uuid4())
 
 
-class PhotoListDTO(BaseModel):
+class PhotoListDTO(BaseContentDTO):
     """Data Transfer Object for a list of photos (slideshow)."""
 
     photos: list[PhotoDTO]
     audio: AudioDTO | None = None
 
-    @property
-    def url(self) -> str | None:
-        """Get the URL from the first photo as a representative URL."""
-        if self.photos:
-            return self.photos[0].url
-        return None
+    @classmethod
+    def from_tikwm(cls, data: "TikWMData", resolution_url: str) -> "PhotoListDTO":
+        """
+        Create a PhotoListDTO instance from TikWM API data.
+
+        This method encapsulates the logic for building the entire slideshow object.
+        """
+        photos = []
+        if data.images:
+            photos = [
+                PhotoDTO.from_tikwm(
+                    image_url=img_url,
+                    data=data,
+                    resolution_url=resolution_url,
+                )
+                for img_url in data.images
+            ]
+
+        audio = AudioDTO.from_tikwm(data=data, resolution_url=resolution_url)
+
+        return cls(
+            photos=photos,
+            audio=audio,
+            source_id=data.id,
+            url=resolution_url,
+            title=data.title,
+        )
+
+
+CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO]
 
 
 class CacheDTO(BaseModel):

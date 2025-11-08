@@ -210,7 +210,6 @@ class BaseSourceController(ABC):
         :param content_dto: The original DTO with metadata.
         :param telegram_video: The Video object from aiogram after sending.
         """
-        quality = getattr(content_dto, "quality", "best")
         dto_for_cache = content_dto.model_copy(
             update={"path": None, "thumbnail": None},
         )
@@ -218,9 +217,18 @@ class BaseSourceController(ABC):
             source=self.SOURCE,
             telegram_video=telegram_video,
             content_dto=dto_for_cache,
-            quality=quality,
+            quality=content_dto.quality,
         )
         if not cache_dto:
+            return
+
+        cached_video = await self._cache_dao.get_by_filters(
+            source=self.SOURCE,
+            source_id=cache_dto.source_id,
+            quality=cache_dto.quality,
+            content_type=ContentTypeEnum.VIDEO,
+        )
+        if cached_video:
             return
 
         try:
@@ -233,7 +241,7 @@ class BaseSourceController(ABC):
         except Exception as e:
             logging.error(
                 "Failed to save cache for source_id=%s: %s",
-                getattr(content_dto, "source_id", "N/A"),
+                content_dto.source_id,
                 e,
                 exc_info=True,
             )

@@ -8,8 +8,6 @@ from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
-    AudioDTO,
-    PhotoDTO,
     PhotoListDTO,
     TikWMData,
     TikWMResponse,
@@ -86,20 +84,14 @@ class TikTokAPIController(BaseSourceController):
             )
             return
 
-        if not data.images or not data.music:
+        if not data.images:
             await self._send_error_message()
             return
 
-        photos = [
-            PhotoDTO.from_tikwm(
-                image_url=img_url,
-                data=data,
-                resolution_url=self._resolution.url,
-            )
-            for img_url in data.images
-        ]
-        audio = AudioDTO.from_tikwm(data=data, resolution_url=self._resolution.url)
-        slideshow_dto = PhotoListDTO(photos=photos, audio=audio)
+        slideshow_dto = PhotoListDTO.from_tikwm(
+            data=data,
+            resolution_url=self._resolution.url,
+        )
 
         await self._telegram_bot_controller.send_finish_downloading_group(
             files=slideshow_dto.photos,

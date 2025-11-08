@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import Any, Union
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import JSON, Index, String, Text, UniqueConstraint, text
@@ -8,14 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from saver_backend.db.models.base_model import DbBaseModel
 from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
+from saver_backend.entities.mappers import CONTENT_TYPE_TO_DTO_MAP
 from saver_backend.services.downloaders.schema import (
-    AudioDTO,
-    PhotoDTO,
-    PhotoListDTO,
-    VideoDTO,
+    CacheableDTO,
 )
-
-CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO]
 
 
 class CacheModel(DbBaseModel):
@@ -72,7 +68,7 @@ class CacheModel(DbBaseModel):
     )
 
     @cached_property
-    def meta_data_dto(self) -> VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO | None:
+    def meta_data_dto(self) -> CacheableDTO | None:
         """
         Parse the meta_data JSON into a corresponding Pydantic DTO.
 
@@ -81,13 +77,7 @@ class CacheModel(DbBaseModel):
         if not self.meta_data:
             return None
 
-        dto_map: dict[ContentTypeEnum, type[CacheableDTO]] = {
-            ContentTypeEnum.VIDEO: VideoDTO,
-            ContentTypeEnum.PHOTO: PhotoDTO,
-            ContentTypeEnum.AUDIO: AudioDTO,
-            ContentTypeEnum.PHOTO_LIST: PhotoListDTO,
-        }
-        dto_class = dto_map.get(self.content_type)
+        dto_class = CONTENT_TYPE_TO_DTO_MAP.get(self.content_type)
 
         if dto_class:
             return dto_class.model_validate(self.meta_data)
