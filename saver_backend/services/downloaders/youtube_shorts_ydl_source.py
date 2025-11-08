@@ -1,4 +1,3 @@
-import logging
 from typing import Any, ClassVar
 
 from yt_dlp import DownloadError
@@ -40,11 +39,6 @@ class YouTubeShortsYdlController(YtDlpController):
             return await super().get_video_info(url)
         except DownloadError as e:
             if "Video unavailable" in str(e):
-                logging.warning(
-                    "Handled unavailable YouTube Shorts for URL: %s. Reason: %s",
-                    self._resolution.url,
-                    str(e).strip(),
-                )
                 await self.delete_processing_message()
                 await self._telegram_bot_controller.send_content_not_found_error(
                     telegram_id=self._telegram_id,
