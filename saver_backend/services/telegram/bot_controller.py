@@ -676,6 +676,25 @@ class TelegramBotController:
             capture_exception(e)
             return None
 
+    async def send_x_fallback_message(
+        self,
+        telegram_id: int,
+        fixed_url: str,
+        language: str | None = None,
+    ) -> None:
+        """
+        Send a fallback message with a modified URL for X/Twitter.
+
+        :param telegram_id: Telegram ID of the user.
+        :param fixed_url: The URL with the domain replaced by 'fixupx.com'.
+        :param language: The language for the message.
+        """
+        text = _("result direct message", locale=language or self.language).format(
+            url=fixed_url,
+        )
+        coro = self._bot.send_message(chat_id=telegram_id, text=text)
+        await self._send(coro)
+
     async def send_content_not_found_error(
         self,
         telegram_id: int,
