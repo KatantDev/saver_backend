@@ -45,6 +45,7 @@ class XYdlController(YtDlpController):
             )
             await self.delete_processing_message()
             await self._send_fallback_link()
+            await self._create_history_entry()
             return None
 
     async def _send_fallback_link(self) -> None:
