@@ -43,9 +43,9 @@ class M3U8YdlController(YtDlpController):
 
         info_dict.update(
             {
-                "id": self._video.source_id,
-                "title": self._video.title,
-                "fulltitle": self._video.title,
+                "id": url_path,
+                "title": url_path,
+                "fulltitle": url_path,
             },
         )
         self._video = VideoDTO.from_yt_dlp(
