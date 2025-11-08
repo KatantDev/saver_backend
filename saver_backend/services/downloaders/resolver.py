@@ -13,6 +13,7 @@ from saver_backend.services.downloaders.instagram_api_source import (
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
+from saver_backend.services.downloaders.m3u8_ydl_source import M3U8YdlController
 from saver_backend.services.downloaders.pinterest_ydl_source import (
     PinterestYdlController,
 )
@@ -25,6 +26,9 @@ from saver_backend.services.downloaders.vk_clips_ydl_source import (
 )
 from saver_backend.services.downloaders.vk_video_ydl_source import (
     VKVideoYdlController,
+)
+from saver_backend.services.downloaders.x_ydl_source import (
+    XYdlController,
 )
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
@@ -284,6 +288,27 @@ class PinterestDetector(Detector):
 
 
 @register_detector()
+class XDetector(Detector):
+    """Detector for X / Twitter."""
+
+    SOURCE = SourceEnum.X_YDL
+    CONTROLLER = XYdlController
+    HOSTS = (
+        "x.com",
+        "twitter.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "status": re.compile(r"^/(?:[^/]+)/status/(?P<code>\d+)"),
+    }
+
+    def match(self, url: str) -> Resolution | None:
+        """Check if the url is a valid X status url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
 class YouTubeVideoDetector(Detector):
     """Detector for standard YouTube videos."""
 
@@ -376,6 +401,24 @@ class RutubeDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)
+
+
+@register_detector()
+class M3U8Detector(Detector):
+    """Detector for Rutube videos."""
+
+    SOURCE = SourceEnum.M3U8_YDL
+    CONTROLLER = M3U8YdlController
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """
+        Check if the url is a valid Rutube video url.
+
+        :param url: URL to check.
+        """
+        if not url.endswith(".m3u8"):
+            return None
+        return Resolution(source=self.SOURCE, url=self._clean_url(url))
 
 
 class SourceResolver:

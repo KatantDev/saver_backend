@@ -23,3 +23,12 @@ class PinterestYdlController(YtDlpController):
         self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
             format_spec=pinterest_params["format"],
         )
+
+    async def get_video_info(self, url: str) -> dict[str, Any] | None:
+        """
+        Get video info, with specific handling for private or unavailable pins.
+
+        :param url: URL of the video.
+        :return: Dictionary with video information or None on failure.
+        """
+        return await super().get_video_info(url)

@@ -129,7 +129,7 @@ class FormatDTO(BaseModel):
         return cls(
             format_id=format_id,
             resolution=resolution,
-            fps=format_info.get("fps", 30.0),
+            fps=format_info.get("fps") or 30.0,
             language=format_info.get("language"),
             filesize=filesize,
         )

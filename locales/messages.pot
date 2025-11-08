@@ -16,7 +16,7 @@ msgstr ""
 msgid "error inline query"
 msgstr ""
 
-msgid "video is private"
+msgid "content private or not found"
 msgstr ""
 
 msgid "tiktok photo unsupported"

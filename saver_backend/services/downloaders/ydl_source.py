@@ -120,7 +120,13 @@ class YtDlpController(BaseSourceController, ABC):
         Otherwise, it proceeds with the full download process.
         """
         # Получаем информацию о видео, в случае, если данные не получены - останавливаем
-        info_dict = await self.get_video_info(url=self._resolution.url)
+        try:
+            info_dict = await self.get_video_info(url=self._resolution.url)
+        except DownloadError as e:
+            logging.exception(e)
+            await self._send_error_message()
+            return
+
         if not self._video or not info_dict:
             return
 
@@ -252,19 +258,13 @@ class YtDlpController(BaseSourceController, ABC):
             ):
                 self._set_proxy()
                 return await self.get_video_info(url=url)
-
-            if "Access restricted" in str(e):
+            if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):
                 await self.delete_processing_message()
-                await self._telegram_bot_controller.send_video_is_private_error(
+                await self._telegram_bot_controller.send_content_not_found_error(
                     telegram_id=self._telegram_id,
                 )
                 return None
-
-            if settings.environment == "local":
-                logging.exception(e)
-            sentry_sdk.capture_exception(e)
-            await self._send_error_message()
-        return None
+            raise
 
     def _cleanup_files(self) -> None:
         """Safely deletes the downloaded video and thumbnail files."""

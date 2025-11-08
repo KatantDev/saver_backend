@@ -70,6 +70,7 @@ class TelegramBotController:
         self._i18n = i18n
         self._session = AiohttpSession(
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
+            timeout=180,
         )
         self._bot = Bot(
             session=self._session,
@@ -570,7 +571,6 @@ class TelegramBotController:
         message_id: int | None = None,
         supports_streaming: bool = True,
         language: str | None = None,
-        retry: int = 0,
     ) -> Video | None:
         """
         Send finish downloading message.
@@ -580,13 +580,8 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param supports_streaming: Supports streaming.
         :param language: Language of the video.
-        :param retry: Retry count for network errors.
         :return: Sent video or None on failure.
         """
-        if retry > 5:
-            logging.error("Max retries reached for sending video to %s", telegram_id)
-            return None
-
         video_input: str | FSInputFile | URLInputFile
         thumbnail_input: str | FSInputFile | None = None
         if video.direct_download_url:
@@ -625,15 +620,7 @@ class TelegramBotController:
         except (TelegramForbiddenError, TelegramBadRequest):
             return None
         except TelegramNetworkError:
-            await asyncio.sleep(2)
-            return await self.send_finish_downloading(
-                video=video,
-                telegram_id=telegram_id,
-                message_id=message_id,
-                supports_streaming=supports_streaming,
-                language=language,
-                retry=retry + 1,
-            )
+            return None
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
@@ -690,20 +677,39 @@ class TelegramBotController:
             capture_exception(e)
             return None
 
-    async def send_video_is_private_error(
+    async def send_x_fallback_message(
+        self,
+        telegram_id: int,
+        fixed_url: str,
+        language: str | None = None,
+    ) -> None:
+        """
+        Send a fallback message with a modified URL for X/Twitter.
+
+        :param telegram_id: Telegram ID of the user.
+        :param fixed_url: The URL with the domain replaced by 'fixupx.com'.
+        :param language: The language for the message.
+        """
+        text = _("result direct message", locale=language or self.language).format(
+            url=fixed_url,
+        )
+        coro = self._bot.send_message(chat_id=telegram_id, text=text)
+        await self._send(coro)
+
+    async def send_content_not_found_error(
         self,
         telegram_id: int,
         language: str | None = None,
     ) -> None:
         """
-        Send a message indicating the video is private or region-locked.
+        Send a message indicating the content is private, deleted or not found.
 
         :param telegram_id: Telegram ID of the user.
         :param language: Language for the message.
         """
         coro = self._bot.send_message(
             chat_id=telegram_id,
-            text=_("video is private", locale=language or self.language),
+            text=_("content private or not found", locale=language or self.language),
         )
         await self._send(coro)
 

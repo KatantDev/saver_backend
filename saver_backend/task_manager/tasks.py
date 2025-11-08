@@ -63,6 +63,7 @@ async def save_video(
         )
     except Exception as error:
         logging.exception(error)
+    finally:
         await controller.close()
 
 
@@ -104,6 +105,7 @@ async def process_inline_query(
         await controller.download_video()
     except Exception as error:
         logging.exception(error)
+    finally:
         await controller.close()
 
 
@@ -146,8 +148,9 @@ async def get_video_info(
         info_dict = await controller.get_video_info(url=resolution.url)
     except Exception as error:
         logging.exception(error)
-        await controller.close()
         info_dict = None
+    finally:
+        await controller.close()
 
     if not info_dict:
         await state.telegram_bot_controller.edit_failed_video_info(
