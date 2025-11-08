@@ -123,7 +123,10 @@ class YtDlpController(BaseSourceController, ABC):
         try:
             info_dict = await self.get_video_info(url=self._resolution.url)
         except DownloadError as e:
-            await self._handle_download_error(e)
+            if settings.environment == "local":
+                logging.exception(e)
+            sentry_sdk.capture_exception(e)
+            await self._send_error_message()
             return
 
         if not self._video or not info_dict:
@@ -258,26 +261,6 @@ class YtDlpController(BaseSourceController, ABC):
                 self._set_proxy()
                 return await self.get_video_info(url=url)
             raise
-
-    async def _handle_download_error(self, error: DownloadError) -> None:
-        """
-        Handle download errors from yt-dlp.
-
-        This method can be overridden by subclasses for source-specific error handling.
-
-        :param error: The DownloadError exception instance.
-        """
-        if "Access restricted" in str(error):
-            await self.delete_processing_message()
-            await self._telegram_bot_controller.send_content_not_found_error(
-                telegram_id=self._telegram_id,
-            )
-            return
-
-        if settings.environment == "local":
-            logging.exception(error)
-        sentry_sdk.capture_exception(error)
-        await self._send_error_message()
 
     def _cleanup_files(self) -> None:
         """Safely deletes the downloaded video and thumbnail files."""

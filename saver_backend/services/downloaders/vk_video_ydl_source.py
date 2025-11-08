@@ -1,4 +1,7 @@
+import logging
 from typing import Any, ClassVar
+
+from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
@@ -25,3 +28,25 @@ class VKVideoYdlController(YtDlpController):
             self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
                 format_spec=vk_params["format"],
             )
+
+    async def get_video_info(self, url: str) -> dict[str, Any] | None:
+        """
+        Get video info, with specific handling for private/restricted videos.
+
+        :param url: URL of the video.
+        :return: Dictionary with video information or None on failure.
+        """
+        try:
+            return await super().get_video_info(url)
+        except DownloadError as e:
+            if "Access restricted" in str(e):
+                logging.warning(
+                    "Handled private/restricted VK video for URL: %s",
+                    self._resolution.url,
+                )
+                await self.delete_processing_message()
+                await self._telegram_bot_controller.send_content_not_found_error(
+                    telegram_id=self._telegram_id,
+                )
+                return None
+            raise

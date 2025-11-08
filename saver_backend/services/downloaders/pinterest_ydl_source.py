@@ -27,22 +27,24 @@ class PinterestYdlController(YtDlpController):
             format_spec=pinterest_params["format"],
         )
 
-    async def _handle_download_error(self, error: DownloadError) -> None:
+    async def get_video_info(self, url: str) -> dict[str, Any] | None:
         """
-        Handle Pinterest-specific download errors.
+        Get video info, with specific handling for private or unavailable pins.
 
-        Specifically catches errors indicating a deleted or private pin.
-
-        :param error: The DownloadError exception instance.
+        :param url: URL of the video.
+        :return: Dictionary with video information or None on failure.
         """
-        if "Unsupported URL" in str(error):
-            logging.warning(
-                "Handled deleted/private Pinterest pin for URL: %s",
-                self._resolution.url,
-            )
-            await self.delete_processing_message()
-            await self._telegram_bot_controller.send_content_not_found_error(
-                telegram_id=self._telegram_id,
-            )
-        else:
-            await super()._handle_download_error(error)
+        try:
+            return await super().get_video_info(url)
+        except DownloadError as e:
+            if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):
+                logging.warning(
+                    "Handled deleted/private Pinterest pin for URL: %s",
+                    self._resolution.url,
+                )
+                await self.delete_processing_message()
+                await self._telegram_bot_controller.send_content_not_found_error(
+                    telegram_id=self._telegram_id,
+                )
+                return None
+            raise
