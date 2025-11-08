@@ -10,6 +10,7 @@ on:
     branches:
       - dev
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -50,33 +51,29 @@ jobs:
             SHA="${{ github.event.workflow_run.head_sha }}"
 
             mkdir -p "$DEPLOY_PATH"
-            cd "$DEPLOY_PATH"
 
-            # Настраиваем git remote через токен GitHub App
             if [ ! -d "$DEPLOY_PATH/.git" ]; then
+              echo "⚙️ Initializing git repository..."
               git init "$DEPLOY_PATH"
-              git -C "$DEPLOY_PATH" remote add origin "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git"
-            else
-              git -C "$DEPLOY_PATH" remote set-url origin "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git"
             fi
 
-            # Деплоим ровно тот коммит, который прошёл тесты
-            git -C "$DEPLOY_PATH" fetch --depth=1 origin "$SHA"
+            echo "📥 Fetching commit $SHA..."
+            git -C "$DEPLOY_PATH" fetch --depth=1 "https://x-access-token:${GH_APP_TOKEN}@github.com/$REPO.git" "$SHA"
             git -C "$DEPLOY_PATH" reset --hard "$SHA"
+            unset GH_APP_TOKEN
 
-            # Обновляем .env из секрета окружения
-            cat > "$DEPLOY_PATH/.env" <<'EOF'
-            ${{ secrets.ENV_FILE }}
+            cat > "$DEPLOY_PATH/.env" <<EOF
+              ${{ secrets.ENV_FILE }}
             EOF
+            chmod 600 "$DEPLOY_PATH/.env"
 
-            # Проверяем наличие make и запускаем целевой таргет
-            if ! command -v make >/dev/null 2>&1; then
-              echo "make не установлен на сервере" >&2
-              exit 1
+            if ! command -v task >/dev/null 2>&1; then
+              echo "⚙️ Installing go-task..."
+              sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
+              source ~/.profile || true
+            else
+              echo "✅ go-task already installed"
+              task --version
             fi
 
-            # Выводим DEBUG инфу
-            pwd
-            ls -la
-
-            make -C "$DEPLOY_PATH" deploy
+            task -d "$DEPLOY_PATH" deploy

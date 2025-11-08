@@ -138,7 +138,7 @@ services:
       TELEGRAM_API_ID: "24905596"
       TELEGRAM_API_HASH: "1b1264e88cb2475be709831a2a53289b"
       TELEGRAM_LOCAL: "true"
-      TELEGRAM_VERBOSITY: ${TELEGRAM_VERBOSITY}
+      TELEGRAM_VERBOSITY: ${TELEGRAM_VERBOSITY:-1}
     volumes:
       - saver-telegram-bot-api-data:/var/lib/telegram-bot-api
     logging: *default-logging

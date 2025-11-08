@@ -210,15 +210,21 @@ class BaseSourceController(ABC):
             logging.warning("Cannot cache video: source_id or quality is missing.")
             return
 
-        dto_for_cache = video_dto.model_copy(
-            update={"path": None, "thumbnail": None},
-        )
+        dto_for_cache = video_dto.model_copy(update={"path": None, "thumbnail": None})
         cache_dto = VideoCacheDTO.from_yt_dlp(
             source=self.SOURCE,
             telegram_video=telegram_video,
             video=dto_for_cache,
         )
         if not cache_dto:
+            return
+
+        cached_video = await self._video_cache_dao.get_by_source_id_and_quality(
+            source=self.SOURCE,
+            source_id=cache_dto.source_id,
+            quality=cache_dto.quality,
+        )
+        if cached_video:
             return
 
         try:
