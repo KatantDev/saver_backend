@@ -28,18 +28,16 @@ class XYdlController(YtDlpController):
             format_spec=x_params["format"],
         )
 
-    async def download_video(self) -> None:
+    async def get_video_info(self, url: str) -> dict[str, Any] | None:
         """
-        Attempt to download a video from X/Twitter.
+        Attempt to get video info from X.
 
-        If the download fails (e.g., no video in the tweet), it sends a
-        fallback message with a 'fixupx.com' link to the user.
+        If any DownloadError occurs, trigger the fallback link mechanism and
+        return None to stop the download process.
         """
         try:
-            # First, attempt the standard download process from the parent class
-            await super().download_video()
+            return await super().get_video_info(url)
         except DownloadError as e:
-            # This is the special fallback logic for X
             logging.warning(
                 "Could not download video from X URL %s: %s. Sending fallback link.",
                 self._resolution.url,
@@ -47,15 +45,7 @@ class XYdlController(YtDlpController):
             )
             await self.delete_processing_message()
             await self._send_fallback_link()
-        except Exception:
-            # Catch any other unexpected errors and send the fallback
-            logging.exception(
-                "An unexpected error occurred while downloading from X URL %s. "
-                "Sending fallback link.",
-                self._resolution.url,
-            )
-            await self.delete_processing_message()
-            await self._send_fallback_link()
+            return None
 
     async def _send_fallback_link(self) -> None:
         """Replace the domain with 'fixupx.com' and send it to the user."""
