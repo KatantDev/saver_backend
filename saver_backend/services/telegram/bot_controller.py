@@ -570,7 +570,6 @@ class TelegramBotController:
         message_id: int | None = None,
         supports_streaming: bool = True,
         language: str | None = None,
-        retry: int = 0,
     ) -> Video | None:
         """
         Send finish downloading message.
@@ -580,13 +579,8 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param supports_streaming: Supports streaming.
         :param language: Language of the video.
-        :param retry: Retry count for network errors.
         :return: Sent video or None on failure.
         """
-        if retry > 5:
-            logging.error("Max retries reached for sending video to %s", telegram_id)
-            return None
-
         video_input: str | FSInputFile | URLInputFile
         thumbnail_input: str | FSInputFile | None = None
         if video.direct_download_url:
@@ -624,12 +618,7 @@ class TelegramBotController:
             )
         except (TelegramForbiddenError, TelegramBadRequest):
             return None
-        except TelegramNetworkError as e:
-            logging.error(
-                "Network error while sending video to user %s: %s",
-                telegram_id,
-                e,
-            )
+        except TelegramNetworkError:
             return None
         except Exception as e:
             if settings.environment == "local":
