@@ -1,5 +1,7 @@
 from typing import Any, ClassVar
 
+from yt_dlp import DownloadError
+
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
@@ -25,3 +27,21 @@ class YouTubeShortsYdlController(YtDlpController):
             },
         }
         self._yt_dlp.params.update(youtube_params)
+
+    async def get_video_info(self, url: str) -> dict[str, Any] | None:
+        """
+        Get video info, with specific handling for private/restricted videos.
+
+        :param url: URL of the video.
+        :return: Dictionary with video information or None on failure.
+        """
+        try:
+            return await super().get_video_info(url)
+        except DownloadError as e:
+            if "Video unavailable" in str(e):
+                await self.delete_processing_message()
+                await self._telegram_bot_controller.send_content_not_found_error(
+                    telegram_id=self._telegram_id,
+                )
+                return None
+            raise
