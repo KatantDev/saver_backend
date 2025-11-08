@@ -2,6 +2,7 @@ from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 from saver_backend.entities.enums import SourceEnum
+from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 
@@ -28,20 +29,30 @@ class M3U8YdlController(YtDlpController):
         :param url: The url to get video info from.
         :return: The video info or None.
         """
-        result = await super().get_video_info(url=url)
-        url_path = urlparse(self._resolution.url).path[:200]
-        if result is None or self._video is None:
+        info_dict = await super().get_video_info(url=url)
+        if info_dict is None or self._video is None:
             return None
 
-        self._video = self._video.model_copy(
-            update={"title": url_path, "source_id": url_path},
+        url_path = (
+            urlparse(self._resolution.url)
+            .path[:200]
+            .replace("/", "-")
+            .replace(".", "-")
         )
-        result.update(
+        ext = info_dict.get("ext")
+
+        info_dict.update(
             {
                 "id": self._video.source_id,
                 "title": self._video.title,
                 "fulltitle": self._video.title,
             },
         )
+        self._video = VideoDTO.from_yt_dlp(
+            info=info_dict,
+            file_path=self._download_directory / f"{url_path}.{ext}",
+            extract_direct_links=self.DIRECT_URL_DOWNLOAD,
+            quality=self._selected_format_id or "best",
+        )
 
-        return result
+        return info_dict
