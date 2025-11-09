@@ -1,4 +1,7 @@
+from datetime import datetime
 from uuid import UUID
+
+from sqlalchemy import func, select
 
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.history_model import HistoryModel
@@ -31,3 +34,46 @@ class HistoryDAO(BaseDAO):
         )
         self.session.add(model)
         await self.session.flush()
+
+    async def get_count(self, created_after: datetime | None = None) -> int:
+        """
+        Get count of history records.
+
+        :param created_after: datetime to filter records.
+        :return: count of records.
+        """
+        query = select(func.count()).select_from(HistoryModel)
+        if created_after:
+            query = query.where(HistoryModel.created_at >= created_after)
+        result = await self.session.execute(query)
+        return result.scalar() or 0
+
+    async def get_active_users_count(self, created_after: datetime) -> int:
+        """
+        Get count of active users.
+
+        Active user is a user who has at least one record in history.
+
+        :param created_after: datetime to filter records.
+        :return: count of active users.
+        """
+        query = select(func.count(func.distinct(HistoryModel.user_id))).where(
+            HistoryModel.created_at >= created_after,
+        )
+        result = await self.session.execute(query)
+        return result.scalar() or 0
+
+    async def get_counts_by_source(self) -> list[tuple[SourceEnum, int]]:
+        """
+        Get counts of history records by source.
+
+        :return: list of tuples (source, count).
+        """
+        query = (
+            select(HistoryModel.source, func.count(HistoryModel.id))
+            .group_by(HistoryModel.source)
+            .order_by(func.count(HistoryModel.id).desc())
+        )
+        result = await self.session.execute(query)
+        rows = result.all()
+        return [(SourceEnum(source), count) for source, count in rows]

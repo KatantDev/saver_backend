@@ -64,6 +64,24 @@ msgstr ""
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🎥</tg-emoji> Select video quality:"
 
+msgid "stats_date_header"
+msgstr "<b>{date}</b>"
+
+msgid "stats_new_users_24h"
+msgstr "<b>New users [24h]:</b> {value}"
+
+msgid "stats_active_users_24h"
+msgstr "<b>Active users [24h]:</b> {value}"
+
+msgid "stats_downloads_24h"
+msgstr "<b>Downloads [24h]:</b> {value}"
+
+msgid "stats_total_users"
+msgstr "<b>Total users:</b> {value}"
+
+msgid "stats_total_downloads"
+msgstr "<b>Total downloads:</b> {value}"
+
 msgid "unknown url"
 msgstr ""
 "🌀 This URL is not supported for downloading.\n"

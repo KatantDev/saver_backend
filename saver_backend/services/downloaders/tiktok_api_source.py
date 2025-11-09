@@ -105,6 +105,8 @@ class TikTokAPIController(BaseSourceController):
                 telegram_id=self._telegram_id,
             )
 
+        await self._create_history_entry()
+
     async def _handle_video(self, data: TikWMData) -> None:
         """
         Handle caching, downloading, and sending of a single video.
