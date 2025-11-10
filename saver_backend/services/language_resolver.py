@@ -7,6 +7,7 @@ LANG_CODE_COUNTRY = {
     "en": "US",
     "zh": "CN",
     "hi": "IN",
+    "iw": "IL",
     "ja": "JP",
     "ko": "KR",
     "te": "IN",

@@ -23,6 +23,7 @@ class SourceEnum(str, Enum):
     PINTEREST_YDL = "pinterest_ydl"
     RUTUBE_YDL = "rutube_ydl"
     X_YDL = "x_ydl"
+    DZEN_YDL = "dzen_ydl"
     UNSUPPORTED = "unsupported"
     M3U8_YDL = "m3u8_ydl"
 

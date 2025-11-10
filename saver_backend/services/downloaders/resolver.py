@@ -7,6 +7,9 @@ from urllib.parse import urlparse, urlunparse
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.dzen_ydl import (
+    DzenYdlController,
+)
 from saver_backend.services.downloaders.instagram_api_source import (
     InstagramAPIController,
 )
@@ -238,6 +241,8 @@ class VKClipsDetector(Detector):
         "vk.com",
         "m.vk.com",
         "www.vk.com",
+        "vk.ru",
+        "m.vk.ru",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "clips": re.compile(r"^/clip(?P<code>-?\d+_\d+)/?$"),
@@ -352,10 +357,12 @@ class VKVideoDetector(Detector):
     SOURCE = SourceEnum.VK_VIDEO_YDL
     CONTROLLER = VKVideoYdlController
     HOSTS = (
+        "vkvideo.ru",
         "vk.com",
         "m.vk.com",
-        "vkvideo.ru",
         "www.vk.com",
+        "m.vk.ru",
+        "vk.ru",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "video_path": re.compile(r"/video(?P<code>-?\d+_\d+)"),
@@ -419,6 +426,27 @@ class M3U8Detector(Detector):
         if not url.endswith(".m3u8"):
             return None
         return Resolution(source=self.SOURCE, url=self._clean_url(url))
+
+
+@register_detector()
+class DzenDetector(Detector):
+    """Detector for Dzen videos."""
+
+    SOURCE = SourceEnum.DZEN_YDL
+    CONTROLLER = DzenYdlController
+    HOSTS = (
+        "dzen.ru",
+        "www.dzen.ru",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video/watch/(?P<code>[a-zA-Z0-9_-]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Dzen video url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
 
 
 class SourceResolver:
