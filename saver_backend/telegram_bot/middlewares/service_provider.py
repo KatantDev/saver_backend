@@ -2,15 +2,14 @@ from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from saver_backend.db.dao.cache_dao import CacheDAO
 from saver_backend.db.dao.history_dao import HistoryDAO
 from saver_backend.db.dao.user_dao import UserDAO
+from saver_backend.services.telegram.daily_report_service import DailyReportService
 
 
-class DAOProviderMiddleware(BaseMiddleware):
-    """Middleware that provides DAO instances to handlers."""
+class ServiceProviderMiddleware(BaseMiddleware):
+    """Middleware that provides service instances to handlers."""
 
     async def __call__(
         self,
@@ -19,15 +18,17 @@ class DAOProviderMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         """
-        Provide DAO instances to handlers.
+        Provide service instances to handlers.
 
         :param handler: handler to call.
         :param event: event object.
         :param data: data dictionary.
         :return: result of the handler.
         """
-        session: AsyncSession = data["db_session"]
-        data["user_dao"] = UserDAO(session)
-        data["history_dao"] = HistoryDAO(session)
-        data["cache_dao"] = CacheDAO(session)
+        user_dao: UserDAO = data["user_dao"]
+        history_dao: HistoryDAO = data["history_dao"]
+        data["daily_report_service"] = DailyReportService(
+            user_dao=user_dao,
+            history_dao=history_dao,
+        )
         return await handler(event, data)

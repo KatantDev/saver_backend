@@ -64,6 +64,18 @@ msgstr ""
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🎥</tg-emoji> Выберите качество видео:"
 
+msgid "stats_report_template"
+msgstr ""
+"<b>{date}</b>\n"
+"<b>Новые пользователи [24ч]:</b> {new_users_24h}\n"
+"<b>Активные пользователи [24ч]:</b> {active_users_24h}\n"
+"<b>Загрузки [24ч]:</b> {downloads_24h}\n"
+"\n"
+"<b>Всего пользователей:</b> {total_users}\n"
+"<b>Всего загрузок:</b> {total_downloads}\n"
+"\n"
+"{source_stats}"
+
 msgid "unknown url"
 msgstr ""
 "🌀 Эта ссылка не поддерживается для скачивания.\n"
@@ -115,7 +127,4 @@ msgstr "➕ Подписаться на @{channel}"
 
 msgid "check subscriptions"
 msgstr "✅ Проверить подписки"
-
-#~ msgid "photo unsupported error"
-#~ msgstr "🌀 Эта ссылка ведет на изображение. Для сервиса {source_name} в данный момент поддерживается скачивание только видео."
 

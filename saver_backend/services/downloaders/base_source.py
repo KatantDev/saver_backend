@@ -6,20 +6,25 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from aiogram.types import Video
 
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.db.models.cache_model import CacheModel
+from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.entities.user import UserDTO
 from saver_backend.services.downloaders.exceptions import UserInfoNotFoundError
 from saver_backend.services.downloaders.schema import (
-    VideoCacheDTO,
+    AudioDTO,
+    CacheDTO,
+    PhotoDTO,
+    PhotoListDTO,
     VideoDTO,
 )
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
 
 if TYPE_CHECKING:
+    from saver_backend.db.dao.cache_dao import CacheDAO
+    from saver_backend.db.dao.history_dao import HistoryDAO
     from saver_backend.db.dao.user_dao import UserDAO
-    from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
     from saver_backend.services.telegram.bot_controller import TelegramBotController
 
 
@@ -33,16 +38,18 @@ class BaseSourceController(ABC):
         resolution: Resolution,
         telegram_bot_controller: "TelegramBotController",
         telegram_id: int,
-        video_cache_dao: "VideoCacheDAO",
         user_dao: "UserDAO",
+        history_dao: "HistoryDAO",
+        cache_dao: "CacheDAO",
         message_id: int | None = None,
         format_id: str | None = None,
         inline_query_id: str | None = None,
     ) -> None:
         self._resolution = resolution
         self._loop = asyncio.get_event_loop()
-        self._video_cache_dao = video_cache_dao
         self._user_dao = user_dao
+        self._history_dao = history_dao
+        self._cache_dao = cache_dao
         self._user_info: UserDTO | None = None
 
         self._selected_format_id = format_id
@@ -188,7 +195,8 @@ class BaseSourceController(ABC):
         )
 
         if telegram_video:
-            await self._save_video_to_cache(video_dto, telegram_video)
+            cache_model = await self._save_content_to_cache(video_dto, telegram_video)
+            await self._create_history_entry(cache_model)
 
         if self._inline_query_id:
             await self._answer_inline_query(
@@ -196,64 +204,44 @@ class BaseSourceController(ABC):
                 telegram_video=telegram_video,
             )
 
-    async def _save_video_to_cache(
+    async def _save_content_to_cache(
         self,
-        video_dto: VideoDTO,
+        content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO,
         telegram_video: Video,
-    ) -> None:
+    ) -> CacheModel | None:
         """
-        Save video details to the cache.
+        Save content details to the cache.
 
+        :param content_dto: The original DTO with metadata.
         :param telegram_video: The Video object from aiogram after sending.
         """
-        if not video_dto.source_id or not video_dto.quality:
-            logging.warning("Cannot cache video: source_id or quality is missing.")
-            return
-
-        dto_for_cache = video_dto.model_copy(update={"path": None, "thumbnail": None})
-        cache_dto = VideoCacheDTO.from_yt_dlp(
+        dto_for_cache = content_dto.model_copy(
+            update={"path": None, "thumbnail": None},
+        )
+        cache_dto = CacheDTO.from_telegram_object(
             source=self.SOURCE,
             telegram_video=telegram_video,
-            video=dto_for_cache,
+            content_dto=dto_for_cache,
+            quality=content_dto.quality,
         )
         if not cache_dto:
-            return
+            return None
 
-        cached_video = await self._video_cache_dao.get_by_source_id_and_quality(
+        cached_video = await self._cache_dao.get_by_filters(
             source=self.SOURCE,
             source_id=cache_dto.source_id,
             quality=cache_dto.quality,
         )
         if cached_video:
-            return
+            return None
 
-        try:
-            await self._video_cache_dao.create(cache_dto)
-            logging.info(
-                "Successfully cached video with source_id=%s, quality=%s",
-                cache_dto.source_id,
-                cache_dto.quality,
-            )
-        except Exception as e:
-            logging.error(
-                "Failed to save video cache for source_id=%s: %s",
-                video_dto.source_id,
-                e,
-                exc_info=True,
-            )
-
-    async def save_video_to_cache(
-        self,
-        video_dto: VideoDTO,
-        telegram_video: Video,
-    ) -> None:
-        """
-        Public method to save video details to the cache.
-
-        :param video_dto: The original VideoDTO with metadata.
-        :param telegram_video: The Video object from aiogram after sending.
-        """
-        await self._save_video_to_cache(video_dto, telegram_video)
+        created_model = await self._cache_dao.create(cache_dto)
+        logging.info(
+            "Successfully cached content with source_id=%s, quality=%s",
+            cache_dto.source_id,
+            cache_dto.quality,
+        )
+        return created_model
 
     async def send_video_from_cache(self, source_id: str, quality: str) -> bool:
         """
@@ -263,34 +251,64 @@ class BaseSourceController(ABC):
         :param quality: Quality of the video.
         :return: True if video was sent from cache, False otherwise.
         """
-        cached_video = await self._video_cache_dao.get_by_source_id_and_quality(
+        cached_item = await self._cache_dao.get_by_filters(
             source=self.SOURCE,
             source_id=source_id,
             quality=quality,
+            content_type=ContentTypeEnum.VIDEO,
         )
-        if not cached_video:
+        if not cached_item or not isinstance(cached_item.meta_data_dto, VideoDTO):
             return False
+
+        await self._create_history_entry(cached_item)
 
         logging.info(
             "Cache hit for source_id=%s, quality=%s. Sending by file_id.",
             source_id,
             quality,
         )
+        video_dto = cached_item.meta_data_dto
+
         if self._inline_query_id:
-            video_dto = VideoDTO.model_validate(cached_video.meta_data)
             await self._telegram_bot_controller.answer_inline_query_cached_video(
                 inline_query_id=self._inline_query_id,
                 video_dto=video_dto,
-                file_id=cached_video.file_id,
+                file_id=cached_item.file_id,
             )
         else:
             await self.delete_processing_message()
             await self._telegram_bot_controller.send_video_by_file_id(
                 telegram_id=self._telegram_id,
-                file_id=cached_video.file_id,
+                file_id=cached_item.file_id,
                 url=self._resolution.url,
             )
         return True
+
+    async def _create_history_entry(
+        self,
+        cache_model: CacheModel | None = None,
+    ) -> None:
+        """
+        Create a history entry for the current request.
+
+        :param cache_model: An optional CacheModel instance if the content was cached.
+        """
+        try:
+            user = await self._get_user_info()
+            await self._history_dao.create(
+                user_id=user.id,
+                cache_id=cache_model.id if cache_model else None,
+                source=self.SOURCE,
+                url=self._resolution.url,
+            )
+            logging.info(
+                "History entry created for user %s, url=%s, cache_linked=%s",
+                user.telegram_id,
+                self._resolution.url,
+                bool(cache_model),
+            )
+        except Exception:
+            logging.exception("Failed to create history entry.")
 
     async def _answer_inline_query(
         self,

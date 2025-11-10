@@ -3,8 +3,9 @@ from typing import TYPE_CHECKING, Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import TaskiqDepends, TaskiqState
 
+from saver_backend.db.dao.cache_dao import CacheDAO
+from saver_backend.db.dao.history_dao import HistoryDAO
 from saver_backend.db.dao.user_dao import UserDAO
-from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
 from saver_backend.services.downloaders.resolver import SourceResolver
 from saver_backend.task_manager.dependencies import get_session
 
@@ -31,13 +32,22 @@ class DatabaseState:
         return UserDAO(session=self.session)
 
     @property
-    def video_cache_dao(self) -> "VideoCacheDAO":
+    def history_dao(self) -> "HistoryDAO":
         """
-        Get video cache DAO.
+        Get history DAO.
 
-        :return: VideoCacheDAO instance.
+        :return: HistoryDAO instance.
         """
-        return VideoCacheDAO(session=self.session)
+        return HistoryDAO(session=self.session)
+
+    @property
+    def cache_dao(self) -> "CacheDAO":
+        """
+        Get cache DAO.
+
+        :return: CacheDAO instance.
+        """
+        return CacheDAO(session=self.session)
 
 
 class SaverState:

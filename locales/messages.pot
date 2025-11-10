@@ -34,6 +34,9 @@ msgstr ""
 msgid "choose quality"
 msgstr ""
 
+msgid "stats_report_template"
+msgstr ""
+
 msgid "unknown url"
 msgstr ""
 
