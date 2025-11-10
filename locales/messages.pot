@@ -34,22 +34,7 @@ msgstr ""
 msgid "choose quality"
 msgstr ""
 
-msgid "stats_date_header"
-msgstr ""
-
-msgid "stats_new_users_24h"
-msgstr ""
-
-msgid "stats_active_users_24h"
-msgstr ""
-
-msgid "stats_downloads_24h"
-msgstr ""
-
-msgid "stats_total_users"
-msgstr ""
-
-msgid "stats_total_downloads"
+msgid "stats_report_template"
 msgstr ""
 
 msgid "unknown url"

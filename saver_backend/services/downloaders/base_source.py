@@ -235,22 +235,13 @@ class BaseSourceController(ABC):
         if cached_video:
             return None
 
-        try:
-            created_model = await self._cache_dao.create(cache_dto)
-            logging.info(
-                "Successfully cached content with source_id=%s, quality=%s",
-                cache_dto.source_id,
-                cache_dto.quality,
-            )
-            return created_model
-        except Exception as e:
-            logging.error(
-                "Failed to save cache for source_id=%s: %s",
-                content_dto.source_id,
-                e,
-                exc_info=True,
-            )
-        return None
+        created_model = await self._cache_dao.create(cache_dto)
+        logging.info(
+            "Successfully cached content with source_id=%s, quality=%s",
+            cache_dto.source_id,
+            cache_dto.quality,
+        )
+        return created_model
 
     async def send_video_from_cache(self, source_id: str, quality: str) -> bool:
         """

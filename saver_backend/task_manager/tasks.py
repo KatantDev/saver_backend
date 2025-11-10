@@ -168,6 +168,23 @@ async def get_video_info(
         )
         return
 
+    # Отправляем сообщение с выбором качества и удаляем старое
+    quality_selection_message = await state.telegram_bot_controller.send_choose_quality(
+        telegram_id=telegram_id,
+        video_dto=video_dto,
+    )
+    await state.telegram_bot_controller.delete_message(
+        telegram_id=telegram_id,
+        message_id=processing_message_id,
+    )
+
+    if not quality_selection_message:
+        logging.error(
+            "Failed to send quality selection message for user %s",
+            telegram_id,
+        )
+        return
+
     # Складываем данные в машину состояний + отправляем сообщение с удалением старого
     await state.telegram_bot_controller.set_fsm_data(
         user_id=telegram_id,
@@ -175,13 +192,6 @@ async def get_video_info(
         data={
             "video_dto": video_dto.model_dump(mode="json"),
             "resolution": resolution.model_dump(mode="json"),
+            "quality_selection_message_id": quality_selection_message.message_id,
         },
-    )
-    await state.telegram_bot_controller.send_choose_quality(
-        telegram_id=telegram_id,
-        video_dto=video_dto,
-    )
-    await state.telegram_bot_controller.delete_message(
-        telegram_id=telegram_id,
-        message_id=processing_message_id,
     )

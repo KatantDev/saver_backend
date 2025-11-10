@@ -41,29 +41,26 @@ class DailyReportService:
         downloads_24h = await self._history_dao.get_count(
             created_after=one_day_ago,
         )
-
         total_users = await self._user_dao.get_count()
         total_downloads = await self._history_dao.get_count()
-
-        date_str = (datetime.now(tz=timezone.utc) + timedelta(hours=3)).strftime(
-            "%Y-%m-%d",
-        )
-        report_lines = [
-            _("stats_date_header").format(date=date_str),
-            _("stats_new_users_24h").format(value=f"{new_users_24h:,}"),
-            _("stats_active_users_24h").format(value=f"{active_users_24h:,}"),
-            _("stats_downloads_24h").format(value=f"{downloads_24h:,}"),
-            "",
-            _("stats_total_users").format(value=f"{total_users:,}"),
-            _("stats_total_downloads").format(value=f"{total_downloads:,}"),
-        ]
-
         source_counts = await self._history_dao.get_counts_by_source()
-        if source_counts:
-            report_lines.append("")
-            for source, count in source_counts:
-                clean_name = self._clean_source_name(source)
-                line = f"<b>{clean_name}:</b> {count:,}"
-                report_lines.append(line)
 
-        return "\n".join(report_lines)
+        source_lines = []
+        if source_counts:
+            for source, count in source_counts:
+                source_lines.append(f"<b>{source.value.upper()}:</b> {count:,}")
+        source_stats_str = "\n".join(source_lines)
+
+        report_data = {
+            "date": (datetime.now(tz=timezone.utc) + timedelta(hours=3)).strftime(
+                "%Y-%m-%d",
+            ),
+            "new_users_24h": f"{new_users_24h:,}",
+            "active_users_24h": f"{active_users_24h:,}",
+            "downloads_24h": f"{downloads_24h:,}",
+            "total_users": f"{total_users:,}",
+            "total_downloads": f"{total_downloads:,}",
+            "source_stats": source_stats_str,
+        }
+
+        return _("stats_report_template").format(**report_data)

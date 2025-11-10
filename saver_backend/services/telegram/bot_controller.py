@@ -24,6 +24,7 @@ from aiogram.types import (
     InlineQueryResultCachedVideo,
     InlineQueryResultVideo,
     InputTextMessageContent,
+    Message,
     Update,
     URLInputFile,
     Video,
@@ -47,6 +48,9 @@ from saver_backend.telegram_bot.middlewares.controller_provider import (
 )
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
+from saver_backend.telegram_bot.middlewares.service_provider import (
+    ServiceProviderMiddleware,
+)
 from saver_backend.telegram_bot.middlewares.user import UserMiddleware
 
 
@@ -170,6 +174,7 @@ class TelegramBotController:
             DatabaseProviderMiddleware(session_factory=session_factory),
         )
         self._dispatcher.update.outer_middleware(DAOProviderMiddleware())
+        self._dispatcher.update.outer_middleware(ServiceProviderMiddleware())
         self._dispatcher.update.outer_middleware(UserMiddleware())
         SimpleI18nMiddleware(self._i18n).setup(router=self._dispatcher)
 
@@ -805,7 +810,7 @@ class TelegramBotController:
         telegram_id: int,
         video_dto: VideoDTO,
         language: str | None = None,
-    ) -> None:
+    ) -> Message | None:
         """
         Send choose quality.
 
@@ -816,35 +821,46 @@ class TelegramBotController:
         :param video_dto: Video DTO.
         :param language: The language of the caption.
         """
+        text = _(
+            "choose quality",
+            locale=language or self.language,
+        ).format(title=video_dto.title)
+        reply_markup = inline.get_video_formats_keyboard(
+            labels=video_dto.unique_labels,
+        )
+
+        message: Message | None = None
+
         if video_dto.thumbnail_url:
             try:
-                await self._bot.send_photo(
+                message = await self._bot.send_photo(
                     chat_id=telegram_id,
                     photo=video_dto.thumbnail_url,
-                    caption=_(
-                        "choose quality",
-                        locale=language or self.language,
-                    ).format(title=video_dto.title),
-                    reply_markup=inline.get_video_formats_keyboard(
-                        labels=video_dto.unique_labels,
-                    ),
+                    caption=text,
+                    reply_markup=reply_markup,
                 )
-                return
-            except TelegramBadRequest as e:
-                if "wrong type" in e.message:
-                    pass
-                else:
-                    raise e
-            except Exception as e:
+            except (TelegramBadRequest, AiogramError) as e:
+                logging.warning(
+                    "Failed to send quality selection with photo for user %s: %s. "
+                    "Falling back to text-only message.",
+                    telegram_id,
+                    e,
+                )
+
+        if not message:
+            try:
+                message = await self._bot.send_message(
+                    chat_id=telegram_id,
+                    text=text,
+                    reply_markup=reply_markup,
+                )
+            except AiogramError as e:
+                logging.error(
+                    "Failed to send text-only quality selection to user %s: %s",
+                    telegram_id,
+                    e,
+                )
                 capture_exception(e)
-        coro = self._bot.send_message(
-            chat_id=telegram_id,
-            text=_(
-                "choose quality",
-                locale=language or self.language,
-            ).format(title=video_dto.title),
-            reply_markup=inline.get_video_formats_keyboard(
-                labels=video_dto.unique_labels,
-            ),
-        )
-        await self._send(coro)
+                return None
+
+        return message

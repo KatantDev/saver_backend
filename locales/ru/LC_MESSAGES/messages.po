@@ -64,23 +64,17 @@ msgstr ""
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🎥</tg-emoji> Выберите качество видео:"
 
-msgid "stats_date_header"
-msgstr "<b>{date}</b>"
-
-msgid "stats_new_users_24h"
-msgstr "<b>Новые пользователи [24ч]:</b> {value}"
-
-msgid "stats_active_users_24h"
-msgstr "<b>Активные пользователи [24ч]:</b> {value}"
-
-msgid "stats_downloads_24h"
-msgstr "<b>Загрузки [24ч]:</b> {value}"
-
-msgid "stats_total_users"
-msgstr "<b>Всего пользователей:</b> {value}"
-
-msgid "stats_total_downloads"
-msgstr "<b>Всего загрузок:</b> {value}"
+msgid "stats_report_template"
+msgstr ""
+"<b>{date}</b>\n"
+"<b>Новые пользователи [24ч]:</b> {new_users_24h}\n"
+"<b>Активные пользователи [24ч]:</b> {active_users_24h}\n"
+"<b>Загрузки [24ч]:</b> {downloads_24h}\n"
+"\n"
+"<b>Всего пользователей:</b> {total_users}\n"
+"<b>Всего загрузок:</b> {total_downloads}\n"
+"\n"
+"{source_stats}"
 
 msgid "unknown url"
 msgstr ""
