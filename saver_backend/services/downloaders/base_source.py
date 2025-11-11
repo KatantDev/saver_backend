@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from aiogram.types import Video
 
 from saver_backend.db.models.cache_model import CacheModel
-from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
+from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.entities.user import UserDTO
 from saver_backend.services.downloaders.exceptions import UserInfoNotFoundError
@@ -32,6 +32,7 @@ class BaseSourceController(ABC):
     """Asynchronous controller for downloading videos from different sources."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.UNSUPPORTED
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.LOCAL
 
     def __init__(
         self,
@@ -60,7 +61,7 @@ class BaseSourceController(ABC):
         self._last_percent = 0
 
         # Proxies
-        proxies = settings.proxies
+        proxies = self._select_proxies()
         random.shuffle(proxies)
         self._proxy: str | None = None
         self._proxies: list[str] = []
@@ -70,6 +71,27 @@ class BaseSourceController(ABC):
     @abstractmethod
     async def close(self) -> None:
         """Close resources if needed."""
+
+    def _select_proxies(self) -> list[str]:
+        """
+        Selects a list of proxies based on the controller's PROXY_TYPE.
+
+        - LOCAL: Uses the general proxy list.
+        - RU: Uses the Russian proxy list, falling back to general if empty.
+        - ALL: Uses a combination of both lists.
+
+        :return: A list of selected proxy URLs.
+        """
+        local_proxies = settings.proxies
+        ru_proxies = settings.proxies_ru
+
+        if self.PROXY_TYPE == ProxyType.LOCAL:
+            return local_proxies
+        if self.PROXY_TYPE == ProxyType.RU:
+            return ru_proxies or local_proxies  # Fallback to local
+        if self.PROXY_TYPE == ProxyType.ALL:
+            return local_proxies + ru_proxies
+        return []
 
     async def set_user_language(self, language: str | None = None) -> None:
         """

@@ -249,6 +249,7 @@ async def on_language_select(
             SourceEnum.PINTEREST_YDL,
             SourceEnum.X_YDL,
             SourceEnum.DZEN_YDL,
+            SourceEnum.ADULT_YDL,
         ],
     ),
 )

@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 
@@ -8,6 +8,7 @@ class VKClipsYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from VK Clips through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.VK_CLIPS_YDL
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
     COOKIES: ClassVar[bool] = True
     DIRECT_URL_DOWNLOAD: ClassVar[bool] = False
 
