@@ -28,19 +28,19 @@ async def save_video(
     :param state: Saver state.
     :param db: Database state with DAOs.
     """
-    # Достаем контроллер на основе резолюшена
+    # Getting controller for the resolution
     logging.info("Resolving controller for %s", resolution)
     yt_dlp_controller = state.source_resolver.get_controller(resolution)
     if yt_dlp_controller is None:
         return
 
-    # Отправляем сообщение о том, что начинаем загрузку
+    # Sending start downloading message
     message_id = await state.telegram_bot_controller.send_start_downloading(
         telegram_id=telegram_id,
         percent=0,
     )
 
-    # Инициализируем контроллер + ставим язык
+    # Initializing controller + setting user language
     controller = yt_dlp_controller(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
@@ -53,7 +53,7 @@ async def save_video(
     )
     await controller.set_user_language()
 
-    # Качаем видос
+    # Downloading video with error handling
     try:
         await controller.download_video()
     except TikTokYtDlpDownloaderError:
@@ -126,13 +126,13 @@ async def get_video_info(
     :param state: The application state.
     :param db: The database state.
     """
-    # Достаем контроллер на основе резолюшена
+    # Getting controller for the resolution
     controller_class = state.source_resolver.get_controller(resolution)
     if not controller_class:
         logging.error("Not found controller for %s", resolution)
         return
 
-    # Инициализируем контроллер + ставим язык
+    # Initializing controller + setting user language
     controller = controller_class(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
@@ -143,7 +143,7 @@ async def get_video_info(
     )
     await controller.set_user_language()
 
-    # Пытаемся получить информацию по видосу
+    # Trying to get video info
     try:
         info_dict = await controller.get_video_info(url=resolution.url)
     except Exception as error:
@@ -159,7 +159,7 @@ async def get_video_info(
         )
         return
 
-    # Формируем информацию по видосу
+    # Creating data transfer object from info dict
     video_dto = VideoDTO.from_yt_dlp(info=info_dict)
     if not video_dto.formats:
         await state.telegram_bot_controller.edit_video_no_formats(
@@ -168,7 +168,7 @@ async def get_video_info(
         )
         return
 
-    # Отправляем сообщение с выбором качества и удаляем старое
+    # Sending quality selection message and deleting processing message
     quality_selection_message = await state.telegram_bot_controller.send_choose_quality(
         telegram_id=telegram_id,
         video_dto=video_dto,
@@ -185,7 +185,7 @@ async def get_video_info(
         )
         return
 
-    # Складываем данные в машину состояний + отправляем сообщение с удалением старого
+    # Put data into FSM for further processing
     await state.telegram_bot_controller.set_fsm_data(
         user_id=telegram_id,
         chat_id=telegram_id,

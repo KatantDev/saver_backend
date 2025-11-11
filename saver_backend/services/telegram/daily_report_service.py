@@ -31,7 +31,11 @@ class DailyReportService:
         return name.replace("_", " ").title()
 
     async def construct(self) -> str:
-        """Construct daily report."""
+        """
+        Construct daily report.
+
+        :return: The constructed report as a string.
+        """
         one_day_ago = datetime.now(timezone.utc) - timedelta(days=1)
 
         new_users_24h = await self._user_dao.get_count(created_after=one_day_ago)
@@ -51,16 +55,12 @@ class DailyReportService:
                 source_lines.append(f"<b>{source.value.upper()}:</b> {count:,}")
         source_stats_str = "\n".join(source_lines)
 
-        report_data = {
-            "date": (datetime.now(tz=timezone.utc) + timedelta(hours=3)).strftime(
-                "%Y-%m-%d",
-            ),
-            "new_users_24h": f"{new_users_24h:,}",
-            "active_users_24h": f"{active_users_24h:,}",
-            "downloads_24h": f"{downloads_24h:,}",
-            "total_users": f"{total_users:,}",
-            "total_downloads": f"{total_downloads:,}",
-            "source_stats": source_stats_str,
-        }
-
-        return _("stats_report_template").format(**report_data)
+        return _("stats_report_template").format(
+            date=str((datetime.now(tz=timezone.utc) + timedelta(hours=3)).date()),
+            new_users_24h=f"{new_users_24h:,}",
+            active_users_24h=f"{active_users_24h:,}",
+            downloads_24h=f"{downloads_24h:,}",
+            total_users=f"{total_users:,}",
+            total_downloads=f"{total_downloads:,}",
+            source_stats=source_stats_str,
+        )

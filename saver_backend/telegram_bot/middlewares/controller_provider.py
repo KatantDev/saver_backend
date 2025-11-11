@@ -3,7 +3,11 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, User
 
+from saver_backend.services.telegram.daily_report_service import DailyReportService
+
 if TYPE_CHECKING:
+    from saver_backend.db.dao.history_dao import HistoryDAO
+    from saver_backend.db.dao.user_dao import UserDAO
     from saver_backend.services.telegram.bot_controller import TelegramBotController
 
 
@@ -33,4 +37,11 @@ class ControllerProviderMiddleware(BaseMiddleware):
             self.controller.language = "en"
         else:
             self.controller.language = event_from_user.language_code
+
+        user_dao: "UserDAO" = data["user_dao"]
+        history_dao: "HistoryDAO" = data["history_dao"]
+        data["daily_report_service"] = DailyReportService(
+            user_dao=user_dao,
+            history_dao=history_dao,
+        )
         return await handler(event, data)

@@ -43,31 +43,28 @@ class XYdlController(YtDlpController):
                 self._resolution.url,
                 e.msg,
             )
-            await self.delete_processing_message()
             await self._send_fallback_link()
-            await self._create_history_entry()
             return None
 
     async def _send_fallback_link(self) -> None:
         """Replace the domain with 'fixupx.com' and send it to the user."""
-        try:
-            parsed_url = urlparse(self._resolution.url)
-            # Replace netloc (domain) and keep everything else
-            fixed_url = urlunparse(
-                (
-                    parsed_url.scheme,
-                    "fixupx.com",
-                    parsed_url.path,
-                    parsed_url.params,
-                    parsed_url.query,
-                    parsed_url.fragment,
-                ),
-            )
-            await self._telegram_bot_controller.send_x_fallback_message(
-                telegram_id=self._telegram_id,
-                fixed_url=fixed_url,
-            )
-        except Exception:
-            logging.exception("Failed to send fallback link for X.")
-            # If even sending the fallback fails, send a generic error
-            await self._send_error_message(with_delete=False)
+        parsed_url = urlparse(self._resolution.url)
+        # Replace netloc (domain) and keep everything else
+        fixed_url = urlunparse(
+            (
+                parsed_url.scheme,
+                "fixupx.com",
+                parsed_url.path,
+                parsed_url.params,
+                parsed_url.query,
+                parsed_url.fragment,
+            ),
+        )
+        await self._telegram_bot_controller.send_x_fallback_message(
+            telegram_id=self._telegram_id,
+            fixed_url=fixed_url,
+        )
+
+        # Clean up processing message and create history entry
+        await self.delete_processing_message()
+        await self._create_history_entry()

@@ -119,7 +119,7 @@ class YtDlpController(BaseSourceController, ABC):
         If a cached version (file_id) exists, it sends it directly.
         Otherwise, it proceeds with the full download process.
         """
-        # Получаем информацию о видео, в случае, если данные не получены - останавливаем
+        # Getting information about the video, if data is invalid, send error message
         try:
             info_dict = await self.get_video_info(url=self._resolution.url)
         except DownloadError as e:

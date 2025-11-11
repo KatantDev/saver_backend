@@ -118,20 +118,13 @@ async def show_video_info(
 
     if previous_message_id:
         try:
-            # Пытаемся удалить клавиатуру со старого сообщения
             await bot.edit_message_reply_markup(
                 chat_id=message.from_user.id,
                 message_id=previous_message_id,
                 reply_markup=None,
             )
-        except TelegramBadRequest as e:
-            # Игнорируем ошибку, если сообщение уже было удалено или недоступно
-            logging.warning(
-                "Could not remove keyboard from message %s for user %s: %s",
-                previous_message_id,
-                message.from_user.id,
-                e.message,
-            )
+        except TelegramBadRequest:
+            pass
         finally:
             await state.clear()
 
@@ -232,7 +225,7 @@ async def on_language_select(
     selected_format = video_dto.get_format_by_id(format_id=callback_data.format_id)
 
     if not selected_format:
-        await query.answer(_("format not found"), show_alert=True)
+        await query.answer(_("format selection expired"), show_alert=True)
         return
 
     if video_dto.url:
