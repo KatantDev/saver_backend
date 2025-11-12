@@ -74,6 +74,7 @@ class Settings(BaseSettings):
 
     # Downloader settings
     proxies: list[str] = []
+    proxies_ru: list[str] = []
 
     @property
     def webhook_telegram_url(self) -> str:

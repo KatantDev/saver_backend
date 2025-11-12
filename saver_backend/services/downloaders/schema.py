@@ -4,7 +4,7 @@ import re
 import uuid
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,15 @@ from saver_backend.services.language_resolver import LanguageResolver
 
 if TYPE_CHECKING:
     from aiogram.types import Video as TgVideo
+
+
+class BaseContentDTO(BaseModel):
+    """Base DTO for any cachable content."""
+
+    source_id: str | None = None
+    url: str | None = None
+    title: str | None = None
+    quality: str | None = "best"
 
 
 class FormatDTO(BaseModel):
@@ -120,28 +129,24 @@ class FormatDTO(BaseModel):
         return cls(
             format_id=format_id,
             resolution=resolution,
-            fps=format_info.get("fps", 30.0),
+            fps=format_info.get("fps") or 30.0,
             language=format_info.get("language"),
             filesize=filesize,
         )
 
 
-class VideoDTO(BaseModel):
+class VideoDTO(BaseContentDTO):
     """Data Transfer Object for Video."""
 
     path: Path | None = None
     thumbnail: str | Path | None = None
     thumbnail_url: str | None = None
 
-    title: str | None = None
     description: str | None = None
-    url: str | None = None
-    source_id: str | None = None
 
     duration: int | None = None
     width: int | None = None
     height: int | None = None
-    quality: str | None = None
 
     direct_download_url: str | None = None
 
@@ -291,58 +296,11 @@ class VideoDTO(BaseModel):
         )
 
 
-class VideoCacheDTO(BaseModel):
-    """
-    Data Transfer Object for creating a video cache entry.
-
-    This is the data contract for the VideoCacheDAO.create method.
-    """
-
-    source: SourceEnum
-    source_id: str
-    file_id: str
-    file_unique_id: str
-    quality: str
-    meta_data: VideoDTO
-
-    @classmethod
-    def from_yt_dlp(
-        cls,
-        source: SourceEnum,
-        telegram_video: "TgVideo",
-        video: "VideoDTO",
-    ) -> Optional["VideoCacheDTO"]:
-        """
-        Create a VideoCacheDTO instance from a yt-dlp info dictionary.
-
-        :param source: The source of the video.
-        :param telegram_video: The Video object from aiogram after sending.
-        :param video: The VideoDTO instance.
-        :return: A VideoCacheDTO instance.
-        """
-        if not video.source_id:
-            logging.warning(
-                "Cannot create video cache: source_id not found in video info.",
-            )
-            return None
-
-        return cls(
-            source=source,
-            source_id=video.source_id,
-            quality=video.quality or "best",
-            meta_data=video,
-            file_id=telegram_video.file_id,
-            file_unique_id=telegram_video.file_unique_id,
-        )
-
-
-class PhotoDTO(BaseModel):
+class PhotoDTO(BaseContentDTO):
     """Data Transfer Object for Photo."""
 
     path: Path | None = None
-    title: str | None = None
     media_url: str | None = None
-    url: str | None = None
 
     @classmethod
     def from_tikwm(
@@ -356,16 +314,15 @@ class PhotoDTO(BaseModel):
             media_url=image_url,
             url=resolution_url,
             title=data.title,
+            source_id=data.id,
         )
 
 
-class AudioDTO(BaseModel):
+class AudioDTO(BaseContentDTO):
     """Data Transfer Object for Audio."""
 
     path: str | Path | None = None
     media_url: str | None = None
-    url: str | None = None
-    title: str | None = None
     duration: int | None = None
 
     @classmethod
@@ -379,6 +336,7 @@ class AudioDTO(BaseModel):
             title=cls._get_audio_title(data, resolution_url),
             duration=data.duration,
             url=resolution_url,
+            source_id=data.id,
         )
 
     @staticmethod
@@ -390,6 +348,92 @@ class AudioDTO(BaseModel):
         safe_name = re.sub(r'[\\/*?:"<>|]', "", base_name)
         # Truncate to avoid "Filename too long" errors
         return safe_name[:150].strip() or str(uuid.uuid4())
+
+
+class PhotoListDTO(BaseContentDTO):
+    """Data Transfer Object for a list of photos (slideshow)."""
+
+    photos: list[PhotoDTO]
+    audio: AudioDTO | None = None
+
+    @classmethod
+    def from_tikwm(cls, data: "TikWMData", resolution_url: str) -> "PhotoListDTO":
+        """
+        Create a PhotoListDTO instance from TikWM API data.
+
+        This method encapsulates the logic for building the entire slideshow object.
+        """
+        photos = []
+        if data.images:
+            photos = [
+                PhotoDTO.from_tikwm(
+                    image_url=img_url,
+                    data=data,
+                    resolution_url=resolution_url,
+                )
+                for img_url in data.images
+            ]
+
+        audio = AudioDTO.from_tikwm(data=data, resolution_url=resolution_url)
+
+        return cls(
+            photos=photos,
+            audio=audio,
+            source_id=data.id,
+            url=resolution_url,
+            title=data.title,
+        )
+
+
+CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO]
+
+
+class CacheDTO(BaseModel):
+    """
+    Data Transfer Object for creating a video cache entry.
+
+    This is the data contract for the VideoCacheDAO.create method.
+    """
+
+    source: SourceEnum
+    source_id: str
+    file_id: str
+    file_unique_id: str
+    quality: str
+    meta_data: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO
+
+    @classmethod
+    def from_telegram_object(
+        cls,
+        source: SourceEnum,
+        telegram_video: "TgVideo",
+        content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO,
+        quality: str | None,
+    ) -> Optional["CacheDTO"]:
+        """
+        Create a CacheDTO instance from a telegram object and content DTO.
+
+        :param source: The source of the content.
+        :param telegram_video: The Video object from aiogram after sending.
+        :param content_dto: The original DTO of the content.
+        :param quality: The quality of the content.
+        :return: A CacheDTO instance or None if not possible.
+        """
+        source_id = getattr(content_dto, "source_id", None)
+        if not source_id:
+            logging.warning(
+                "Cannot create cache: source_id not found in content DTO.",
+            )
+            return None
+
+        return cls(
+            source=source,
+            source_id=source_id,
+            quality=quality or "best",
+            meta_data=content_dto,
+            file_id=telegram_video.file_id,
+            file_unique_id=telegram_video.file_unique_id,
+        )
 
 
 class TikWMAuthor(BaseModel):

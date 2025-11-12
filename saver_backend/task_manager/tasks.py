@@ -28,31 +28,32 @@ async def save_video(
     :param state: Saver state.
     :param db: Database state with DAOs.
     """
-    # Достаем контроллер на основе резолюшена
+    # Getting controller for the resolution
     logging.info("Resolving controller for %s", resolution)
     yt_dlp_controller = state.source_resolver.get_controller(resolution)
     if yt_dlp_controller is None:
         return
 
-    # Отправляем сообщение о том, что начинаем загрузку
+    # Sending start downloading message
     message_id = await state.telegram_bot_controller.send_start_downloading(
         telegram_id=telegram_id,
         percent=0,
     )
 
-    # Инициализируем контроллер + ставим язык
+    # Initializing controller + setting user language
     controller = yt_dlp_controller(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
-        video_cache_dao=db.video_cache_dao,
         user_dao=db.user_dao,
+        history_dao=db.history_dao,
+        cache_dao=db.cache_dao,
         message_id=message_id,
         format_id=format_id,
     )
     await controller.set_user_language()
 
-    # Качаем видос
+    # Downloading video with error handling
     try:
         await controller.download_video()
     except TikTokYtDlpDownloaderError:
@@ -62,6 +63,7 @@ async def save_video(
         )
     except Exception as error:
         logging.exception(error)
+    finally:
         await controller.close()
 
 
@@ -93,8 +95,9 @@ async def process_inline_query(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
-        video_cache_dao=db.video_cache_dao,
         user_dao=db.user_dao,
+        history_dao=db.history_dao,
+        cache_dao=db.cache_dao,
         inline_query_id=inline_query_id,
     )
     await controller.set_user_language()
@@ -102,6 +105,7 @@ async def process_inline_query(
         await controller.download_video()
     except Exception as error:
         logging.exception(error)
+    finally:
         await controller.close()
 
 
@@ -122,29 +126,31 @@ async def get_video_info(
     :param state: The application state.
     :param db: The database state.
     """
-    # Достаем контроллер на основе резолюшена
+    # Getting controller for the resolution
     controller_class = state.source_resolver.get_controller(resolution)
     if not controller_class:
         logging.error("Not found controller for %s", resolution)
         return
 
-    # Инициализируем контроллер + ставим язык
+    # Initializing controller + setting user language
     controller = controller_class(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
         telegram_id=telegram_id,
-        video_cache_dao=db.video_cache_dao,
         user_dao=db.user_dao,
+        history_dao=db.history_dao,
+        cache_dao=db.cache_dao,
     )
     await controller.set_user_language()
 
-    # Пытаемся получить информацию по видосу
+    # Trying to get video info
     try:
         info_dict = await controller.get_video_info(url=resolution.url)
     except Exception as error:
         logging.exception(error)
-        await controller.close()
         info_dict = None
+    finally:
+        await controller.close()
 
     if not info_dict:
         await state.telegram_bot_controller.edit_failed_video_info(
@@ -153,7 +159,7 @@ async def get_video_info(
         )
         return
 
-    # Формируем информацию по видосу
+    # Creating data transfer object from info dict
     video_dto = VideoDTO.from_yt_dlp(info=info_dict)
     if not video_dto.formats:
         await state.telegram_bot_controller.edit_video_no_formats(
@@ -162,20 +168,30 @@ async def get_video_info(
         )
         return
 
-    # Складываем данные в машину состояний + отправляем сообщение с удалением старого
-    await state.telegram_bot_controller.set_fsm_data(
-        user_id=telegram_id,
-        chat_id=telegram_id,
-        data={
-            "video_dto": video_dto.model_dump(mode="json"),
-            "resolution": resolution.model_dump(mode="json"),
-        },
-    )
-    await state.telegram_bot_controller.send_choose_quality(
+    # Sending quality selection message and deleting processing message
+    quality_selection_message = await state.telegram_bot_controller.send_choose_quality(
         telegram_id=telegram_id,
         video_dto=video_dto,
     )
     await state.telegram_bot_controller.delete_message(
         telegram_id=telegram_id,
         message_id=processing_message_id,
+    )
+
+    if not quality_selection_message:
+        logging.error(
+            "Failed to send quality selection message for user %s",
+            telegram_id,
+        )
+        return
+
+    # Put data into FSM for further processing
+    await state.telegram_bot_controller.set_fsm_data(
+        user_id=telegram_id,
+        chat_id=telegram_id,
+        data={
+            "video_dto": video_dto.model_dump(mode="json"),
+            "resolution": resolution.model_dump(mode="json"),
+            "quality_selection_message_id": quality_selection_message.message_id,
+        },
     )

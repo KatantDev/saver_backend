@@ -8,8 +8,8 @@ from aiogram.types import (
     InputTextMessageContent,
 )
 
-from saver_backend.db.dao.video_cache_dao import VideoCacheDAO
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.db.dao.cache_dao import CacheDAO
+from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.i18n import gettext as _
@@ -22,7 +22,7 @@ inline_router = Router()
 @inline_router.inline_query(F.query == "")
 async def on_empty_inline_query(
     query: InlineQuery,
-    video_cache_dao: VideoCacheDAO,
+    cache_dao: CacheDAO,
 ) -> None:
     """
     Handle empty inline query by showing latest cached videos.
@@ -30,7 +30,7 @@ async def on_empty_inline_query(
     :param query: The inline query object.
     :param video_cache_dao: DAO for accessing video cache.
     """
-    cached_videos = await video_cache_dao.get_latest(
+    cached_items = await cache_dao.get_latest(
         limit=20,
         sources=[
             SourceEnum.TIKTOK,
@@ -38,11 +38,15 @@ async def on_empty_inline_query(
             SourceEnum.VK_CLIPS_YDL,
             SourceEnum.YOUTUBE_SHORTS_YDL,
         ],
+        content_types=[ContentTypeEnum.VIDEO],
     )
 
     results: list[InlineQueryResultCachedMpeg4Gif] = []
-    for item in cached_videos:
-        video_dto = VideoDTO.model_validate(item.meta_data)
+    for item in cached_items:
+        video_dto = item.meta_data_dto
+        if not isinstance(video_dto, VideoDTO):
+            continue
+
         results.append(
             InlineQueryResultCachedMpeg4Gif(
                 id=str(uuid4()),

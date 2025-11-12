@@ -90,6 +90,7 @@ async def _trigger_download(
             SourceEnum.YOUTUBE_VIDEO_YDL,
             SourceEnum.VK_VIDEO_YDL,
             SourceEnum.RUTUBE_YDL,
+            SourceEnum.M3U8_YDL,
             SourceEnum.OK_YDL,
         ],
     ),
@@ -97,15 +98,36 @@ async def _trigger_download(
 async def show_video_info(
     message: Message,
     resolution: Resolution,
+    state: FSMContext,
+    bot: Bot,
 ) -> None:
     """
-    Get info for a YouTube video, show thumbnail and format selection buttons.
+    Get info for a video, show thumbnail and format selection buttons.
+
+    Also, cleans up previous selection keyboards if any exist.
 
     :param message: Message object.
     :param resolution: Resolution object.
+    :param state: FSM context.
+    :param bot: Bot instance.
     """
     if not message.from_user:
         return
+
+    data = await state.get_data()
+    previous_message_id = data.get("quality_selection_message_id")
+
+    if previous_message_id:
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=message.from_user.id,
+                message_id=previous_message_id,
+                reply_markup=None,
+            )
+        except TelegramBadRequest:
+            pass
+        finally:
+            await state.clear()
 
     processing_message = await message.reply(_("get video info"))
 
@@ -137,7 +159,7 @@ async def on_format_select(
     resolution_data = data.get("resolution")
 
     if not video_dto_data or not resolution_data:
-        await query.message.edit_text(_("format selection expired"))
+        await query.message.edit_text(_("format selection expired"), reply_markup=None)
         return
 
     video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
@@ -163,7 +185,7 @@ async def on_format_select(
                 format_id=selected_format.format_id,
             )
     else:
-        await query.answer(_("format not found"), show_alert=True)
+        await query.answer(_("format selection expired"), show_alert=True)
     await query.answer()
 
 
@@ -192,7 +214,10 @@ async def on_language_select(
     resolution_data = data.get("resolution")
 
     if not video_dto_data or not resolution_data:
-        await query.message.edit_text(_("format selection expired"))
+        await query.message.edit_text(
+            _("format selection expired"),
+            reply_markup=None,
+        )
         return
 
     video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
@@ -200,7 +225,7 @@ async def on_language_select(
     selected_format = video_dto.get_format_by_id(format_id=callback_data.format_id)
 
     if not selected_format:
-        await query.answer(_("format not found"), show_alert=True)
+        await query.answer(_("format selection expired"), show_alert=True)
         return
 
     if video_dto.url:
@@ -222,6 +247,9 @@ async def on_language_select(
             SourceEnum.YOUTUBE_SHORTS_YDL,
             SourceEnum.VK_CLIPS_YDL,
             SourceEnum.PINTEREST_YDL,
+            SourceEnum.X_YDL,
+            SourceEnum.DZEN_YDL,
+            SourceEnum.ADULT_YDL,
         ],
     ),
 )

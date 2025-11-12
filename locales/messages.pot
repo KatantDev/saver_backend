@@ -16,7 +16,7 @@ msgstr ""
 msgid "error inline query"
 msgstr ""
 
-msgid "video is private"
+msgid "content private or not found"
 msgstr ""
 
 msgid "tiktok photo unsupported"
@@ -32,6 +32,9 @@ msgid "video info without formats"
 msgstr ""
 
 msgid "choose quality"
+msgstr ""
+
+msgid "stats_report_template"
 msgstr ""
 
 msgid "unknown url"

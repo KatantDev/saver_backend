@@ -1,6 +1,23 @@
 from enum import Enum
 
 
+class ProxyType(str, Enum):
+    """Enum for proxy type to use for a source."""
+
+    LOCAL = "local"
+    RU = "ru"
+    ALL = "all"
+
+
+class ContentTypeEnum(str, Enum):
+    """Enum for content type of cached item."""
+
+    VIDEO = "video"
+    PHOTO = "photo"
+    AUDIO = "audio"
+    PHOTO_LIST = "photo_list"
+
+
 class SourceEnum(str, Enum):
     """Enum for source to download."""
 
@@ -14,7 +31,11 @@ class SourceEnum(str, Enum):
     OK_YDL = "ok_ydl"
     PINTEREST_YDL = "pinterest_ydl"
     RUTUBE_YDL = "rutube_ydl"
+    X_YDL = "x_ydl"
+    DZEN_YDL = "dzen_ydl"
+    ADULT_YDL = "adult_ydl"
     UNSUPPORTED = "unsupported"
+    M3U8_YDL = "m3u8_ydl"
 
 
 class InstagramContentTypeEnum(str, Enum):

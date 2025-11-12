@@ -6,13 +6,18 @@ from urllib.parse import urlparse, urlunparse
 
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
+from saver_backend.services.downloaders.adult_ydl_source import AdultYdlController
 from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.dzen_ydl import (
+    DzenYdlController,
+)
 from saver_backend.services.downloaders.instagram_api_source import (
     InstagramAPIController,
 )
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
+from saver_backend.services.downloaders.m3u8_ydl_source import M3U8YdlController
 from saver_backend.services.downloaders.ok_ydl_source import (
     OkYdlController,
 )
@@ -28,6 +33,9 @@ from saver_backend.services.downloaders.vk_clips_ydl_source import (
 )
 from saver_backend.services.downloaders.vk_video_ydl_source import (
     VKVideoYdlController,
+)
+from saver_backend.services.downloaders.x_ydl_source import (
+    XYdlController,
 )
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
@@ -237,6 +245,8 @@ class VKClipsDetector(Detector):
         "vk.com",
         "m.vk.com",
         "www.vk.com",
+        "vk.ru",
+        "m.vk.ru",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "clips": re.compile(r"^/clip(?P<code>-?\d+_\d+)/?$"),
@@ -287,6 +297,27 @@ class PinterestDetector(Detector):
 
 
 @register_detector()
+class XDetector(Detector):
+    """Detector for X / Twitter."""
+
+    SOURCE = SourceEnum.X_YDL
+    CONTROLLER = XYdlController
+    HOSTS = (
+        "x.com",
+        "twitter.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "status": re.compile(r"^/(?:[^/]+)/status/(?P<code>\d+)"),
+    }
+
+    def match(self, url: str) -> Resolution | None:
+        """Check if the url is a valid X status url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
 class YouTubeVideoDetector(Detector):
     """Detector for standard YouTube videos."""
 
@@ -330,10 +361,12 @@ class VKVideoDetector(Detector):
     SOURCE = SourceEnum.VK_VIDEO_YDL
     CONTROLLER = VKVideoYdlController
     HOSTS = (
+        "vkvideo.ru",
         "vk.com",
         "m.vk.com",
-        "vkvideo.ru",
         "www.vk.com",
+        "m.vk.ru",
+        "vk.ru",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "video_path": re.compile(r"/video(?P<code>-?\d+_\d+)"),
@@ -376,6 +409,87 @@ class RutubeDetector(Detector):
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Rutube video url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class AdultDetector(Detector):
+    """Detector for various adult websites supported by yt-dlp."""
+
+    SOURCE = SourceEnum.ADULT_YDL
+    CONTROLLER = AdultYdlController
+    HOSTS = (
+        "pornhub.com",
+        "pornotube.com",
+        "nuvid.com",
+        "beeg.com",
+        "empflix.com",
+        "eporner.com",
+        "eroprofile.com",
+        "lovehomeporn.com",
+        "manyvids.com",
+        "motherless.com",
+        "moviefap.com",
+        "nubiles-porn.com",
+        "nubiles.net",
+        "redgifs.com",
+        "redtube.com",
+        "rule34video.com",
+        "sunporno.com",
+        "thisvid.com",
+        "tnaflix.com",
+        "txxx.com",
+        "xnxx.com",
+        "xvideos.com",
+        "xxxymovies.com",
+        "youjizz.com",
+        "youporn.com",
+        "zenporn.com",
+    )
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is from a supported adult website."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return Resolution(source=self.SOURCE, url=url)
+
+
+@register_detector()
+class M3U8Detector(Detector):
+    """Detector for Rutube videos."""
+
+    SOURCE = SourceEnum.M3U8_YDL
+    CONTROLLER = M3U8YdlController
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """
+        Check if the url is a valid Rutube video url.
+
+        :param url: URL to check.
+        """
+        if not url.endswith(".m3u8"):
+            return None
+        return Resolution(source=self.SOURCE, url=self._clean_url(url))
+
+
+@register_detector()
+class DzenDetector(Detector):
+    """Detector for Dzen videos."""
+
+    SOURCE = SourceEnum.DZEN_YDL
+    CONTROLLER = DzenYdlController
+    HOSTS = (
+        "dzen.ru",
+        "www.dzen.ru",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video/watch/(?P<code>[a-zA-Z0-9_-]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Dzen video url."""
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)

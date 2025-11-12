@@ -24,6 +24,7 @@ from aiogram.types import (
     InlineQueryResultCachedVideo,
     InlineQueryResultVideo,
     InputTextMessageContent,
+    Message,
     Update,
     URLInputFile,
     Video,
@@ -70,6 +71,7 @@ class TelegramBotController:
         self._i18n = i18n
         self._session = AiohttpSession(
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
+            timeout=180,
         )
         self._bot = Bot(
             session=self._session,
@@ -163,12 +165,12 @@ class TelegramBotController:
         :param session_factory: Session factory.
         """
         self._dispatcher.update.outer_middleware(
-            ControllerProviderMiddleware(controller=self),
-        )
-        self._dispatcher.update.outer_middleware(
             DatabaseProviderMiddleware(session_factory=session_factory),
         )
         self._dispatcher.update.outer_middleware(DAOProviderMiddleware())
+        self._dispatcher.update.outer_middleware(
+            ControllerProviderMiddleware(controller=self),
+        )
         self._dispatcher.update.outer_middleware(UserMiddleware())
         SimpleI18nMiddleware(self._i18n).setup(router=self._dispatcher)
 
@@ -570,7 +572,6 @@ class TelegramBotController:
         message_id: int | None = None,
         supports_streaming: bool = True,
         language: str | None = None,
-        retry: int = 0,
     ) -> Video | None:
         """
         Send finish downloading message.
@@ -580,13 +581,8 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param supports_streaming: Supports streaming.
         :param language: Language of the video.
-        :param retry: Retry count for network errors.
         :return: Sent video or None on failure.
         """
-        if retry > 5:
-            logging.error("Max retries reached for sending video to %s", telegram_id)
-            return None
-
         video_input: str | FSInputFile | URLInputFile
         thumbnail_input: str | FSInputFile | None = None
         if video.direct_download_url:
@@ -625,15 +621,7 @@ class TelegramBotController:
         except (TelegramForbiddenError, TelegramBadRequest):
             return None
         except TelegramNetworkError:
-            await asyncio.sleep(2)
-            return await self.send_finish_downloading(
-                video=video,
-                telegram_id=telegram_id,
-                message_id=message_id,
-                supports_streaming=supports_streaming,
-                language=language,
-                retry=retry + 1,
-            )
+            return None
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
@@ -690,20 +678,39 @@ class TelegramBotController:
             capture_exception(e)
             return None
 
-    async def send_video_is_private_error(
+    async def send_x_fallback_message(
+        self,
+        telegram_id: int,
+        fixed_url: str,
+        language: str | None = None,
+    ) -> None:
+        """
+        Send a fallback message with a modified URL for X/Twitter.
+
+        :param telegram_id: Telegram ID of the user.
+        :param fixed_url: The URL with the domain replaced by 'fixupx.com'.
+        :param language: The language for the message.
+        """
+        text = _("result direct message", locale=language or self.language).format(
+            url=fixed_url,
+        )
+        coro = self._bot.send_message(chat_id=telegram_id, text=text)
+        await self._send(coro)
+
+    async def send_content_not_found_error(
         self,
         telegram_id: int,
         language: str | None = None,
     ) -> None:
         """
-        Send a message indicating the video is private or region-locked.
+        Send a message indicating the content is private, deleted or not found.
 
         :param telegram_id: Telegram ID of the user.
         :param language: Language for the message.
         """
         coro = self._bot.send_message(
             chat_id=telegram_id,
-            text=_("video is private", locale=language or self.language),
+            text=_("content private or not found", locale=language or self.language),
         )
         await self._send(coro)
 
@@ -799,7 +806,7 @@ class TelegramBotController:
         telegram_id: int,
         video_dto: VideoDTO,
         language: str | None = None,
-    ) -> None:
+    ) -> Message | None:
         """
         Send choose quality.
 
@@ -810,35 +817,46 @@ class TelegramBotController:
         :param video_dto: Video DTO.
         :param language: The language of the caption.
         """
+        text = _(
+            "choose quality",
+            locale=language or self.language,
+        ).format(title=video_dto.title)
+        reply_markup = inline.get_video_formats_keyboard(
+            labels=video_dto.unique_labels,
+        )
+
+        message: Message | None = None
+
         if video_dto.thumbnail_url:
             try:
-                await self._bot.send_photo(
+                message = await self._bot.send_photo(
                     chat_id=telegram_id,
                     photo=video_dto.thumbnail_url,
-                    caption=_(
-                        "choose quality",
-                        locale=language or self.language,
-                    ).format(title=video_dto.title),
-                    reply_markup=inline.get_video_formats_keyboard(
-                        labels=video_dto.unique_labels,
-                    ),
+                    caption=text,
+                    reply_markup=reply_markup,
                 )
-                return
-            except TelegramBadRequest as e:
-                if "wrong type" in e.message:
-                    pass
-                else:
-                    raise e
-            except Exception as e:
+            except (TelegramBadRequest, AiogramError) as e:
+                logging.warning(
+                    "Failed to send quality selection with photo for user %s: %s. "
+                    "Falling back to text-only message.",
+                    telegram_id,
+                    e,
+                )
+
+        if not message:
+            try:
+                message = await self._bot.send_message(
+                    chat_id=telegram_id,
+                    text=text,
+                    reply_markup=reply_markup,
+                )
+            except AiogramError as e:
+                logging.error(
+                    "Failed to send text-only quality selection to user %s: %s",
+                    telegram_id,
+                    e,
+                )
                 capture_exception(e)
-        coro = self._bot.send_message(
-            chat_id=telegram_id,
-            text=_(
-                "choose quality",
-                locale=language or self.language,
-            ).format(title=video_dto.title),
-            reply_markup=inline.get_video_formats_keyboard(
-                labels=video_dto.unique_labels,
-            ),
-        )
-        await self._send(coro)
+                return None
+
+        return message

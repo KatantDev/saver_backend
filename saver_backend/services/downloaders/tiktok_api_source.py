@@ -1,15 +1,14 @@
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from httpx import AsyncClient, RequestError
 
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
-    AudioDTO,
-    PhotoDTO,
+    PhotoListDTO,
     TikWMData,
     TikWMResponse,
     VideoDTO,
@@ -21,6 +20,7 @@ class TikTokAPIController(BaseSourceController):
     """Controller for downloading videos from TikTok via tikwm.com API."""
 
     SOURCE = SourceEnum.TIKTOK
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.ALL
     DIRECT_URL_DOWNLOAD = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -85,32 +85,28 @@ class TikTokAPIController(BaseSourceController):
             )
             return
 
-        if not data.images or not data.music:
+        if not data.images:
             await self._send_error_message()
             return
 
-        photos = [
-            PhotoDTO.from_tikwm(
-                image_url=img_url,
-                data=data,
-                resolution_url=self._resolution.url,
-            )
-            for img_url in data.images
-        ]
+        slideshow_dto = PhotoListDTO.from_tikwm(
+            data=data,
+            resolution_url=self._resolution.url,
+        )
 
         await self._telegram_bot_controller.send_finish_downloading_group(
-            files=photos,
+            files=slideshow_dto.photos,
             telegram_id=self._telegram_id,
             message_id=self._message_id,
         )
 
-        # Create audio DTO and send it separately
-        audio = AudioDTO.from_tikwm(data=data, resolution_url=self._resolution.url)
-        if audio:
+        if slideshow_dto.audio:
             await self._telegram_bot_controller.send_finish_downloading_audio(
-                audio=audio,
+                audio=slideshow_dto.audio,
                 telegram_id=self._telegram_id,
             )
+
+        await self._create_history_entry()
 
     async def _handle_video(self, data: TikWMData) -> None:
         """

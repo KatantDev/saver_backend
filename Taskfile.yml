@@ -22,6 +22,7 @@ tasks:
         if [ -n "$API_RUNNING" ] && [ -n "$WORKER_RUNNING" ]; then
           echo "✅ Containers running, performing rollout..."
           docker rollout api
+          {{.DOCKER_COMPOSE}} up migrator -d
           {{.DOCKER_COMPOSE}} exec nginx nginx -s reload
           docker rollout taskiq-worker
         else
