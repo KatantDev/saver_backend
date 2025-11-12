@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 
@@ -8,6 +8,7 @@ class OkYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from ok.ru through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.OK_YDL
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
     COOKIES: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
