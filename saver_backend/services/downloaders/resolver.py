@@ -18,6 +18,9 @@ from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
 from saver_backend.services.downloaders.m3u8_ydl_source import M3U8YdlController
+from saver_backend.services.downloaders.ok_ydl_source import (
+    OkYdlController,
+)
 from saver_backend.services.downloaders.pinterest_ydl_source import (
     PinterestYdlController,
 )
@@ -487,6 +490,27 @@ class DzenDetector(Detector):
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Dzen video url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class OkDetector(Detector):
+    """Detector for ok.ru videos."""
+
+    SOURCE = SourceEnum.OK_YDL
+    CONTROLLER = OkYdlController
+    HOSTS = (
+        "ok.ru",
+        "www.ok.ru",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video/(?P<code>\d+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid ok.ru video url."""
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)
