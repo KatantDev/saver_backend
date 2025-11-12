@@ -2,7 +2,7 @@ from typing import Any, ClassVar
 
 from yt_dlp.utils import DownloadError
 
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 
@@ -10,6 +10,7 @@ class VKVideoYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from VK Video through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.VK_VIDEO_YDL
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
     COOKIES: ClassVar[bool] = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

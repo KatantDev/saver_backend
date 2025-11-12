@@ -1,10 +1,10 @@
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from httpx import AsyncClient, RequestError
 
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
@@ -20,6 +20,7 @@ class TikTokAPIController(BaseSourceController):
     """Controller for downloading videos from TikTok via tikwm.com API."""
 
     SOURCE = SourceEnum.TIKTOK
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.ALL
     DIRECT_URL_DOWNLOAD = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

@@ -6,6 +6,7 @@ from urllib.parse import urlparse, urlunparse
 
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
+from saver_backend.services.downloaders.adult_ydl_source import AdultYdlController
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.dzen_ydl import (
     DzenYdlController,
@@ -408,6 +409,48 @@ class RutubeDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)
+
+
+@register_detector()
+class AdultDetector(Detector):
+    """Detector for various adult websites supported by yt-dlp."""
+
+    SOURCE = SourceEnum.ADULT_YDL
+    CONTROLLER = AdultYdlController
+    HOSTS = (
+        "pornhub.com",
+        "pornotube.com",
+        "nuvid.com",
+        "beeg.com",
+        "empflix.com",
+        "eporner.com",
+        "eroprofile.com",
+        "lovehomeporn.com",
+        "manyvids.com",
+        "motherless.com",
+        "moviefap.com",
+        "nubiles-porn.com",
+        "nubiles.net",
+        "redgifs.com",
+        "redtube.com",
+        "rule34video.com",
+        "sunporno.com",
+        "thisvid.com",
+        "tnaflix.com",
+        "txxx.com",
+        "xnxx.com",
+        "xvideos.com",
+        "xxxymovies.com",
+        "youjizz.com",
+        "youporn.com",
+        "zenporn.com",
+    )
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is from a supported adult website."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return Resolution(source=self.SOURCE, url=url)
 
 
 @register_detector()
