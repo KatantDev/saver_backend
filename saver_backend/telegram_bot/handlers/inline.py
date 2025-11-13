@@ -8,8 +8,9 @@ from aiogram.types import (
     InputTextMessageContent,
 )
 
-from saver_backend.db.dao.cache_dao import CacheDAO
-from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
+from saver_backend.db.dao.history_dao import HistoryDAO
+from saver_backend.db.models.user_model import UserModel
+from saver_backend.entities.enums import SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.i18n import gettext as _
@@ -22,23 +23,27 @@ inline_router = Router()
 @inline_router.inline_query(F.query == "")
 async def on_empty_inline_query(
     query: InlineQuery,
-    cache_dao: CacheDAO,
+    user: UserModel,
+    history_dao: HistoryDAO,
 ) -> None:
     """
-    Handle empty inline query by showing latest cached videos.
+    Handle empty inline query by showing the user's personal history.
 
     :param query: The inline query object.
-    :param cache_dao: DAO for accessing cache.
+    :param user: The current user model.
+    :param history_dao: DAO for accessing user history.
+    :return: A list of CacheModel instances.
     """
-    cached_items = await cache_dao.get_latest(
+    sources_for_inline = [
+        SourceEnum.TIKTOK,
+        SourceEnum.INSTAGRAM_YDL,
+        SourceEnum.VK_CLIPS_YDL,
+        SourceEnum.YOUTUBE_SHORTS_YDL,
+    ]
+    cached_items = await history_dao.get_user_history_with_cache(
+        user_id=user.id,
         limit=20,
-        sources=[
-            SourceEnum.TIKTOK,
-            SourceEnum.INSTAGRAM_YDL,
-            SourceEnum.VK_CLIPS_YDL,
-            SourceEnum.YOUTUBE_SHORTS_YDL,
-        ],
-        content_types=[ContentTypeEnum.VIDEO],
+        sources=sources_for_inline,
     )
 
     results: list[InlineQueryResultCachedMpeg4Gif] = []
