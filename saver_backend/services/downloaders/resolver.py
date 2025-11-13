@@ -11,6 +11,9 @@ from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.dzen_ydl import (
     DzenYdlController,
 )
+from saver_backend.services.downloaders.facebook_ydl_source import (
+    FacebookYdlController,
+)
 from saver_backend.services.downloaders.instagram_api_source import (
     InstagramAPIController,
 )
@@ -513,6 +516,37 @@ class OkDetector(Detector):
         """Check if the url is a valid ok.ru video url."""
         if not self._host_in(url, *self.HOSTS):
             return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class FacebookDetector(Detector):
+    """Detector for Facebook videos."""
+
+    SOURCE = SourceEnum.FACEBOOK_YDL
+    CONTROLLER = FacebookYdlController
+    HOSTS = (
+        "facebook.com",
+        "www.facebook.com",
+        "m.facebook.com",
+        "fb.watch",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "videos": re.compile(r"^/(?:[^/]+)/videos/(?P<code>\d+)/?$"),
+        "reel": re.compile(r"^/reel/(?P<code>\d+)/?$"),
+        "share": re.compile(r"^/share/v/(?P<code>[^/]+)/?$"),
+    }
+    _WATCH_RE: ClassVar[re.Pattern[str]] = re.compile(r"v=(\d+)")
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Facebook video/reel url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+
+        parsed = urlparse(url)
+        match = self._WATCH_RE.search(parsed.query)
+        if parsed.path == "/watch/" and match:
+            url = f"https://www.facebook.com/author/videos/{match.group(1)}"
         return self._match_regex(url)
 
 
