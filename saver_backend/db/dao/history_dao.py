@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload
 
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.cache_model import CacheModel
@@ -50,35 +51,27 @@ class HistoryDAO(BaseDAO):
         :param sources: Optional list of sources to filter by.
         :return: A list of CacheModel instances.
         """
-        base_subquery = select(
-            HistoryModel.cache_id,
-            func.max(HistoryModel.created_at).label("max_created_at"),
-        ).where(
-            HistoryModel.user_id == user_id,
-            HistoryModel.cache_id.isnot(None),
+        query = (
+            select(HistoryModel)
+            .options(joinedload(HistoryModel.cache))
+            .where(
+                HistoryModel.user_id == user_id,
+                HistoryModel.cache_id.isnot(None),
+            )
+            .order_by(HistoryModel.cache_id, HistoryModel.created_at.desc())
+            .distinct(HistoryModel.cache_id)
+            .limit(limit)
         )
 
         if sources:
-            base_subquery = base_subquery.where(HistoryModel.source.in_(sources))
-
-        # Subquery to find the most recent interaction for each unique cache_id
-        # for the given user. This prevents duplicates and sorts correctly.
-        subquery = (
-            base_subquery.group_by(HistoryModel.cache_id)
-            .order_by(func.max(HistoryModel.created_at).desc())
-            .limit(limit)
-            .subquery()
-        )
-
-        # Main query to fetch the CacheModel objects for the identified items
-        query = (
-            select(CacheModel)
-            .join(subquery, CacheModel.id == subquery.c.cache_id)
-            .order_by(subquery.c.max_created_at.desc())
-        )
+            query = query.where(HistoryModel.source.in_(sources))
 
         result = await self.session.execute(query)
-        return list(result.scalars().all())
+        return [
+            history_item.cache
+            for history_item in result.scalars().all()
+            if history_item.cache
+        ]
 
     async def get_count(self, created_after: datetime | None = None) -> int:
         """

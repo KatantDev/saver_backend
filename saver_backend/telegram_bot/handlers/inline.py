@@ -27,10 +27,12 @@ async def on_empty_inline_query(
     history_dao: HistoryDAO,
 ) -> None:
     """
-    Handle empty inline query by showing latest cached videos.
+    Handle empty inline query by showing the user's personal history.
 
     :param query: The inline query object.
-    :param cache_dao: DAO for accessing cache.
+    :param user: The current user model.
+    :param history_dao: DAO for accessing user history.
+    :return: A list of CacheModel instances.
     """
     sources_for_inline = [
         SourceEnum.TIKTOK,
