@@ -28,7 +28,7 @@ async def on_empty_inline_query(
     Handle empty inline query by showing latest cached videos.
 
     :param query: The inline query object.
-    :param video_cache_dao: DAO for accessing video cache.
+    :param cache_dao: DAO for accessing cache.
     """
     cached_items = await cache_dao.get_latest(
         limit=20,

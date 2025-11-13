@@ -200,8 +200,6 @@ class TelegramBotController:
         """
         try:
             await coro
-        except (TelegramForbiddenError, TelegramBadRequest):
-            pass
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after)
             await self._send(coro=coro)
