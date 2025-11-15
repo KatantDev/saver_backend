@@ -72,8 +72,8 @@ class InstagramAPIController(BaseSourceController):
 
         :return: Path to settings file.
         """
-        credentials = secrets.choice(settings.instagram_accounts)
-        index = settings.instagram_accounts.index(credentials)
+        credentials = secrets.choice(settings.instagram_account)
+        index = settings.instagram_account.index(credentials)
         session_path = Path(
             f"cookies/{SourceEnum.INSTAGRAM_API.value}/cookies{index + 1}.json",
         )
