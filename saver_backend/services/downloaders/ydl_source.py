@@ -3,7 +3,7 @@ import logging
 import secrets
 from abc import ABC
 from pathlib import Path
-from typing import Any, ClassVar, Dict
+from typing import Any, ClassVar, Dict, Iterable
 
 import sentry_sdk
 import yt_dlp
@@ -266,18 +266,35 @@ class YtDlpController(BaseSourceController, ABC):
                 return None
             raise
 
+    def cleanup_files(self, dtos: Iterable[Any]) -> None:
+        """
+        Universally delete downloaded files and thumbnails from a list of DTOs.
+
+        :param dtos: List or Iterable of DTOs (VideoDTO, PhotoDTO, etc).
+        """
+        for item in dtos:
+            if hasattr(item, "path") and item.path:
+                try:
+                    file_path = Path(item.path)
+                    if file_path.exists():
+                        file_path.unlink()
+                        logging.info("Deleted local file: %s", file_path)
+                except Exception as e:
+                    logging.error("Error deleting file %s: %s", item.path, e)
+
+            if hasattr(item, "thumbnail") and item.thumbnail:
+                try:
+                    thumb_path = Path(item.thumbnail)
+                    if thumb_path.exists():
+                        thumb_path.unlink()
+                        logging.info("Deleted thumbnail: %s", thumb_path)
+                except Exception as e:
+                    logging.error("Error deleting thumbnail %s: %s", item.thumbnail, e)
+
     def _cleanup_files(self) -> None:
         """Safely deletes the downloaded video and thumbnail files."""
-        if not self._video:
-            return
-
-        if self._video.path and self._video.path.exists():
-            self._video.path.unlink(missing_ok=True)
-
-        if self._video.thumbnail:
-            thumb_path = Path(self._video.thumbnail)
-            if thumb_path.exists():
-                thumb_path.unlink(missing_ok=True)
+        if self._video:
+            self.cleanup_files([self._video])
 
     def _get_thumbnail(self, source_id: str | None) -> Path | None:
         if not source_id:

@@ -234,12 +234,19 @@ class BaseSourceController(ABC):
         """
         Save content details to the cache.
 
+        If the URL contained a specific 'code' (e.g., short ID) and it differs
+        from the actual source_id returned by the API, we save the cache entry TWICE:
+        1. By the real source_id (primary)
+        2. By the URL code (alias) for fast lookup next time.
+
         :param content_dto: The original DTO with metadata.
         :param telegram_video: The Video object from aiogram after sending.
         """
         dto_for_cache = content_dto.model_copy(
             update={"path": None, "thumbnail": None},
         )
+
+        # 1. Try to save by REAL source_id (from API/yt-dlp)
         cache_dto = CacheDTO.from_telegram_object(
             source=self.SOURCE,
             telegram_video=telegram_video,
@@ -249,6 +256,27 @@ class BaseSourceController(ABC):
         if not cache_dto:
             return None
 
+        created_model = await self._create_cache_entry_if_not_exists(cache_dto)
+
+        # 2. Try to save by URL CODE (alias), if available and different
+        url_code = self._resolution.metadata.get("code")
+        if url_code and url_code != cache_dto.source_id:
+            alias_cache_dto = cache_dto.model_copy(update={"source_id": url_code})
+            logging.info(
+                "Saving cache alias for source %s: code=%s -> file_id=%s",
+                self.SOURCE,
+                url_code,
+                telegram_video.file_id,
+            )
+            await self._create_cache_entry_if_not_exists(alias_cache_dto)
+
+        return created_model
+
+    async def _create_cache_entry_if_not_exists(
+        self,
+        cache_dto: CacheDTO,
+    ) -> CacheModel | None:
+        """Helper to check existence and create cache entry."""
         cached_video = await self._cache_dao.get_by_filters(
             source=self.SOURCE,
             source_id=cache_dto.source_id,

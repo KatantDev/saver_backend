@@ -317,6 +317,41 @@ class PhotoDTO(BaseContentDTO):
             source_id=data.id,
         )
 
+    @classmethod
+    def from_vk_api(
+        cls,
+        photo_data: dict[str, Any],
+        resolution_url: str,
+    ) -> Optional["PhotoDTO"]:
+        """
+        Create PhotoDTO from VK API photo object.
+
+        Automatically selects the best quality size.
+        """
+        sizes = photo_data.get("sizes", [])
+        if not sizes:
+            return None
+
+        type_priority = {"w": 10, "z": 9, "y": 8, "x": 7, "m": 5, "s": 1}
+        sorted_sizes = sorted(
+            sizes,
+            key=lambda s: (
+                s.get("width", 0),
+                type_priority.get(str(s.get("type", "")), 0),
+            ),
+            reverse=True,
+        )
+        best_url = sorted_sizes[0].get("url")
+
+        if not best_url:
+            return None
+
+        return cls(
+            media_url=best_url,
+            url=resolution_url,
+            source_id=str(photo_data.get("id", "")),
+        )
+
 
 class AudioDTO(BaseContentDTO):
     """Data Transfer Object for Audio."""
@@ -348,6 +383,38 @@ class AudioDTO(BaseContentDTO):
         safe_name = re.sub(r'[\\/*?:"<>|]', "", base_name)
         # Truncate to avoid "Filename too long" errors
         return safe_name[:150].strip() or str(uuid.uuid4())
+
+    @classmethod
+    def from_vk_api(
+        cls,
+        audio_data: dict[str, Any],
+        resolution_url: str,
+    ) -> Optional["AudioDTO"]:
+        """Create AudioDTO from VK API audio object."""
+        owner_id = audio_data.get("owner_id")
+        aid = audio_data.get("id")
+
+        if not owner_id or not aid:
+            return None
+
+        source_id = f"{owner_id}_{aid}"
+        audio_url = audio_data.get("url")
+
+        if not audio_url:
+            # URL может отсутствовать из-за ограничений правообладателя
+            return None
+
+        artist = audio_data.get("artist", "Unknown")
+        title = audio_data.get("title", "Track")
+        full_title = f"{artist} - {title}"
+
+        return cls(
+            media_url=audio_url,
+            url=resolution_url,
+            title=full_title,
+            duration=audio_data.get("duration"),
+            source_id=source_id,
+        )
 
 
 class PhotoListDTO(BaseContentDTO):
