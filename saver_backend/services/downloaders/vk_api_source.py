@@ -148,6 +148,8 @@ class VKAPIController(YtDlpController):
                 download=True,
             )
 
+            file_id = info_dict.get("id")
+
             video_dto = VideoDTO.from_yt_dlp(
                 info=info_dict,
                 file_path=self._download_directory
@@ -155,6 +157,7 @@ class VKAPIController(YtDlpController):
                 quality="best",
             )
             video_dto.source_id = source_id
+            video_dto.thumbnail = self._get_thumbnail(file_id)
             return video_dto
         except DownloadError as e:
             error_msg = str(e)
@@ -285,6 +288,8 @@ class VKAPIController(YtDlpController):
             telegram_id=self._telegram_id,
             message_id=self._message_id,
         )
+
+        self.cleanup_files([photo_dto])
 
     async def download_video(self) -> None:
         """Main entry point: Routes to Wall or Photo logic based on metadata."""
