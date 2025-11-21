@@ -2,7 +2,6 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import joinedload
 
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.cache_model import CacheModel
@@ -40,8 +39,8 @@ class HistoryDAO(BaseDAO):
     async def get_user_history_with_cache(
         self,
         user_id: UUID,
+        sources: list[SourceEnum],
         limit: int = 20,
-        sources: list[SourceEnum] | None = None,
     ) -> list[CacheModel]:
         """
         Get the latest unique cached items from a user's history.
@@ -51,27 +50,28 @@ class HistoryDAO(BaseDAO):
         :param sources: Optional list of sources to filter by.
         :return: A list of CacheModel instances.
         """
-        query = (
-            select(HistoryModel)
-            .options(joinedload(HistoryModel.cache))
+        subq = (
+            select(HistoryModel.cache_id, HistoryModel.created_at)
+            .join(HistoryModel.cache)
             .where(
                 HistoryModel.user_id == user_id,
                 HistoryModel.cache_id.isnot(None),
+                HistoryModel.source.in_(sources),
             )
-            .order_by(HistoryModel.cache_id, HistoryModel.created_at.desc())
-            .distinct(HistoryModel.cache_id)
+            .distinct(CacheModel.file_unique_id)
+            .order_by(CacheModel.file_unique_id, HistoryModel.created_at.desc())
+            .subquery()
+        )
+
+        query = (
+            select(CacheModel)
+            .join(subq, CacheModel.id == subq.c.cache_id)
+            .order_by(subq.c.created_at.desc())
             .limit(limit)
         )
 
-        if sources:
-            query = query.where(HistoryModel.source.in_(sources))
-
         result = await self.session.execute(query)
-        return [
-            history_item.cache
-            for history_item in result.scalars().all()
-            if history_item.cache
-        ]
+        return list(result.scalars().all())
 
     async def get_count(self, created_after: datetime | None = None) -> int:
         """

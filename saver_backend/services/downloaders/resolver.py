@@ -159,11 +159,15 @@ class TikTokDetector(Detector):
         "vt.tiktok.com",
         "www.tiktok.com",
     )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r".*/video/(?P<code>\d+)"),
+        "short": re.compile(r"^/(?P<code>[A-Za-z0-9]+)/?$"),
+    }
 
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
             return None
-        return Resolution(source=self.SOURCE, url=self._clean_url(url))
+        return self._match_regex(url)
 
 
 @register_detector()

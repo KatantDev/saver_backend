@@ -2,7 +2,6 @@ import logging
 
 from taskiq import TaskiqDepends
 
-from saver_backend.entities.enums import ContentTypeEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
@@ -29,51 +28,6 @@ async def save_video(
     :param state: Saver state.
     :param db: Database state with DAOs.
     """
-    target_quality = format_id or "best"
-    url_code = resolution.metadata.get("code")
-
-    if url_code:
-        logging.info(
-            "Performing pre-cache check for source %s, code=%s",
-            resolution.source,
-            url_code,
-        )
-        # Check if we have a cache entry for this specific code
-        cached_item = await db.cache_dao.get_by_filters(
-            source=resolution.source,
-            source_id=url_code,
-            quality=target_quality,
-            content_type=ContentTypeEnum.VIDEO,
-        )
-
-        if cached_item:
-            logging.info("Pre-cache hit for code %s! Sending file directly.", url_code)
-            controller_class = state.source_resolver.get_controller(resolution)
-            if controller_class:
-                # Initialize controller lightly
-                cache_controller = controller_class(
-                    resolution=resolution,
-                    telegram_bot_controller=state.telegram_bot_controller,
-                    telegram_id=telegram_id,
-                    user_dao=db.user_dao,
-                    history_dao=db.history_dao,
-                    cache_dao=db.cache_dao,
-                    message_id=None,  # No loading message needed
-                )
-                await cache_controller.set_user_language()
-                try:
-                    # Try to send. If successful (True), we are done.
-                    # If False (e.g. file_id invalid), we proceed to normal download.
-                    if await cache_controller.send_video_from_cache(
-                        source_id=url_code,
-                        quality=target_quality,
-                    ):
-                        return
-                except Exception as e:
-                    logging.warning("Pre-cache send failed: %s", e)
-                finally:
-                    await cache_controller.close()
-
     # Getting controller for the resolution
     logging.info("Resolving controller for %s", resolution)
     yt_dlp_controller = state.source_resolver.get_controller(resolution)

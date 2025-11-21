@@ -3,7 +3,7 @@ import logging
 import secrets
 from abc import ABC
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Iterable
+from typing import Any, ClassVar, Dict
 
 import sentry_sdk
 import yt_dlp
@@ -16,9 +16,7 @@ from saver_backend.services.downloaders.exceptions import (
     IPAddressBlockedError,
     VideoInfoNotSetError,
 )
-from saver_backend.services.downloaders.schema import (
-    VideoDTO,
-)
+from saver_backend.services.downloaders.schema import PhotoDTO, VideoDTO
 from saver_backend.settings import settings
 
 
@@ -119,6 +117,15 @@ class YtDlpController(BaseSourceController, ABC):
         If a cached version (file_id) exists, it sends it directly.
         Otherwise, it proceeds with the full download process.
         """
+        cache_quality_key = self._selected_format_id or "best"
+
+        url_code = str(self._resolution.metadata.get("code"))
+        if await self.send_video_from_cache(
+            source_id=url_code,
+            quality=cache_quality_key,
+        ):
+            return
+
         # Getting information about the video, if data is invalid, send error message
         try:
             info_dict = await self.get_video_info(url=self._resolution.url)
@@ -135,12 +142,10 @@ class YtDlpController(BaseSourceController, ABC):
             return
 
         # Get the video from the cache if it was previously downloaded
-        cache_quality_key = self._selected_format_id or "best"
-        is_sent_from_cache = await self.send_video_from_cache(
+        if await self.send_video_from_cache(
             source_id=self._video.source_id,
             quality=cache_quality_key,
-        )
-        if is_sent_from_cache:
+        ):
             return
 
         logging.info(
@@ -202,7 +207,7 @@ class YtDlpController(BaseSourceController, ABC):
             video_dto=self._video,
             supports_streaming=self.SUPPORTS_STREAMING,
         )
-        self._cleanup_files()
+        self.cleanup_files([self._video])
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         """This hook's only job is to report download progress."""
@@ -266,35 +271,22 @@ class YtDlpController(BaseSourceController, ABC):
                 return None
             raise
 
-    def cleanup_files(self, dtos: Iterable[Any]) -> None:
+    def cleanup_files(self, dtos: list[VideoDTO | PhotoDTO]) -> None:
         """
-        Universally delete downloaded files and thumbnails from a list of DTOs.
+        Safely deletes the downloaded files and thumbnails from a list of DTOs.
 
-        :param dtos: List or Iterable of DTOs (VideoDTO, PhotoDTO, etc).
+        :param dtos: List of DTOs (VideoDTO, PhotoDTO).
         """
         for item in dtos:
-            if hasattr(item, "path") and item.path:
-                try:
-                    file_path = Path(item.path)
-                    if file_path.exists():
-                        file_path.unlink()
-                        logging.info("Deleted local file: %s", file_path)
-                except Exception as e:
-                    logging.error("Error deleting file %s: %s", item.path, e)
+            if item.path:
+                file_path = Path(item.path)
+                if file_path.exists():
+                    file_path.unlink()
 
-            if hasattr(item, "thumbnail") and item.thumbnail:
-                try:
-                    thumb_path = Path(item.thumbnail)
-                    if thumb_path.exists():
-                        thumb_path.unlink()
-                        logging.info("Deleted thumbnail: %s", thumb_path)
-                except Exception as e:
-                    logging.error("Error deleting thumbnail %s: %s", item.thumbnail, e)
-
-    def _cleanup_files(self) -> None:
-        """Safely deletes the downloaded video and thumbnail files."""
-        if self._video:
-            self.cleanup_files([self._video])
+            if isinstance(item, VideoDTO) and item.thumbnail:
+                thumb_path = Path(item.thumbnail)
+                if thumb_path.exists():
+                    thumb_path.unlink()
 
     def _get_thumbnail(self, source_id: str | None) -> Path | None:
         if not source_id:

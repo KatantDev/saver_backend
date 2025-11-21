@@ -289,8 +289,6 @@ class VKAPIController(YtDlpController):
             message_id=self._message_id,
         )
 
-        self.cleanup_files([photo_dto])
-
     async def download_video(self) -> None:
         """Main entry point: Routes to Wall or Photo logic based on metadata."""
         code = self._resolution.metadata.get("code")
