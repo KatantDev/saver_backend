@@ -252,14 +252,16 @@ class BaseSourceController(ABC):
         if not cache_dto:
             return None
 
-        created_model = await self._create_cache_entry_if_not_exists(cache_dto)
+        model_to_return = await self._create_cache_entry_if_not_exists(cache_dto)
 
         url_code = self._resolution.metadata.get("code")
         if url_code and url_code != cache_dto.source_id:
             alias_cache_dto = cache_dto.model_copy(update={"source_id": url_code})
-            await self._create_cache_entry_if_not_exists(alias_cache_dto)
+            alias_model = await self._create_cache_entry_if_not_exists(alias_cache_dto)
+            if alias_model:
+                model_to_return = alias_model
 
-        return created_model
+        return model_to_return
 
     async def _create_cache_entry_if_not_exists(
         self,

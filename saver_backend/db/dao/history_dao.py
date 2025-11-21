@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload
 
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.cache_model import CacheModel
@@ -46,32 +47,29 @@ class HistoryDAO(BaseDAO):
         Get the latest unique cached items from a user's history.
 
         :param user_id: The ID of the user.
+        :param sources: List of sources to filter by.
         :param limit: The maximum number of items to return.
-        :param sources: Optional list of sources to filter by.
         :return: A list of CacheModel instances.
         """
-        subq = (
-            select(HistoryModel.cache_id, HistoryModel.created_at)
-            .join(HistoryModel.cache)
+        query = (
+            select(HistoryModel)
+            .options(joinedload(HistoryModel.cache))
             .where(
                 HistoryModel.user_id == user_id,
                 HistoryModel.cache_id.isnot(None),
                 HistoryModel.source.in_(sources),
             )
-            .distinct(CacheModel.file_unique_id)
-            .order_by(CacheModel.file_unique_id, HistoryModel.created_at.desc())
-            .subquery()
-        )
-
-        query = (
-            select(CacheModel)
-            .join(subq, CacheModel.id == subq.c.cache_id)
-            .order_by(subq.c.created_at.desc())
+            .order_by(HistoryModel.cache_id, HistoryModel.created_at.desc())
+            .distinct(HistoryModel.cache_id)
             .limit(limit)
         )
 
         result = await self.session.execute(query)
-        return list(result.scalars().all())
+        return [
+            history_item.cache
+            for history_item in result.scalars().all()
+            if history_item.cache
+        ]
 
     async def get_count(self, created_after: datetime | None = None) -> int:
         """
