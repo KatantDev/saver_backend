@@ -242,11 +242,7 @@ class BaseSourceController(ABC):
         :param content_dto: The original DTO with metadata.
         :param telegram_video: The Video object from aiogram after sending.
         """
-        dto_for_cache = content_dto.model_copy(
-            update={"path": None, "thumbnail": None},
-        )
-
-        # 1. Try to save by REAL source_id (from API/yt-dlp)
+        dto_for_cache = content_dto.model_copy(update={"path": None, "thumbnail": None})
         cache_dto = CacheDTO.from_telegram_object(
             source=self.SOURCE,
             telegram_video=telegram_video,
@@ -258,16 +254,9 @@ class BaseSourceController(ABC):
 
         created_model = await self._create_cache_entry_if_not_exists(cache_dto)
 
-        # 2. Try to save by URL CODE (alias), if available and different
         url_code = self._resolution.metadata.get("code")
         if url_code and url_code != cache_dto.source_id:
             alias_cache_dto = cache_dto.model_copy(update={"source_id": url_code})
-            logging.info(
-                "Saving cache alias for source %s: code=%s -> file_id=%s",
-                self.SOURCE,
-                url_code,
-                telegram_video.file_id,
-            )
             await self._create_cache_entry_if_not_exists(alias_cache_dto)
 
         return created_model
@@ -343,22 +332,13 @@ class BaseSourceController(ABC):
 
         :param cache_model: An optional CacheModel instance if the content was cached.
         """
-        try:
-            user = await self._get_user_info()
-            await self._history_dao.create(
-                user_id=user.id,
-                cache_id=cache_model.id if cache_model else None,
-                source=self.SOURCE,
-                url=self._resolution.url,
-            )
-            logging.info(
-                "History entry created for user %s, url=%s, cache_linked=%s",
-                user.telegram_id,
-                self._resolution.url,
-                bool(cache_model),
-            )
-        except Exception:
-            logging.exception("Failed to create history entry.")
+        user = await self._get_user_info()
+        await self._history_dao.create(
+            user_id=user.id,
+            cache_id=cache_model.id if cache_model else None,
+            source=self.SOURCE,
+            url=self._resolution.url,
+        )
 
     async def _answer_inline_query(
         self,
