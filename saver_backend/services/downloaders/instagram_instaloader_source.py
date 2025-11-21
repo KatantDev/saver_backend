@@ -29,7 +29,7 @@ class InstagramInstaloaderController(BaseSourceController):
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._download_directory.mkdir(parents=True, exist_ok=True)
 
-        self.L = instaloader.Instaloader(
+        self._instaloader_client = instaloader.Instaloader(
             download_pictures=False,
             download_videos=False,
             download_video_thumbnails=False,
@@ -51,7 +51,10 @@ class InstagramInstaloaderController(BaseSourceController):
             return False
 
         try:
-            self.L.load_session_from_file(username=login, filename=str(session_path))
+            self._instaloader_client.load_session_from_file(
+                username=login,
+                filename=str(session_path),
+            )
             self._process_percent(percent=16)
             logging.info("Instaloader session successfully loaded for user %s", login)
             return True
@@ -64,12 +67,12 @@ class InstagramInstaloaderController(BaseSourceController):
 
     def _get_post(self, source_id: str) -> Post:
         """Synchronously fetches Post metadata."""
-        return Post.from_shortcode(self.L.context, source_id)
+        return Post.from_shortcode(self._instaloader_client.context, source_id)
 
     def _get_story(self, source_id: int, username: str) -> StoryItem:
         """Synchronously fetches StoryItem metadata."""
-        profile = Profile.from_username(self.L.context, username)
-        for story in self.L.get_stories(userids=[profile.userid]):
+        profile = Profile.from_username(self._instaloader_client.context, username)
+        for story in self._instaloader_client.get_stories(userids=[profile.userid]):
             for item in story.get_items():
                 if item.mediaid == source_id:
                     return item
@@ -223,4 +226,4 @@ class InstagramInstaloaderController(BaseSourceController):
 
     async def close(self) -> None:
         """Close Instaloader session."""
-        self.L.close()
+        self._instaloader_client.close()
