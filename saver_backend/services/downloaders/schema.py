@@ -6,6 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+from instaloader import Post, PostSidecarNode, StoryItem
 from pydantic import BaseModel, Field
 
 from saver_backend.entities.enums import SourceEnum
@@ -295,6 +296,35 @@ class VideoDTO(BaseContentDTO):
             quality=quality,
         )
 
+    @classmethod
+    def from_instaloader(
+        cls,
+        item: Post | StoryItem | PostSidecarNode,
+        url: str,
+        source_id: str,
+        caption: str | None = None,
+    ) -> "VideoDTO":
+        """Creates a VideoDTO from an Instaloader Post or StoryItem."""
+        duration: int | None = None
+        direct_download_url: str | None = None
+
+        if item.video_url:
+            direct_download_url = item.video_url
+
+        if isinstance(item, Post) and item.is_video:
+            duration = int(item.video_duration) if item.video_duration else None
+
+        thumbnail_url = getattr(item, "url", getattr(item, "display_url", None))
+
+        return cls(
+            url=url,
+            source_id=source_id,
+            title=caption or getattr(item, "caption", None),
+            duration=duration,
+            direct_download_url=direct_download_url,
+            thumbnail_url=thumbnail_url,
+        )
+
 
 class PhotoDTO(BaseContentDTO):
     """Data Transfer Object for Photo."""
@@ -350,6 +380,28 @@ class PhotoDTO(BaseContentDTO):
             media_url=best_url,
             url=resolution_url,
             source_id=str(photo_data.get("id", "")),
+        )
+
+    @classmethod
+    def from_instaloader(
+        cls,
+        item: Post | StoryItem | PostSidecarNode,
+        url: str,
+        source_id: str,
+        caption: str | None = None,
+    ) -> "PhotoDTO":
+        """
+        Creates a PhotoDTO from Instaloader metadata WITHOUT a local file path.
+
+        This is used for direct URL downloads.
+        """
+        media_url = getattr(item, "url", getattr(item, "display_url", None))
+
+        return cls(
+            url=url,
+            source_id=source_id,
+            title=caption or getattr(item, "caption", None),
+            media_url=media_url,
         )
 
 

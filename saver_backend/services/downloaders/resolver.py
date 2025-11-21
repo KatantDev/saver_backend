@@ -14,8 +14,8 @@ from saver_backend.services.downloaders.dzen_ydl import (
 from saver_backend.services.downloaders.facebook_ydl_source import (
     FacebookYdlController,
 )
-from saver_backend.services.downloaders.instagram_api_source import (
-    InstagramAPIController,
+from saver_backend.services.downloaders.instagram_instaloader_source import (
+    InstagramInstaloaderController,
 )
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
@@ -105,10 +105,12 @@ class Detector(ABC):
         for key, regex in self.REGEX.items():
             match = regex.match(urlparse(cleaned_url).path)
             if match:
+                metadata = match.groupdict()
+                metadata["type"] = key
                 return Resolution(
                     source=self.SOURCE,
                     url=cleaned_url,
-                    metadata={"type": key, "code": match.group("code")},
+                    metadata=metadata,
                 )
         return None
 
@@ -187,19 +189,21 @@ class InstagramYdlDetector(Detector):
         return self._match_regex(url)
 
 
-# @register_detector()
+@register_detector()
 class InstagramInstaloaderDetector(Detector):
     """Detector for Instagram."""
 
-    SOURCE = SourceEnum.INSTAGRAM_API
-    CONTROLLER = InstagramAPIController
+    SOURCE = SourceEnum.INSTAGRAM_INSTALOADER
+    CONTROLLER = InstagramInstaloaderController
     HOSTS = (
         "instagram.com",
         "www.instagram.com",
         "m.instagram.com",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
-        InstagramContentTypeEnum.POST: re.compile(r"^/p/(?P<code>[A-Za-z0-9_-]+)/?$"),
+        InstagramContentTypeEnum.POST: re.compile(
+            r"^/(?:[^/]+/)?p/(?P<code>[A-Za-z0-9_-]+)/?$",
+        ),
         InstagramContentTypeEnum.STORIES: re.compile(
             r"^/stories/(?P<user>[A-Za-z0-9._]+)/(?P<code>\d+)/?$",
         ),
