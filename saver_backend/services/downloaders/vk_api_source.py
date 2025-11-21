@@ -1,8 +1,16 @@
 import asyncio
 import logging
-from typing import Any, ClassVar
+from typing import Any, ClassVar, List, Tuple, Union
 
-from httpx import AsyncClient
+from vkbottle import API, VKAPIError
+from vkbottle.http import AiohttpClient
+from vkbottle_types.objects import (
+    PhotosPhoto,
+    VideoVideo,
+    WallWallpostAttachment,
+    WallWallpostAttachmentType,
+    WallWallpostFull,
+)
 from yt_dlp import DownloadError
 
 from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
@@ -13,7 +21,7 @@ from saver_backend.settings import settings
 
 class VKAPIController(YtDlpController):
     """
-    Unified controller for VK Wall posts and Photos via VK API.
+    Unified controller for VK Wall posts and Photos via VK API (using vkbottle).
 
     Handles:
     - vk.com/wall-XXXX_YYYY (Posts with mixed content)
@@ -25,8 +33,13 @@ class VKAPIController(YtDlpController):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._api_client = AsyncClient(timeout=10.0)
-        self._base_api_url = "https://api.vk.ru/method/"
+
+        if not settings.vk_service_token:
+            logging.error("VK_SERVICE_TOKEN is not set in .env")
+        self._api = API(
+            token=settings.vk_service_token,
+            http_client=AiohttpClient(),
+        )
 
         vk_params = {
             "downloader": "aria2c",
@@ -37,95 +50,68 @@ class VKAPIController(YtDlpController):
         self._yt_dlp.params.update(vk_params)
 
     async def close(self) -> None:
-        """Close the HTTP client and the superclass resources."""
-        await self._api_client.aclose()
+        """Close the VK API client and the superclass resources."""
+        if self._api:
+            await self._api.http_client.close()
         await super().close()
 
-    async def _make_api_request(
-        self,
-        method: str,
-        params: dict[str, Any],
-    ) -> Any | None:
+    async def _get_post_from_api(self, post_id: str) -> WallWallpostFull | None:
         """
-        Execute VK API request with error handling.
+        Fetch post data using wall.getById via vkbottle.
 
-        :param method: API method name (e.g. 'wall.getById').
-        :param params: Method parameters (excluding access_token and v).
-        :return: The 'response' part of the JSON body, or None on failure.
+        Returns a typed WallWallpostFull object.
         """
-        if not settings.vk_service_token:
-            logging.error("VK_SERVICE_TOKEN is not set in .env")
-            return None
-
-        request_params = {
-            "access_token": settings.vk_service_token,
-            "v": "5.199",
-            **params,
-        }
-
         try:
-            response = await self._api_client.get(
-                f"{self._base_api_url}{method}",
-                params=request_params,
-            )
-            data = response.json()
-
-            if "error" in data:
-                logging.error("VK API Error (%s): %s", method, data["error"])
+            response = await self._api.wall.get_by_id(posts=[post_id])
+            if not response or not response.items:
+                logging.warning("VK API returned no items for post %s", post_id)
                 return None
 
-            return data.get("response")
+            return response.items[0]
+        except VKAPIError as e:
+            logging.error(
+                "VK API Error (wall.getById): code=%s, msg=%s",
+                e.code,
+                e.error_msg,
+            )
+            return None
         except Exception as e:
-            logging.exception("Failed to fetch VK API (%s): %s", method, e)
+            logging.exception("Failed to fetch VK API (wall.getById): %s", e)
             return None
 
-    async def _get_post_from_api(self, post_id: str) -> dict[str, Any] | None:
-        """Fetch post data using wall.getById."""
-        response_obj = await self._make_api_request(
-            method="wall.getById",
-            params={"posts": post_id},
-        )
-        if not response_obj:
-            return None
+    async def _get_photos_from_api(self, photo_id: str) -> List[PhotosPhoto]:
+        """Fetch photo data using photos.getById via vkbottle."""
+        try:
+            response = await self._api.photos.get_by_id(photos=[photo_id])
+            if not response:
+                return []
 
-        # VK API v5+ returns dict {"count": N, "items": [...]},
-        # but sometimes list (rarely)
-        if isinstance(response_obj, dict):
-            items = response_obj.get("items", [])
-        else:
-            items = response_obj
-
-        return items[0] if items else None
-
-    async def _get_photos_from_api(self, photo_id: str) -> list[dict[str, Any]]:
-        """Fetch photo data using photos.getById."""
-        response_obj = await self._make_api_request(
-            method="photos.getById",
-            params={"photos": photo_id},
-        )
-        if not response_obj:
+            return response
+        except VKAPIError as e:
+            logging.error(
+                "VK API Error (photos.getById): code=%s, msg=%s",
+                e.code,
+                e.error_msg,
+            )
             return []
-
-        if isinstance(response_obj, list):
-            return response_obj
-        return response_obj.get("items", [])
+        except Exception as e:
+            logging.exception("Failed to fetch VK API (photos.getById): %s", e)
+            return []
 
     async def _process_video_attachment(
         self,
-        video_data: dict[str, Any],
+        video: VideoVideo,
     ) -> VideoDTO | None:
         """Process a single video attachment (Cache Check -> Download)."""
-        owner_id = video_data.get("owner_id")
-        vid = video_data.get("id")
-        access_key = video_data.get("access_key")
-        if not owner_id or not vid:
+        if not video.owner_id or not video.id:
             return None
 
-        source_id = f"{owner_id}_{vid}"
+        source_id = f"{video.owner_id}_{video.id}"
         video_url = f"https://vk.com/video{source_id}"
-        if access_key:
-            video_url += f"?list={access_key}"
+        if video.access_key:
+            video_url += f"?list={video.access_key}"
 
+        # 1. Check Cache
         cached_item = await self._cache_dao.get_by_filters(
             source=SourceEnum.VK_VIDEO_YDL,
             source_id=source_id,
@@ -140,7 +126,8 @@ class VKAPIController(YtDlpController):
             cached_dto.path = None
             return cached_dto
 
-        logging.info("Downloading video attachment: %s", video_url)
+        # 2. Download Info via yt-dlp
+        logging.info("Downloading video attachment info: %s", video_url)
         try:
             info_dict = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
@@ -149,11 +136,12 @@ class VKAPIController(YtDlpController):
             )
 
             file_id = info_dict.get("id")
-
+            predicted_path = (
+                self._download_directory / f"{file_id}.{info_dict.get('ext', 'mp4')}"
+            )
             video_dto = VideoDTO.from_yt_dlp(
                 info=info_dict,
-                file_path=self._download_directory
-                / f"{info_dict['id']}.{info_dict['ext']}",
+                file_path=predicted_path,
                 quality="best",
             )
             video_dto.source_id = source_id
@@ -176,33 +164,29 @@ class VKAPIController(YtDlpController):
 
     async def _parse_wall_attachments(
         self,
-        attachments: list[dict[str, Any]],
-    ) -> tuple[list[PhotoDTO | VideoDTO], list[AudioDTO]]:
-        """Parse post attachments into DTO lists."""
-        media_group: list[PhotoDTO | VideoDTO] = []
-        audio_list: list[AudioDTO] = []
-
-        total_items = len(attachments)
-        if total_items == 0:
+        attachments: List[WallWallpostAttachment],
+    ) -> Tuple[List[Union[PhotoDTO, VideoDTO]], List[AudioDTO]]:
+        """Parse post attachments using vkbottle types."""
+        media_group: List[Union[PhotoDTO, VideoDTO]] = []
+        audio_list: List[AudioDTO] = []
+        if not attachments:
             return media_group, audio_list
 
         for att in attachments:
-            atype = att.get("type")
-
-            if atype == "photo":
+            if att.type == WallWallpostAttachmentType.PHOTO and att.photo:
                 photo_dto = PhotoDTO.from_vk_api(
-                    photo_data=att.get("photo", {}),
+                    photo_data=att.photo.model_dump(),
                     resolution_url=self._resolution.url,
                 )
                 if photo_dto:
                     media_group.append(photo_dto)
-            elif atype == "video":
-                video_dto = await self._process_video_attachment(att.get("video", {}))
+            elif att.type == WallWallpostAttachmentType.VIDEO and att.video:
+                video_dto = await self._process_video_attachment(att.video)
                 if video_dto:
                     media_group.append(video_dto)
-            elif atype == "audio":
+            elif att.type == WallWallpostAttachmentType.AUDIO and att.audio:
                 audio_dto = AudioDTO.from_vk_api(
-                    audio_data=att.get("audio", {}),
+                    audio_data=att.audio.model_dump(),
                     resolution_url=self._resolution.url,
                 )
                 if audio_dto:
@@ -210,7 +194,7 @@ class VKAPIController(YtDlpController):
 
         return media_group, audio_list
 
-    async def _send_wall_audio(self, audio_list: list[AudioDTO]) -> None:
+    async def _send_wall_audio(self, audio_list: List[AudioDTO]) -> None:
         """Send audio files sequentially."""
         if not audio_list:
             return
@@ -227,54 +211,62 @@ class VKAPIController(YtDlpController):
 
     async def _handle_wall_post(self, code: str) -> None:
         """Handle downloading of a wall post."""
-        post_data = await self._get_post_from_api(code)
-        if not post_data:
+        # 1. Fetch Post Data (Typed Object)
+        post = await self._get_post_from_api(code)
+        if not post:
             await self.delete_processing_message()
             await self._telegram_bot_controller.send_content_not_found_error(
                 telegram_id=self._telegram_id,
             )
             return
 
-        attachments = list(post_data.get("attachments", []))
-        if "copy_history" in post_data:
-            for repost in post_data["copy_history"]:
-                repost_attachments = repost.get("attachments", [])
-                attachments.extend(repost_attachments)
+        logging.info("Processing post ID: %s", post.id)
 
-        media_group, audio_list = await self._parse_wall_attachments(
-            attachments,
-        )
-        if not media_group:
+        # 2. Collect Attachments (including reposts)
+        attachments: List[WallWallpostAttachment] = post.attachments or []
+
+        if post.copy_history:
+            for repost in post.copy_history:
+                if repost.attachments:
+                    attachments.extend(repost.attachments)
+
+        # 3. Parse Attachments into DTOs
+        media_group, audio_list = await self._parse_wall_attachments(attachments)
+        if not media_group and not audio_list:
             await self._send_error_message()
             return
 
         self._process_percent(86)
 
-        # 1. Send Visual Content
-        await self._telegram_bot_controller.send_finish_downloading_group(
-            files=media_group,
-            telegram_id=self._telegram_id,
-            message_id=self._message_id if not audio_list else None,
-        )
+        # 4. Send Visual Content (Photos/Videos)
+        if media_group:
+            msg_id = self._message_id if not audio_list else None
+            await self._telegram_bot_controller.send_finish_downloading_group(
+                files=media_group,
+                telegram_id=self._telegram_id,
+                message_id=msg_id,
+            )
 
-        # 2. Send Audio
+        # 5. Send Audio
         await self._send_wall_audio(audio_list)
 
-        # 3. Cleanup
+        # 6. Cleanup
         self.cleanup_files(media_group)
 
     async def _handle_single_photo(self, code: str) -> None:
         """Handle downloading of a direct photo link."""
-        photos_data = await self._get_photos_from_api(code)
-        if not photos_data:
+        photos = await self._get_photos_from_api(code)
+        if not photos:
             await self.delete_processing_message()
             await self._telegram_bot_controller.send_content_not_found_error(
                 telegram_id=self._telegram_id,
             )
             return
 
+        logging.info("Processing photo ID: %s", photos[0].id)
+
         photo_dto = PhotoDTO.from_vk_api(
-            photo_data=photos_data[0],
+            photo_data=photos[0].model_dump(),
             resolution_url=self._resolution.url,
         )
         if not photo_dto:
