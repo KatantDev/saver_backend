@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from aiogram.types import Video
@@ -368,3 +369,20 @@ class BaseSourceController(ABC):
                 inline_query_id=self._inline_query_id,
                 error_text=_("inline mode blocked error"),
             )
+
+    def cleanup_files(self, dtos: list[VideoDTO | PhotoDTO]) -> None:
+        """
+        Safely deletes the downloaded files and thumbnails from a list of DTOs.
+
+        :param dtos: List of DTOs (VideoDTO, PhotoDTO).
+        """
+        for item in dtos:
+            if item.path:
+                file_path = Path(item.path)
+                if file_path.exists():
+                    file_path.unlink()
+
+            if isinstance(item, VideoDTO) and item.thumbnail:
+                thumb_path = Path(item.thumbnail)
+                if thumb_path.exists():
+                    thumb_path.unlink()

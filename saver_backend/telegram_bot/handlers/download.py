@@ -243,7 +243,7 @@ async def on_language_select(
         sources=[
             SourceEnum.TIKTOK,
             SourceEnum.INSTAGRAM_YDL,
-            SourceEnum.INSTAGRAM_INSTALOADER,
+            SourceEnum.INSTAGRAM_COBALT,
             SourceEnum.YOUTUBE_SHORTS_YDL,
             SourceEnum.VK_CLIPS_YDL,
             SourceEnum.PINTEREST_YDL,

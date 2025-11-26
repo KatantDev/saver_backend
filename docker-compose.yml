@@ -145,6 +145,21 @@ services:
     networks:
       - default
 
+  cobalt:
+    image: ghcr.io/imputnet/cobalt:11
+    init: true
+    hostname: saver_backend-cobalt
+    restart: always
+    ports:
+      - "9000:9000/tcp"
+    environment:
+      API_URL: "http://saver_backend-cobalt:9000/"
+      COOKIE_PATH: "/cookies.json"
+    volumes:
+      - ./cookies/instagram_cobalt/cookies.json:/cookies.json
+    networks:
+      - default
+
   bgutil:
     image: brainicism/bgutil-ytdlp-pot-provider
     hostname: saver_backend-bgutil

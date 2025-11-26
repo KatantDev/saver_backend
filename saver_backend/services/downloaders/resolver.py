@@ -14,8 +14,8 @@ from saver_backend.services.downloaders.dzen_ydl import (
 from saver_backend.services.downloaders.facebook_ydl_source import (
     FacebookYdlController,
 )
-from saver_backend.services.downloaders.instagram_instaloader_source import (
-    InstagramInstaloaderController,
+from saver_backend.services.downloaders.instagram_cobalt_source import (
+    InstagramCobaltController,
 )
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
@@ -187,11 +187,11 @@ class InstagramYdlDetector(Detector):
 
 
 @register_detector()
-class InstagramInstaloaderDetector(Detector):
+class InstagramCobaltDetector(Detector):
     """Detector for Instagram."""
 
-    SOURCE = SourceEnum.INSTAGRAM_INSTALOADER
-    CONTROLLER = InstagramInstaloaderController
+    SOURCE = SourceEnum.INSTAGRAM_COBALT
+    CONTROLLER = InstagramCobaltController
     HOSTS = (
         "instagram.com",
         "www.instagram.com",

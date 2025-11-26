@@ -325,6 +325,30 @@ class VideoDTO(BaseContentDTO):
             thumbnail_url=thumbnail_url,
         )
 
+    @classmethod
+    def from_cobalt(
+        cls,
+        original_url: str,
+        source_id: str,
+        direct_url: str,
+        thumbnail_url: str | None = None,
+    ) -> "VideoDTO":
+        """
+        Create VideoDTO from Cobalt data.
+
+        :param source_id: The unique ID of the post/story.
+        :param direct_url: The direct download URL (same as url usually).
+        :param original_url: The original Instagram URL provided by the user.
+        :return: A populated VideoDTO instance.
+        """
+        return cls(
+            url=original_url,
+            source_id=source_id,
+            direct_download_url=direct_url,
+            thumbnail_url=thumbnail_url,
+            quality="best",
+        )
+
 
 class PhotoDTO(BaseContentDTO):
     """Data Transfer Object for Photo."""
@@ -366,6 +390,27 @@ class PhotoDTO(BaseContentDTO):
             url=url,
             source_id=source_id,
             title=caption or getattr(item, "caption", None),
+            media_url=media_url,
+        )
+
+    @classmethod
+    def from_cobalt(
+        cls,
+        url: str,
+        source_id: str,
+        media_url: str,
+    ) -> "PhotoDTO":
+        """
+        Create PhotoDTO from Cobalt data.
+
+        :param url: The original Instagram URL provided by the user.
+        :param source_id: The unique ID of the post/story.
+        :param media_url: The direct URL to the image file.
+        :return: A populated PhotoDTO instance.
+        """
+        return cls(
+            url=url,
+            source_id=source_id,
             media_url=media_url,
         )
 
@@ -525,3 +570,35 @@ class TikWMResponse(BaseModel):
     code: int
     msg: str
     data: TikWMData | None = None
+
+
+class CobaltError(BaseModel):
+    """Model for Cobalt error details."""
+
+    code: str | None = None
+    context: dict[str, Any] | None = None
+
+
+class CobaltResponseItem(BaseModel):
+    """Represents a single item inside a Cobalt 'picker' (carousel)."""
+
+    type: str | None = None  # "photo", "video"
+    url: str
+    thumb: str | None = None
+
+
+class CobaltResponse(BaseModel):
+    """Represents the main response from the Cobalt API."""
+
+    status: str  # "stream", "redirect", "tunnel", "picker", "error"
+
+    # Fields for "stream", "redirect", "tunnel"
+    url: str | None = None
+    filename: str | None = None
+
+    # Fields for "picker"
+    picker: list[CobaltResponseItem] | None = None
+    audio: str | None = None  # Original audio URL (if available)
+
+    # Fields for "error"
+    error: CobaltError | None = None

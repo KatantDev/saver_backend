@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     webhook_base_url: str = "http://saver_backend-api:8000/api/webhook"
     webhook_telegram_path: str = "/telegram"
 
+    # Cobalt Configuration
+    cobalt_api_url: str = "http://saver_backend-cobalt:9000"
+
     # Downloader settings
     proxies: list[str] = []
     proxies_ru: list[str] = []
