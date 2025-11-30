@@ -19,6 +19,7 @@ from aiogram.exceptions import (
 )
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import (
+    Document,
     FSInputFile,
     InlineQueryResultArticle,
     InlineQueryResultCachedVideo,
@@ -37,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
+    DocumentDTO,
     PhotoDTO,
     VideoDTO,
 )
@@ -562,6 +564,59 @@ class TelegramBotController:
                 chat_id=telegram_id,
             )
             await self._send(coro2)
+
+    async def send_finish_downloading_document(
+        self,
+        document: DocumentDTO,
+        telegram_id: int,
+        message_id: int | None = None,
+        language: str | None = None,
+    ) -> Document | None:
+        """
+        Send a generic document (file or archive) to the user.
+
+        :param document: Document DTO.
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID to delete after sending.
+        :param language: Language code.
+        :return: Sent Document object or None.
+        """
+        if not document.path or not document.path.exists():
+            logging.error("Cannot send document: File path does not exist.")
+            await self.send_error_downloading(telegram_id)
+            return None
+
+        file_input = FSInputFile(
+            path=document.path,
+            filename=document.filename,
+        )
+
+        caption = _(
+            "result direct message",
+            locale=language or self.language,
+        ).format(url=document.url)
+
+        try:
+            message = await self._bot.send_document(
+                chat_id=telegram_id,
+                document=file_input,
+                caption=caption,
+            )
+        except Exception as e:
+            if settings.environment == "local":
+                logging.exception(e)
+            capture_exception(e)
+            await self.send_error_downloading(telegram_id)
+            return None
+
+        if message_id is not None:
+            coro2 = self._bot.delete_message(
+                message_id=message_id,
+                chat_id=telegram_id,
+            )
+            await self._send(coro2)
+
+        return message.document
 
     async def send_finish_downloading(
         self,

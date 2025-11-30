@@ -14,6 +14,9 @@ from saver_backend.services.downloaders.dzen_ydl import (
 from saver_backend.services.downloaders.facebook_ydl_source import (
     FacebookYdlController,
 )
+from saver_backend.services.downloaders.google_drive_source import (
+    GoogleDriveController,
+)
 from saver_backend.services.downloaders.instagram_instaloader_source import (
     InstagramInstaloaderController,
 )
@@ -552,6 +555,28 @@ class FacebookDetector(Detector):
         match = self._WATCH_RE.search(parsed.query)
         if parsed.path == "/watch/" and match:
             url = f"https://www.facebook.com/author/videos/{match.group(1)}"
+        return self._match_regex(url)
+
+
+@register_detector()
+class GoogleDriveDetector(Detector):
+    """Detector for Google Drive links."""
+
+    SOURCE = SourceEnum.GOOGLE_DRIVE
+    CONTROLLER = GoogleDriveController
+    HOSTS = (
+        "drive.google.com",
+        "docs.google.com",
+    )
+
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "folder": re.compile(r"^/(?:.+/)?folders/(?P<id>[a-zA-Z0-9_-]+)"),
+        "file": re.compile(r"^/(?:.+/)?file/d/(?P<id>[a-zA-Z0-9_-]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        if not self._host_in(url, *self.HOSTS):
+            return None
         return self._match_regex(url)
 
 

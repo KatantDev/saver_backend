@@ -18,6 +18,7 @@ services:
     volumes:
       - ./cookies:/app/src/cookies
       - ./downloads:/app/src/downloads
+      - ./rclone-config:/root/.config/rclone
     depends_on:
       db:
         condition: service_healthy

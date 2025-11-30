@@ -3,8 +3,10 @@ RUN apt-get update && apt-get install -y \
   curl \
   ffmpeg \
   aria2 \
+  unzip \
   && rm -rf /var/lib/apt/lists/*
 
+RUN curl https://rclone.org/install.sh | bash
 
 RUN pip install poetry==2.1.3
 

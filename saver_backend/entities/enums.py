@@ -36,6 +36,11 @@ class SourceEnum(str, Enum):
     DZEN_YDL = "dzen_ydl"
     ADULT_YDL = "adult_ydl"
     FACEBOOK_YDL = "facebook_ydl"
+
+    GOOGLE_DRIVE = "google_drive"
+    DROPBOX = "dropbox"
+    YANDEX_DISK = "yandex_disk"
+
     UNSUPPORTED = "unsupported"
     M3U8_YDL = "m3u8_ydl"
 

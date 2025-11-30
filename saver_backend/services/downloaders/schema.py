@@ -437,7 +437,15 @@ class PhotoListDTO(BaseContentDTO):
         )
 
 
-CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO]
+class DocumentDTO(BaseContentDTO):
+    """Data Transfer Object for generic Documents (files/archives)."""
+
+    path: Path | None = None
+    filename: str | None = None
+    mime_type: str | None = None
+
+
+CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO, DocumentDTO]
 
 
 class CacheDTO(BaseModel):

@@ -150,3 +150,6 @@ cf-origin-ca.pem
 
 # MacOS
 .DS_Store
+
+# Rclone config
+rclone.conf
