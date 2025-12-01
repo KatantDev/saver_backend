@@ -252,6 +252,8 @@ async def on_language_select(
             SourceEnum.ADULT_YDL,
             SourceEnum.FACEBOOK_YDL,
             SourceEnum.GOOGLE_DRIVE,
+            SourceEnum.YANDEX_DISK,
+            SourceEnum.DROPBOX,
         ],
     ),
 )

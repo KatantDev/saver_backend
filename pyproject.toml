@@ -37,7 +37,7 @@ babel = "^2.17.0"
 instagrapi = "^2.2.1"
 instaloader = "^4.15"
 ffmpeg-python = "^0.2.0"
-yt-dlp = {extras = ["default","curl-cffi"], version = "^2025.10"}
+yt-dlp = {extras = ["default","curl-cffi"], version = "^2025.11"}
 bgutil-ytdlp-pot-provider = "^1.2.2"
 pycountry = {extras = ["locales"], version = "^24.6.1"}
 emoji-country-flag = "^2.1.0"

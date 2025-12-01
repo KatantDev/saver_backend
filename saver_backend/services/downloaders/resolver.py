@@ -8,6 +8,7 @@ from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.adult_ydl_source import AdultYdlController
 from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.dropbox_source import DropboxController
 from saver_backend.services.downloaders.dzen_ydl import (
     DzenYdlController,
 )
@@ -43,6 +44,7 @@ from saver_backend.services.downloaders.vk_video_ydl_source import (
 from saver_backend.services.downloaders.x_ydl_source import (
     XYdlController,
 )
+from saver_backend.services.downloaders.yandex_disk_source import YandexDiskController
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
 )
@@ -578,6 +580,74 @@ class GoogleDriveDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)
+
+
+@register_detector()
+class YandexDiskDetector(Detector):
+    """Detector for Yandex Disk links."""
+
+    SOURCE = SourceEnum.YANDEX_DISK
+    CONTROLLER = YandexDiskController
+    HOSTS = (
+        "disk.yandex.ru",
+        "disk.360.yandex.ru",
+        "disk.360.yandex.com",
+        "yadi.sk",
+    )
+
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "folder": re.compile(r"^/d/(?P<id>[a-zA-Z0-9_-]+)"),
+        "file": re.compile(r"^/i/(?P<id>[a-zA-Z0-9_-]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class DropboxDetector(Detector):
+    """Detector for Dropbox links."""
+
+    SOURCE = SourceEnum.DROPBOX
+    CONTROLLER = DropboxController
+    HOSTS = (
+        "dropbox.com",
+        "www.dropbox.com",
+    )
+
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        # New structure: /scl/fo/<id>/... (folder), /scl/fi/<id>/... (file)
+        "folder": re.compile(r"^/scl/fo/(?P<id>[a-zA-Z0-9_-]+)"),
+        "file": re.compile(r"^/scl/fi/(?P<id>[a-zA-Z0-9_-]+)"),
+        # Old structure: /sh/<id>/... (folder), /s/<id>/... (file/folder)
+        "folder_legacy": re.compile(r"^/sh/(?P<id>[a-zA-Z0-9_-]+)"),
+        "file_legacy": re.compile(r"^/s/(?P<id>[a-zA-Z0-9_-]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        if not self._host_in(url, *self.HOSTS):
+            return None
+
+        # ВАЖНО: Dropbox требует query params (rlkey) для доступа к файлам.
+        # Базовый метод _match_regex использует _clean_url, который удаляет параметры.
+        # Поэтому мы парсим путь отдельно, но возвращаем ОРИГИНАЛЬНЫЙ url.
+
+        parsed = urlparse(url)
+        path = parsed.path
+
+        for key, regex in self.REGEX.items():
+            match = regex.match(path)
+            if match:
+                metadata = match.groupdict()
+                metadata["type"] = "folder" if "folder" in key else "file"
+                return Resolution(
+                    source=self.SOURCE,
+                    url=url,
+                    metadata=metadata,
+                )
+        return Resolution(source=self.SOURCE, url=url)
 
 
 class SourceResolver:

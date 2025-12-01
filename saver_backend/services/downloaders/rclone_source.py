@@ -7,6 +7,8 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
 
+import httpx
+
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
@@ -25,6 +27,8 @@ class RcloneSourceController(BaseSourceController):
         self._download_directory = BASE_DOWNLOAD_PATH / "rclone_temp" / session_id
         self._download_directory.mkdir(parents=True, exist_ok=True)
         self._downloaded_file: Path | None = None
+
+        self._client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
 
     @abstractmethod
     async def _perform_download(self) -> Path:
@@ -112,6 +116,8 @@ class RcloneSourceController(BaseSourceController):
 
     async def close(self) -> None:
         """Clean up temporary files and directories."""
+        await self._client.aclose()
+
         if self._download_directory.exists():
             shutil.rmtree(self._download_directory, ignore_errors=True)
             logging.info("Cleaned up rclone temp dir: %s", self._download_directory)

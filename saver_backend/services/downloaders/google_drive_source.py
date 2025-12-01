@@ -4,8 +4,6 @@ import re
 from pathlib import Path
 from typing import Any, ClassVar
 
-import httpx
-
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.rclone_source import RcloneSourceController
 
@@ -42,12 +40,11 @@ class GoogleDriveController(RcloneSourceController):
         headers = {"Authorization": f"Bearer {token}"}
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=10.0)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("name", "download_content")
-                logging.warning("API Error getting filename: %s", response.text)
+            response = await self._client.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("name", "download_content")
+            logging.warning("API Error getting filename: %s", response.text)
         except Exception as e:
             logging.warning("Error fetching filename: %s", str(e))
 
@@ -96,6 +93,16 @@ class GoogleDriveController(RcloneSourceController):
             self._is_folder,
         )
 
+        fast_flags = [
+            "--drive-acknowledge-abuse",
+            "--transfers",
+            "16",
+            "--drive-chunk-size",
+            "128M",
+            "--ignore-checksum",
+            "--no-update-modtime",
+        ]
+
         if self._is_folder:
             target_dir = self._download_directory / safe_name
             source = f"{self.RCLONE_REMOTE_NAME},root_folder_id={self._resource_id}:"
@@ -104,9 +111,7 @@ class GoogleDriveController(RcloneSourceController):
                 "copy",
                 source,
                 str(target_dir),
-                "--drive-acknowledge-abuse",
-                "--transfers",
-                "8",
+                *fast_flags,
                 "--max-size=2G",
             ]
 
