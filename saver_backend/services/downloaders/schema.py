@@ -23,6 +23,7 @@ class BaseContentDTO(BaseModel):
     source_id: str | None = None
     url: str | None = None
     title: str | None = None
+    author: str | None = None
     quality: str | None = "best"
 
 
@@ -226,6 +227,7 @@ class VideoDTO(BaseContentDTO):
 
         direct_download_url = info.get("url") if extract_direct_links else None
         title = info.get("fulltitle") or info.get("title")
+        author = info.get("uploader") or info.get("channel") or info.get("artist")
         duration = info.get("duration")
 
         available_formats = []
@@ -260,6 +262,7 @@ class VideoDTO(BaseContentDTO):
             path=file_path,
             thumbnail_url=info.get("thumbnail"),
             title=title,
+            author=author,
             direct_download_url=direct_download_url,
             url=info.get("original_url"),
             source_id=info.get("id"),
@@ -289,6 +292,7 @@ class VideoDTO(BaseContentDTO):
             direct_download_url=data.play,
             thumbnail_url=data.cover,
             title=data.title,
+            author=data.author_name,
             description=data.author_name,
             url=url,
             source_id=data.id,
@@ -311,8 +315,12 @@ class VideoDTO(BaseContentDTO):
         if item.video_url:
             direct_download_url = item.video_url
 
-        if isinstance(item, Post) and item.is_video:
-            duration = int(item.video_duration) if item.video_duration else None
+        if isinstance(item, Post):
+            if item.is_video:
+                duration = int(item.video_duration) if item.video_duration else None
+            author = item.owner_username
+        elif isinstance(item, StoryItem):
+            author = item.owner_username
 
         thumbnail_url = getattr(item, "url", getattr(item, "display_url", None))
 
@@ -320,6 +328,7 @@ class VideoDTO(BaseContentDTO):
             url=url,
             source_id=source_id,
             title=caption or getattr(item, "caption", None),
+            author=author,
             duration=duration,
             direct_download_url=direct_download_url,
             thumbnail_url=thumbnail_url,
@@ -430,7 +439,6 @@ class AudioDTO(BaseContentDTO):
 
         return cls(
             media_url=data.music,
-            title=cls._get_audio_title(data, resolution_url),
             duration=data.duration,
             url=resolution_url,
             source_id=data.id,

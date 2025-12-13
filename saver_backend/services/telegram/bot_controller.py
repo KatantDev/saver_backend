@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
+    BaseContentDTO,
     PhotoDTO,
     VideoDTO,
 )
@@ -303,6 +304,35 @@ class TelegramBotController:
         )
         await self._send(coro)
 
+    def _format_caption(
+        self,
+        dto: BaseContentDTO,
+        language: str | None = None,
+    ) -> str:
+        """
+        Helper to construct caption preserving the original localization key logic.
+
+        but prepending Title and Author if available.
+        """
+        footer = _(
+            "result direct message",
+            locale=language or self.language,
+        ).format(url=dto.url or "")
+
+        header_parts = []
+
+        if dto.title:
+            # Telegram caption limit is 1024. Let's reserve space for footer(~100 chars)
+            clean_title = dto.title.strip()[:800]
+            header_parts.append(clean_title)
+        if dto.author:
+            header_parts.append(f"👤 {dto.author}")
+        if not header_parts:
+            return footer
+
+        header = "\n".join(header_parts)
+        return f"{header}\n\n{footer}"
+
     async def answer_inline_query_cached_video(
         self,
         inline_query_id: str,
@@ -316,12 +346,14 @@ class TelegramBotController:
         :param video_dto: DTO of the video.
         :param file_id: ID of the file.
         """
+        caption = self._format_caption(video_dto)
+
         result = InlineQueryResultCachedVideo(
             id=str(uuid.uuid4()),
             video_file_id=file_id,
             title=video_dto.title or "Video",
             description=video_dto.description,
-            caption=_("result direct message").format(url=video_dto.url),
+            caption=caption,
         )
         coro = self._bot.answer_inline_query(
             inline_query_id=inline_query_id,
@@ -345,6 +377,8 @@ class TelegramBotController:
             await self.answer_inline_query_error(inline_query_id)
             return
 
+        caption = self._format_caption(video_dto)
+
         result = InlineQueryResultVideo(
             id=str(uuid.uuid4()),
             video_url=video_dto.direct_download_url,
@@ -352,7 +386,7 @@ class TelegramBotController:
             mime_type="video/mp4",
             title=video_dto.title or "Video",
             description=video_dto.description or "via @saver",
-            caption=_("result direct message").format(url=video_dto.url),
+            caption=caption,
         )
         coro = self._bot.answer_inline_query(
             inline_query_id=inline_query_id,
@@ -457,10 +491,7 @@ class TelegramBotController:
         chunk_size = 10
         total_files = len(files)
 
-        caption = _(
-            "result direct message",
-            locale=language or self.language,
-        ).format(url=files[0].url)
+        caption = self._format_caption(files[0], language)
 
         for i in range(0, total_files, chunk_size):
             chunk = files[i : i + chunk_size]
@@ -493,9 +524,15 @@ class TelegramBotController:
         :param message_id: Message ID to delete after sending.
         :param language: Language code.
         """
-        audio_input = audio.media_url or (
-            FSInputFile(path=audio.path) if audio.path else None
-        )
+        filename = f"{audio.source_id}.mp3" if audio.source_id else "audio.mp3"
+
+        audio_input: URLInputFile | FSInputFile | None = None
+
+        if audio.media_url:
+            audio_input = URLInputFile(url=audio.media_url, filename=filename)
+        elif audio.path:
+            audio_input = FSInputFile(path=audio.path, filename=filename)
+
         if not audio_input:
             logging.error(
                 "Cannot send audio: No media_url or valid file path provided.",
@@ -504,10 +541,7 @@ class TelegramBotController:
                 await self.delete_message(telegram_id, message_id)
             return
 
-        caption = _(
-            "result direct message",
-            locale=language or self.language,
-        ).format(url=audio.url)
+        caption = self._format_caption(audio, language)
 
         coro = self._bot.send_audio(
             chat_id=telegram_id,
@@ -547,13 +581,12 @@ class TelegramBotController:
             logging.error("Cannot send photo: No media_url or path provided.")
             return
 
+        caption = self._format_caption(photo, language)
+
         coro = self._bot.send_photo(
             chat_id=telegram_id,
             photo=photo_input,
-            caption=_(
-                "result direct message",
-                locale=language or self.language,
-            ).format(url=photo.url),
+            caption=caption,
         )
         await self._send(coro)
         if message_id is not None:
@@ -602,14 +635,13 @@ class TelegramBotController:
             )
             return None
 
+        caption = self._format_caption(video, language)
+
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
                 video=video_input,
-                caption=_(
-                    "result direct message",
-                    locale=language or self.language,
-                ).format(url=video.url),
+                caption=caption,
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
@@ -639,7 +671,7 @@ class TelegramBotController:
         self,
         telegram_id: int,
         file_id: str,
-        url: str,
+        video_dto: VideoDTO,
         language: str | None = None,
     ) -> Video | None:
         """
@@ -651,14 +683,13 @@ class TelegramBotController:
         :param language: The language of the caption.
         :return: The sent Video object or None on failure.
         """
+        caption = self._format_caption(video_dto, language)
+
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
                 video=file_id,
-                caption=_(
-                    "result direct message",
-                    locale=language or self.language,
-                ).format(url=url),
+                caption=caption,
             )
             return message.video
         except (TelegramForbiddenError, TelegramBadRequest) as e:
