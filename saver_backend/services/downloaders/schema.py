@@ -26,6 +26,21 @@ class BaseContentDTO(BaseModel):
     author: str | None = None
     quality: str | None = "best"
 
+    @property
+    def display_title(self) -> str | None:
+        """
+        Get title formatted for display (truncated to 100 chars).
+
+        :return: Truncated title or None.
+        """
+        if not self.title:
+            return None
+
+        clean_title = self.title.strip()
+        if len(clean_title) > 100:
+            return f"{clean_title[:100]}..."
+        return clean_title
+
 
 class FormatDTO(BaseModel):
     """Data Transfer Object for a specific video format."""

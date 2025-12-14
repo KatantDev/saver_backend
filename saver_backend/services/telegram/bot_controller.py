@@ -321,12 +321,13 @@ class TelegramBotController:
 
         header_parts = []
 
-        if dto.title:
-            # Telegram caption limit is 1024. Let's reserve space for footer(~100 chars)
-            clean_title = dto.title.strip()[:800]
-            header_parts.append(clean_title)
+        display_title = dto.display_title
+        if display_title:
+            header_parts.append(display_title)
+
         if dto.author:
             header_parts.append(f"👤 {dto.author}")
+
         if not header_parts:
             return footer
 
