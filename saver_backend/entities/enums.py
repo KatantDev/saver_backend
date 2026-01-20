@@ -24,6 +24,7 @@ class SourceEnum(str, Enum):
     TIKTOK = "tiktok"
     INSTAGRAM_YDL = "instagram_ydl"
     INSTAGRAM_API = "instagram_api"
+    INSTAGRAM_INDOWN = "instagram_indown"
     INSTAGRAM_INSTALOADER = "instagram_instaloader"
     YOUTUBE_SHORTS_YDL = "youtube_shorts_ydl"
     YOUTUBE_VIDEO_YDL = "youtube_video_ydl"

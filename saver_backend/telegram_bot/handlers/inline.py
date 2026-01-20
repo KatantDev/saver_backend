@@ -36,6 +36,7 @@ async def on_empty_inline_query(
     """
     sources_for_inline = [
         SourceEnum.TIKTOK,
+        SourceEnum.INSTAGRAM_INDOWN,
         SourceEnum.INSTAGRAM_YDL,
         SourceEnum.VK_CLIPS_YDL,
         SourceEnum.YOUTUBE_SHORTS_YDL,
@@ -73,7 +74,7 @@ async def on_empty_inline_query(
     SourceFilter(
         sources=[
             SourceEnum.TIKTOK,
-            SourceEnum.INSTAGRAM_YDL,
+            SourceEnum.INSTAGRAM_INDOWN,
         ],
     ),
 )
