@@ -125,6 +125,9 @@ class BaseSourceController(ABC):
 
         :param percent: Percent of the video.
         """
+        if self._inline_query_id:
+            return
+
         self._last_percent = percent
 
         if self._message_id is None:
