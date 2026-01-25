@@ -14,6 +14,9 @@ from saver_backend.services.downloaders.dzen_ydl import (
 from saver_backend.services.downloaders.facebook_ydl_source import (
     FacebookYdlController,
 )
+from saver_backend.services.downloaders.instagram_indown_source import (
+    InstagramInDownController,
+)
 from saver_backend.services.downloaders.instagram_instaloader_source import (
     InstagramInstaloaderController,
 )
@@ -164,6 +167,32 @@ class TikTokDetector(Detector):
 
 
 @register_detector()
+class InstagramInDownDetector(Detector):
+    """Detector for Instagram."""
+
+    SOURCE = SourceEnum.INSTAGRAM_INDOWN
+    CONTROLLER = InstagramInDownController
+    HOSTS = (
+        "instagram.com",
+        "www.instagram.com",
+        "m.instagram.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        InstagramContentTypeEnum.REELS: re.compile(
+            r"^/(?:[^/]+/)?reels?/(?P<code>[A-Za-z0-9_-]+)/?$",
+        ),
+        InstagramContentTypeEnum.POST: re.compile(
+            r"^/(?:[^/]+/)?p/(?P<code>[A-Za-z0-9_-]+)/?$",
+        ),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+# @register_detector()
 class InstagramYdlDetector(Detector):
     """Detector for Instagram."""
 
