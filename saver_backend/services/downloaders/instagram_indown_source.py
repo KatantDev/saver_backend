@@ -1,9 +1,11 @@
+import asyncio
 import logging
 import re
 import uuid
 from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
+import ffmpeg
 import httpx
 
 from saver_backend.entities.enums import SourceEnum
@@ -251,6 +253,86 @@ class InstagramInDownController(BaseSourceController):
 
         return media_items
 
+    def _fill_video_metadata(self, video_dto: VideoDTO) -> None:
+        """Extract video metadata using ffmpeg."""
+        if not video_dto.path:
+            return
+
+        file_path = str(video_dto.path)
+
+        try:
+            # 1. Probe video details
+            probe = ffmpeg.probe(file_path)
+            video_stream = next(
+                (
+                    stream
+                    for stream in probe["streams"]
+                    if stream["codec_type"] == "video"
+                ),
+                None,
+            )
+            if video_stream:
+                video_dto.width = int(video_stream["width"])
+                video_dto.height = int(video_stream["height"])
+
+                # Duration can be in format or stream
+                duration = probe["format"].get("duration") or video_stream.get(
+                    "duration",
+                )
+                if duration:
+                    video_dto.duration = int(float(duration))
+
+            # 2. Generate thumbnail if we found video stream
+            if video_stream:
+                thumb_path = file_path.rsplit(".", 1)[0] + ".jpg"
+                (
+                    ffmpeg.input(file_path, ss=0.1)  # Grab frame at 0.1s
+                    .filter("scale", 320, -1)  # Resize to reasonable thumb width
+                    .output(thumb_path, vframes=1)
+                    .overwrite_output()
+                    .run(quiet=True, capture_stdout=True, capture_stderr=True)
+                )
+                video_dto.thumbnail = thumb_path
+
+        except ffmpeg.Error as e:
+            logging.error(f"FFmpeg error for {file_path}: {e.stderr.decode('utf8')}")
+        except Exception as e:
+            logging.error(f"Failed to extract metadata for {file_path}: {e}")
+
+    async def _process_single_item(
+        self,
+        item: PhotoDTO | VideoDTO,
+        index: int,
+    ) -> None:
+        """Process a single media item: download and extract metadata."""
+        url = None
+        ext = ""
+
+        if isinstance(item, VideoDTO):
+            url = item.direct_download_url
+            ext = "mp4"
+        elif isinstance(item, PhotoDTO):
+            url = item.media_url
+            ext = "jpg"
+
+        if not url:
+            return
+
+        # Unique filename
+        filename = f"{item.source_id}_{index}_{uuid.uuid4().hex[:6]}.{ext}"
+        local_path = self._download_directory / filename
+
+        await self._download_file(url, filename)
+
+        # Update DTO: set local path
+        item.path = local_path
+
+        if isinstance(item, VideoDTO):
+            item.direct_download_url = None
+            await asyncio.to_thread(self._fill_video_metadata, item)
+        elif isinstance(item, PhotoDTO):
+            item.media_url = None
+
     async def _process_and_download_items(
         self,
         media_items: list[PhotoDTO | VideoDTO],
@@ -258,37 +340,13 @@ class InstagramInDownController(BaseSourceController):
         """
         Download list of media items to local disk.
 
-        Updating DTOs with local paths.
+        Updating DTOs with local paths and enriching video metadata via ffmpeg.
         """
         for index, item in enumerate(media_items):
             try:
-                url = None
-                ext = ""
-                if isinstance(item, VideoDTO):
-                    url = item.direct_download_url
-                    ext = "mp4"
-                elif isinstance(item, PhotoDTO):
-                    url = item.media_url
-                    ext = "jpg"
-
-                if not url:
-                    continue
-
-                # Unique filename
-                filename = f"{item.source_id}_{index}_{uuid.uuid4().hex[:6]}.{ext}"
-
-                await self._download_file(url, filename)
-
-                # Update DTO: set local path and remove remote URL
-                # to force bot sending file from disk
-                item.path = self._download_directory / filename
-                if isinstance(item, VideoDTO):
-                    item.direct_download_url = None
-                elif isinstance(item, PhotoDTO):
-                    item.media_url = None
-
+                await self._process_single_item(item, index)
             except Exception as e:
-                logging.error(f"Failed to download item {index} for sending: {e}")
+                logging.error(f"Failed to download/process item {index}: {e}")
 
     async def _send_media_result(
         self,
