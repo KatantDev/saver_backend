@@ -215,13 +215,13 @@ class InstagramInDownController(BaseSourceController):
             media_url=clean_url,
         )
 
-    def _extract_carousel_links(self, html: str) -> set[str]:
+    def _extract_carousel_links(self, html: str) -> list[str]:
         """Extract links from button groups (used for carousels)."""
         button_groups = re.findall(
             r'<div class="btn-group-vertical">([\s\S]*?)</div>',
             html,
         )
-        found_urls = set()
+        found_urls: list[str] = []
 
         for group_html in button_groups:
             # Внутри группы ищем все ссылки (обычно Server 1 и Server 2)
@@ -231,8 +231,8 @@ class InstagramInDownController(BaseSourceController):
             for href in hrefs:
                 clean = self._extract_clean_url(href)
                 # Пропускаем пустые или уже добавленные ссылки
-                if clean:
-                    found_urls.add(clean)
+                if clean and clean not in found_urls:
+                    found_urls.append(clean)
                     break
 
         return found_urls
