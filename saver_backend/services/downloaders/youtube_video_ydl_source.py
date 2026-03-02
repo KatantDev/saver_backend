@@ -16,11 +16,30 @@ class YouTubeVideoYdlController(YtDlpController):
 
         youtube_params = {
             "downloader": "aria2c",
-            "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
+            "external_downloader_args": {
+                "aria2c": [
+                    "-x",
+                    "16",
+                    "-s",
+                    "16",
+                    "-k",
+                    "1M",
+                    "--timeout=60",  # Таймаут для соединения
+                    "--max-tries=10",  # Максимальное количество попыток
+                    "--retry-wait=5",  # Ждать между попытками
+                ],
+            },
             "extractor_args": {
                 "youtubepot-bgutilhttp": {
                     "base_url": ["http://saver_backend-bgutil:4416"],
                 },
             },
+            "js_runtimes": {
+                "node": {
+                    "enabled": True,
+                },
+            },  # Опция для использования Node.js JavaScript runtime
+            "verbose": True,  # Подробный лог
+            "debug": True,
         }
         self._yt_dlp.params.update(youtube_params)

@@ -25,6 +25,11 @@ class YouTubeShortsYdlController(YtDlpController):
                     "base_url": ["http://saver_backend-bgutil:4416"],
                 },
             },
+            "js_runtimes": {
+                "node": {
+                    "enabled": True,
+                },
+            },
         }
         self._yt_dlp.params.update(youtube_params)
 
