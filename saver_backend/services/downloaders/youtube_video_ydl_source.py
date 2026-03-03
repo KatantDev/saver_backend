@@ -34,12 +34,5 @@ class YouTubeVideoYdlController(YtDlpController):
                     "base_url": ["http://saver_backend-bgutil:4416"],
                 },
             },
-            "js_runtimes": {
-                "node": {
-                    "enabled": True,
-                },
-            },  # Опция для использования Node.js JavaScript runtime
-            "verbose": True,  # Подробный лог
-            "debug": True,
         }
         self._yt_dlp.params.update(youtube_params)
