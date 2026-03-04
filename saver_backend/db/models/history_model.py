@@ -2,9 +2,10 @@ from uuid import UUID
 
 from sqlalchemy import ForeignKey, String, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from saver_backend.db.models.base_model import DbBaseModel
+from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.entities.enums import SourceEnum
 
 
@@ -30,3 +31,5 @@ class HistoryModel(DbBaseModel):
     )
     source: Mapped[SourceEnum] = mapped_column(String(50), nullable=False)
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
+
+    cache: Mapped["CacheModel"] = relationship(lazy="joined")

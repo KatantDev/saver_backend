@@ -20,7 +20,7 @@ class TikTokAPIController(BaseSourceController):
     """Controller for downloading videos from TikTok via tikwm.com API."""
 
     SOURCE = SourceEnum.TIKTOK
-    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.ALL
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.LOCAL
     DIRECT_URL_DOWNLOAD = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

@@ -202,7 +202,8 @@ class YtDlpController(BaseSourceController, ABC):
             video_dto=self._video,
             supports_streaming=self.SUPPORTS_STREAMING,
         )
-        self._cleanup_files()
+
+        self.cleanup_files([self._video])
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         """This hook's only job is to report download progress."""
@@ -265,19 +266,6 @@ class YtDlpController(BaseSourceController, ABC):
                 )
                 return None
             raise
-
-    def _cleanup_files(self) -> None:
-        """Safely deletes the downloaded video and thumbnail files."""
-        if not self._video:
-            return
-
-        if self._video.path and self._video.path.exists():
-            self._video.path.unlink(missing_ok=True)
-
-        if self._video.thumbnail:
-            thumb_path = Path(self._video.thumbnail)
-            if thumb_path.exists():
-                thumb_path.unlink(missing_ok=True)
 
     def _get_thumbnail(self, source_id: str | None) -> Path | None:
         if not source_id:

@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     telegram_secret_token: str = "verysecrettoken"
     subscription_channels: list[str] = ["channel_username"]
     admin_chat_id: int = -4816121008
-    instagram_accounts: list[str] = ["username:password"]
+    instagram_account: str = "username:password"
 
     # Telegram bot API URL
     telegram_bot_api_url: str = "http://bot-api:8081"
