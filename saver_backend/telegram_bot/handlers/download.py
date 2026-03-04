@@ -91,6 +91,7 @@ async def _trigger_download(
             SourceEnum.VK_VIDEO_YDL,
             SourceEnum.RUTUBE_YDL,
             SourceEnum.M3U8_YDL,
+            SourceEnum.OK_YDL,
         ],
     ),
 )
@@ -130,7 +131,6 @@ async def show_video_info(
 
     processing_message = await message.reply(_("get video info"))
 
-    logging.info(resolution)
     await get_video_info.kiq(
         resolution=resolution,
         telegram_id=message.from_user.id,
@@ -242,14 +242,14 @@ async def on_language_select(
     SourceFilter(
         sources=[
             SourceEnum.TIKTOK,
-            SourceEnum.INSTAGRAM_YDL,
-            SourceEnum.INSTAGRAM_API,
+            SourceEnum.INSTAGRAM_INDOWN,
             SourceEnum.YOUTUBE_SHORTS_YDL,
             SourceEnum.VK_CLIPS_YDL,
             SourceEnum.PINTEREST_YDL,
             SourceEnum.X_YDL,
             SourceEnum.DZEN_YDL,
             SourceEnum.ADULT_YDL,
+            SourceEnum.FACEBOOK_YDL,
         ],
     ),
 )

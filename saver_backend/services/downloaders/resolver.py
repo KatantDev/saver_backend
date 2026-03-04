@@ -11,13 +11,22 @@ from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.dzen_ydl import (
     DzenYdlController,
 )
-from saver_backend.services.downloaders.instagram_api_source import (
-    InstagramAPIController,
+from saver_backend.services.downloaders.facebook_ydl_source import (
+    FacebookYdlController,
+)
+from saver_backend.services.downloaders.instagram_indown_source import (
+    InstagramInDownController,
+)
+from saver_backend.services.downloaders.instagram_instaloader_source import (
+    InstagramInstaloaderController,
 )
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
 from saver_backend.services.downloaders.m3u8_ydl_source import M3U8YdlController
+from saver_backend.services.downloaders.ok_ydl_source import (
+    OkYdlController,
+)
 from saver_backend.services.downloaders.pinterest_ydl_source import (
     PinterestYdlController,
 )
@@ -96,10 +105,12 @@ class Detector(ABC):
         for key, regex in self.REGEX.items():
             match = regex.match(urlparse(cleaned_url).path)
             if match:
+                metadata = match.groupdict()
+                metadata["type"] = key
                 return Resolution(
                     source=self.SOURCE,
                     url=cleaned_url,
-                    metadata={"type": key, "code": match.group("code")},
+                    metadata=metadata,
                 )
         return None
 
@@ -156,6 +167,32 @@ class TikTokDetector(Detector):
 
 
 @register_detector()
+class InstagramInDownDetector(Detector):
+    """Detector for Instagram."""
+
+    SOURCE = SourceEnum.INSTAGRAM_INDOWN
+    CONTROLLER = InstagramInDownController
+    HOSTS = (
+        "instagram.com",
+        "www.instagram.com",
+        "m.instagram.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        InstagramContentTypeEnum.REELS: re.compile(
+            r"^/(?:[^/]+/)?reels?/(?P<code>[A-Za-z0-9_-]+)/?$",
+        ),
+        InstagramContentTypeEnum.POST: re.compile(
+            r"^/(?:[^/]+/)?p/(?P<code>[A-Za-z0-9_-]+)/?$",
+        ),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+# @register_detector()
 class InstagramYdlDetector(Detector):
     """Detector for Instagram."""
 
@@ -178,19 +215,21 @@ class InstagramYdlDetector(Detector):
         return self._match_regex(url)
 
 
-# @register_detector()
+@register_detector()
 class InstagramInstaloaderDetector(Detector):
     """Detector for Instagram."""
 
-    SOURCE = SourceEnum.INSTAGRAM_API
-    CONTROLLER = InstagramAPIController
+    SOURCE = SourceEnum.INSTAGRAM_INSTALOADER
+    CONTROLLER = InstagramInstaloaderController
     HOSTS = (
         "instagram.com",
         "www.instagram.com",
         "m.instagram.com",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
-        InstagramContentTypeEnum.POST: re.compile(r"^/p/(?P<code>[A-Za-z0-9_-]+)/?$"),
+        InstagramContentTypeEnum.POST: re.compile(
+            r"^/(?:[^/]+/)?p/(?P<code>[A-Za-z0-9_-]+)/?$",
+        ),
         InstagramContentTypeEnum.STORIES: re.compile(
             r"^/stories/(?P<user>[A-Za-z0-9._]+)/(?P<code>\d+)/?$",
         ),
@@ -444,6 +483,7 @@ class AdultDetector(Detector):
         "youjizz.com",
         "youporn.com",
         "zenporn.com",
+        "xnxxxxxarab.gay",
     )
 
     def match(self, url: str) -> Optional[Resolution]:
@@ -489,6 +529,58 @@ class DzenDetector(Detector):
         """Check if the url is a valid Dzen video url."""
         if not self._host_in(url, *self.HOSTS):
             return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class OkDetector(Detector):
+    """Detector for ok.ru videos."""
+
+    SOURCE = SourceEnum.OK_YDL
+    CONTROLLER = OkYdlController
+    HOSTS = (
+        "ok.ru",
+        "www.ok.ru",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video/(?P<code>\d+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid ok.ru video url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class FacebookDetector(Detector):
+    """Detector for Facebook videos."""
+
+    SOURCE = SourceEnum.FACEBOOK_YDL
+    CONTROLLER = FacebookYdlController
+    HOSTS = (
+        "facebook.com",
+        "www.facebook.com",
+        "m.facebook.com",
+        "fb.watch",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "videos": re.compile(r"^/(?:[^/]+)/videos/(?P<code>\d+)/?$"),
+        "reel": re.compile(r"^/reel/(?P<code>\d+)/?$"),
+        "share": re.compile(r"^/share/v/(?P<code>[^/]+)/?$"),
+    }
+    _WATCH_RE: ClassVar[re.Pattern[str]] = re.compile(r"v=(\d+)")
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Facebook video/reel url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+
+        parsed = urlparse(url)
+        match = self._WATCH_RE.search(parsed.query)
+        if parsed.path == "/watch/" and match:
+            url = f"https://www.facebook.com/author/videos/{match.group(1)}"
         return self._match_regex(url)
 
 
