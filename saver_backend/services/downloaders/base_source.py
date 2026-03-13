@@ -163,6 +163,14 @@ class BaseSourceController(ABC):
         """
         raise NotImplementedError
 
+    async def get_resolution(self) -> Resolution | None:
+        """
+        Predonwload operations.
+
+        :return: Resolution with url information.
+        """
+        return None
+
     async def get_video_info(self, url: str) -> dict[str, Any] | None:
         """
         Get video information without downloading.

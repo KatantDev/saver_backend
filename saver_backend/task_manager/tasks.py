@@ -195,3 +195,74 @@ async def get_video_info(
             "quality_selection_message_id": quality_selection_message.message_id,
         },
     )
+
+
+@broker.task()
+async def process_vk_wall(
+    resolution: Resolution,
+    telegram_id: int,
+    message_id: int | None = None,
+    inline_query_id: str | None = None,
+    format_id: str | None = None,
+    state: SaverState = TaskiqDepends(),
+    db: DatabaseState = TaskiqDepends(),
+) -> None:
+    """
+    Process VK wall URL by parsing it and then saving the actual video.
+
+    :param resolution: Resolution with VK wall URL.
+    :param telegram_id: Telegram ID of the user.
+    :param message_id: Message ID for progress updates.
+    :param inline_query_id: Inline query ID if applicable.
+    :param format_id: Format ID of the video.
+    :param state: Saver state.
+    :param db: Database state with DAOs.
+    """
+    logging.info("Processing VK wall URL: %s", resolution.url)
+
+    # Get VK wall parser controller
+    controller_class = state.source_resolver.get_controller(resolution)
+    if not controller_class:
+        logging.error("VK wall parser controller not found")
+        return
+
+    # Initialize controller
+    controller = controller_class(
+        resolution=resolution,
+        telegram_bot_controller=state.telegram_bot_controller,
+        telegram_id=telegram_id,
+        user_dao=db.user_dao,
+        history_dao=db.history_dao,
+        cache_dao=db.cache_dao,
+        message_id=message_id,
+        format_id=format_id,
+        inline_query_id=inline_query_id,
+    )
+
+    await controller.set_user_language()
+
+    try:
+        # Parse wall and get actual video resolution
+        video_resolution = await controller.get_resolution()
+        if not video_resolution:
+            logging.error("Failed to parse video from VK wall")
+            await state.telegram_bot_controller.send_content_not_found_error(
+                telegram_id=telegram_id,
+            )
+            return
+
+        logging.info("Successfully parsed VK wall, got video: %s", video_resolution.url)
+
+        # Schedule actual video download
+        await save_video.kiq(
+            resolution=video_resolution,
+            telegram_id=telegram_id,
+            format_id=format_id,
+        )
+    except Exception as error:
+        logging.exception(error)
+        await state.telegram_bot_controller.send_error_downloading(
+            telegram_id=telegram_id,
+        )
+    finally:
+        await controller.close()

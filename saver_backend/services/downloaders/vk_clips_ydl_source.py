@@ -9,7 +9,7 @@ class VKClipsYdlController(YtDlpController):
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.VK_CLIPS_YDL
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
-    COOKIES: ClassVar[bool] = False
+    COOKIES: ClassVar[bool] = True
     DIRECT_URL_DOWNLOAD: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

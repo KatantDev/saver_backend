@@ -42,6 +42,8 @@ bgutil-ytdlp-pot-provider = "^1.2.2"
 pycountry = {extras = ["locales"], version = "^26"}
 emoji-country-flag = "^2.1.0"
 httpx = {extras = ["socks"], version = "^0.27"}
+lxml = "^6.0.2"
+zstandard = "^0.25.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8"

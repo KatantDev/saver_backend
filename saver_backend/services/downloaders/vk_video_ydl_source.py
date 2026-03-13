@@ -11,7 +11,7 @@ class VKVideoYdlController(YtDlpController):
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.VK_VIDEO_YDL
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
-    COOKIES: ClassVar[bool] = False
+    COOKIES: ClassVar[bool] = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the controller with standard yt-dlp parameters for VK Video."""

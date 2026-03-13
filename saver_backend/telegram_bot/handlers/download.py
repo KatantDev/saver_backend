@@ -15,10 +15,7 @@ from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
-from saver_backend.task_manager.tasks import (
-    get_video_info,
-    save_video,
-)
+from saver_backend.task_manager.tasks import get_video_info, process_vk_wall, save_video
 from saver_backend.telegram_bot.filters.source import SourceFilter
 from saver_backend.telegram_bot.keyboards.callback import (
     VideoFormatCallback,
@@ -264,3 +261,18 @@ async def download_video(message: Message, resolution: Resolution) -> None:
         return
 
     await save_video.kiq(resolution=resolution, telegram_id=message.from_user.id)
+
+
+@download_router.message(SourceFilter(sources=[SourceEnum.VK_WALL_PARSER]))
+async def preapload(message: Message, resolution: Resolution, bot: Bot) -> None:
+    """
+    Parse video link from vk wall page.
+
+    :param message:
+    :param resolution:
+    :param bot:
+    :return:
+    """
+    if message.from_user is None:
+        return
+    await process_vk_wall.kiq(resolution=resolution, telegram_id=message.from_user.id)

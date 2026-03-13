@@ -40,6 +40,7 @@ from saver_backend.services.downloaders.vk_clips_ydl_source import (
 from saver_backend.services.downloaders.vk_video_ydl_source import (
     VKVideoYdlController,
 )
+from saver_backend.services.downloaders.vk_wall_parser import VKWallParser
 from saver_backend.services.downloaders.x_ydl_source import (
     XYdlController,
 )
@@ -581,6 +582,30 @@ class FacebookDetector(Detector):
         match = self._WATCH_RE.search(parsed.query)
         if parsed.path == "/watch/" and match:
             url = f"https://www.facebook.com/author/videos/{match.group(1)}"
+        return self._match_regex(url)
+
+
+@register_detector()
+class VKWallDetector(Detector):
+    """Detector for VK Video."""
+
+    SOURCE = SourceEnum.VK_WALL_PARSER
+    CONTROLLER = VKWallParser
+    HOSTS = (
+        "vkvideo.ru",
+        "vk.com",
+        "m.vk.com",
+        "www.vk.com",
+        "m.vk.ru",
+        "vk.ru",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "wall_path": re.compile(r"/wall(?P<code>-?\d+_\d+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        if not self._host_in(url, *self.HOSTS):
+            return None
         return self._match_regex(url)
 
 
