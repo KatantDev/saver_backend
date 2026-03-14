@@ -2,14 +2,17 @@ import http.cookiejar
 import json
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, ClassVar, Optional
 
 import httpx
 from lxml import html as lxml_html
 from lxml.html import HtmlElement
 
-from saver_backend.entities.enums import ProxyType, SourceEnum
+from saver_backend.db.models.cache_model import CacheModel
+from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
 from saver_backend.entities.resolution import Resolution
+from saver_backend.services.downloaders.schema import CacheDTO, WallVideoDTO
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 
@@ -410,9 +413,54 @@ class VKWallParser(YtDlpController):
         """
         return f"https://vk.com/{self._video_type}{self._owner_id}_{self._video_id}"
 
+    def _extract_wall_key(self, url: str) -> str:
+        """Get key from wall URL."""
+
+        match = re.search(r"(wall[-]?\d+_\d+)", url)
+        return match.group(1) if match else url.split("/")[-1]
+
+    async def _cache_wall_data(self, wall_data: WallVideoDTO) -> Optional[CacheModel]:
+        """
+        Сохранить результаты парсинга стены в кэш.
+
+        :param wall_data: данные, полученные из парсинга
+        :return: созданная запись кэша или None
+        """
+        # Проверить, есть ли уже в кэше (по wall_key как source_id)
+        existing = await self._cache_dao.get_by_filters(
+            source=self.SOURCE,
+            source_id=wall_data.wall_key,  # используем wall_key как source_id
+            quality="parsed",  # специальное значение для parsed данных
+            content_type=ContentTypeEnum.WALL_DATA,
+        )
+
+        if existing:
+            logging.info(f"Wall data already cached for {wall_data.wall_key}")
+            return existing
+
+        # Create DTO for cache
+        cache_dto = CacheDTO(
+            source=self.SOURCE,
+            source_id=wall_data.wall_key,  # ключ - часть URL
+            quality="parsed",  # качество для parsed данных
+            meta_data=wall_data,  # WallVideoDTO наследуется от BaseContentDTO
+            file_id="",  # пустой file_id для parsed данных
+            file_unique_id="",  # пустой для parsed данных
+        )
+
+        # Сохранить в БД
+        try:
+            created = await self._cache_dao.create(cache_dto)
+            logging.info(f"Cached wall data for {wall_data.wall_key}")
+            return created
+        except Exception as e:
+            logging.error(f"Failed to cache wall data: {e}")
+            return None
+
     async def get_resolution(self) -> Resolution | None:
         """Parse VK wall and download the video using appropriate controller."""
-        # Extract owner from URL
+
+        # Get owner from URL
         if not await self._parse_owner_from_url():
             logging.error(f"Could not parse owner from URL: {self._resolution.url}")
             await self._telegram_bot_controller.send_content_not_found_error(
@@ -420,37 +468,98 @@ class VKWallParser(YtDlpController):
             )
             return None
 
-        # Fetch wall page
+        wall_key = self._extract_wall_key(self._resolution.url)
+
+        # Check cache
+        cached = await self._cache_dao.get_by_filters(
+            source=self.SOURCE,
+            source_id=wall_key,
+            quality="parsed",
+            content_type=ContentTypeEnum.WALL_DATA,
+        )
+
+        # Check cache validity (optional)
+        if cached and cached.meta_data_dto and await self._is_cache_valid(cached):
+            wall_data = cached.meta_data_dto
+
+            # Type narrowing - check for WallVideoDTO
+            if not isinstance(wall_data, WallVideoDTO):
+                logging.warning(f"Unexpected DTO type in cache: {type(wall_data)}")
+            else:
+                logging.info(f"Using cached wall data for {wall_key}")
+
+                # Use data from cache
+                self._owner_id = wall_data.owner_id
+                self._video_type = wall_data.video_type
+                self._video_id = wall_data.video_id
+
+                # Build URL video
+                video_url = wall_data.video_url
+                self._resolution.url = video_url
+                self._resolution.source = self._get_source_by_type(wall_data.video_type)
+
+                return self._resolution
+
         html_content = await self._fetch_wall_page()
         if not html_content:
             return None
 
-        # Parse video data
         if not self._parse_video_data(html_content):
             await self._telegram_bot_controller.send_content_not_found_error(
                 telegram_id=self._telegram_id,
             )
             return None
 
-        # Build video URL
+        # Save into cache after parsing
+        wall_data = WallVideoDTO(
+            owner_id=self._owner_id,
+            video_type=self._video_type,
+            video_id=self._video_id,
+            wall_key=wall_key,
+            source_id=wall_key,
+            url=self._resolution.url,
+            quality="parsed",
+        )
+        await self._cache_wall_data(wall_data)
+
+        # Build URL video
         video_url = self._build_video_url()
         logging.info(f"Extracted video URL: {video_url}")
 
-        # Update resolution with new URL
         self._resolution.url = video_url
-
-        # Download using appropriate controller
-        if self._video_type == "video":
-            self._resolution.source = SourceEnum.VK_VIDEO_YDL
-        elif self._video_type == "clip":
-            self._resolution.source = SourceEnum.VK_CLIPS_YDL
-        else:
-            logging.error(f"Unknown video type: {self._video_type}")
+        if self._video_type is None:
+            logging.error("Video type is None after parsing")
             await self._telegram_bot_controller.send_content_not_found_error(
                 telegram_id=self._telegram_id,
             )
             return None
+
+        self._resolution.source = self._get_source_by_type(self._video_type)
+
         return self._resolution
+
+    def _get_source_by_type(self, video_type: str) -> SourceEnum:
+        """Get appropriate controller."""
+
+        if video_type == "video":
+            return SourceEnum.VK_VIDEO_YDL
+        if video_type == "clip":
+            return SourceEnum.VK_CLIPS_YDL
+        return SourceEnum.UNSUPPORTED
+
+    async def _is_cache_valid(self, cache_entry: CacheModel) -> bool:
+        """Check if the data in the cache is up to date."""
+
+        if not cache_entry.created_at:
+            return False
+
+        # Make both datetimes offset-naive for comparison
+        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        cache_naive = cache_entry.created_at.replace(tzinfo=None)
+
+        # cache is valid for 1 day (configurable)
+        cache_age = now_naive - cache_naive
+        return cache_age < timedelta(days=1)
 
     async def get_video_info(self, url: str) -> None:
         """

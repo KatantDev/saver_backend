@@ -437,7 +437,22 @@ class PhotoListDTO(BaseContentDTO):
         )
 
 
-CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO]
+class WallVideoDTO(BaseContentDTO):
+    """DTO for data from VK wall parsing."""
+
+    owner_id: str
+    video_type: str  # 'video' or 'clip'
+    video_id: str
+    wall_key: str  # example 'wall682028_8594'
+
+    @property
+    def video_url(self) -> str:
+        """Build URL video."""
+
+        return f"https://vk.com/{self.video_type}{self.owner_id}_{self.video_id}"
+
+
+CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO, WallVideoDTO]
 
 
 class CacheDTO(BaseModel):
@@ -452,14 +467,14 @@ class CacheDTO(BaseModel):
     file_id: str
     file_unique_id: str
     quality: str
-    meta_data: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO
+    meta_data: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO | WallVideoDTO
 
     @classmethod
     def from_telegram_object(
         cls,
         source: SourceEnum,
         telegram_video: "TgVideo",
-        content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO,
+        content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO | WallVideoDTO,
         quality: str | None,
     ) -> Optional["CacheDTO"]:
         """

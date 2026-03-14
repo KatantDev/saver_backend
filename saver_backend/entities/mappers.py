@@ -8,9 +8,10 @@ from saver_backend.services.downloaders.schema import (
     PhotoDTO,
     PhotoListDTO,
     VideoDTO,
+    WallVideoDTO,
 )
 
-CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO]
+CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO, WallVideoDTO]
 
 # Mapping: Enum -> DTO Type
 # Used for deserializing content from PostgreSQL
@@ -19,6 +20,7 @@ CONTENT_TYPE_TO_DTO_MAP: dict[ContentTypeEnum, type[CacheableDTO]] = {
     ContentTypeEnum.PHOTO: PhotoDTO,
     ContentTypeEnum.AUDIO: AudioDTO,
     ContentTypeEnum.PHOTO_LIST: PhotoListDTO,
+    ContentTypeEnum.WALL_DATA: WallVideoDTO,
 }
 
 # Mapping: DTO Type -> Enum
@@ -28,4 +30,5 @@ DTO_TO_CONTENT_TYPE_MAP: dict[type[BaseModel], ContentTypeEnum] = {
     PhotoDTO: ContentTypeEnum.PHOTO,
     AudioDTO: ContentTypeEnum.AUDIO,
     PhotoListDTO: ContentTypeEnum.PHOTO_LIST,
+    WallVideoDTO: ContentTypeEnum.WALL_DATA,
 }
