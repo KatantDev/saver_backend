@@ -1,7 +1,8 @@
 from typing import Any
 
 import taskiq_fastapi
-from taskiq import AsyncBroker, AsyncResultBackend, InMemoryBroker
+from taskiq import AsyncBroker, AsyncResultBackend, InMemoryBroker, TaskiqScheduler
+from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
 from saver_backend.services.i18n.taskiq import I18nMiddleware
@@ -14,6 +15,11 @@ broker: AsyncBroker = ListQueueBroker(
     str(settings.redis_url.with_path("/1")),
 ).with_result_backend(result_backend)
 broker.add_middlewares(I18nMiddleware(broker))
+
+scheduler = TaskiqScheduler(
+    broker=broker,
+    sources=[LabelScheduleSource(broker)],
+)
 
 if settings.environment.lower() == "pytest":
     broker = InMemoryBroker()
