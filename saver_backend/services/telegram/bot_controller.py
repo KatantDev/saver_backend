@@ -493,9 +493,15 @@ class TelegramBotController:
         :param message_id: Message ID to delete after sending.
         :param language: Language code.
         """
-        audio_input = audio.media_url or (
-            FSInputFile(path=audio.path) if audio.path else None
-        )
+        audio_input: URLInputFile | FSInputFile | None = None
+        if audio.media_url:
+            audio_input = URLInputFile(
+                url=audio.media_url,
+                filename=audio.title,
+            )
+        elif audio.path:
+            audio_input = FSInputFile(path=audio.path)
+
         if not audio_input:
             logging.error(
                 "Cannot send audio: No media_url or valid file path provided.",

@@ -12,7 +12,7 @@ maintainers = [
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<4"
+python = ">=3.10,<3.15"
 fastapi = "^0.121"
 uvicorn = { version = "^0.41", extras = ["standard"] }
 gunicorn = "^25"
@@ -37,11 +37,12 @@ babel = "^2.17.0"
 instagrapi = "^2.2.1"
 instaloader = "^4.15"
 ffmpeg-python = "^0.2.0"
-yt-dlp = {extras = ["default","curl-cffi"], version = "^2026"}
+yt-dlp = "^2026.3.13"
 bgutil-ytdlp-pot-provider = "^1.2.2"
 pycountry = {extras = ["locales"], version = "^26"}
 emoji-country-flag = "^2.1.0"
 httpx = {extras = ["socks"], version = "^0.27"}
+vkbottle = ">=4.6.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8"

@@ -162,11 +162,10 @@ class InstagramInstaloaderController(BaseSourceController):
             await self._send_error_message()
             return
 
-        is_sent_from_cache = await self.send_video_from_cache(
+        if await self.send_video_from_cache(
             source_id=source_id,
             quality="best",
-        )
-        if is_sent_from_cache:
+        ):
             return
 
         login = settings.instagram_account.split(":")[0]

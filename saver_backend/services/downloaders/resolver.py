@@ -34,6 +34,9 @@ from saver_backend.services.downloaders.rutube_ydl_source import (
     RutubeYdlController,
 )
 from saver_backend.services.downloaders.tiktok_api_source import TikTokAPIController
+from saver_backend.services.downloaders.vk_api_source import (
+    VKAPIController,
+)
 from saver_backend.services.downloaders.vk_clips_ydl_source import (
     VKClipsYdlController,
 )
@@ -159,11 +162,15 @@ class TikTokDetector(Detector):
         "vt.tiktok.com",
         "www.tiktok.com",
     )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r".*/video/(?P<code>\d+)"),
+        "short": re.compile(r"^/(?P<code>[A-Za-z0-9]+)/?$"),
+    }
 
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
             return None
-        return Resolution(source=self.SOURCE, url=self._clean_url(url))
+        return self._match_regex(url)
 
 
 @register_detector()
@@ -425,6 +432,37 @@ class VKVideoDetector(Detector):
         match = self._CODE_RE.search(parsed.query)
         if match:
             url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
+        return self._match_regex(url)
+
+
+@register_detector()
+class VKAPIDetector(Detector):
+    """
+    Unified detector for VK Wall posts and Photos.
+
+    Matches:
+    - vk.com/wall-123_456 -> type='wall'
+    - vk.com/photo-123_456 -> type='photo'
+    """
+
+    SOURCE = SourceEnum.VK_API_YDL
+    CONTROLLER = VKAPIController
+    HOSTS = (
+        "vk.com",
+        "m.vk.com",
+        "www.vk.com",
+        "vk.ru",
+        "m.vk.ru",
+        "w.vk.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "wall": re.compile(r"^/wall(?P<code>-?\d+_\d+)"),
+        "photo": re.compile(r"^/photo(?P<code>-?\d+_\d+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        if not self._host_in(url, *self.HOSTS):
+            return None
         return self._match_regex(url)
 
 

@@ -40,15 +40,15 @@ class HistoryDAO(BaseDAO):
     async def get_user_history_with_cache(
         self,
         user_id: UUID,
+        sources: list[SourceEnum],
         limit: int = 20,
-        sources: list[SourceEnum] | None = None,
     ) -> list[CacheModel]:
         """
         Get the latest unique cached items from a user's history.
 
         :param user_id: The ID of the user.
+        :param sources: List of sources to filter by.
         :param limit: The maximum number of items to return.
-        :param sources: Optional list of sources to filter by.
         :return: A list of CacheModel instances.
         """
         query = (
@@ -57,14 +57,12 @@ class HistoryDAO(BaseDAO):
             .where(
                 HistoryModel.user_id == user_id,
                 HistoryModel.cache_id.isnot(None),
+                HistoryModel.source.in_(sources),
             )
             .order_by(HistoryModel.cache_id, HistoryModel.created_at.desc())
             .distinct(HistoryModel.cache_id)
             .limit(limit)
         )
-
-        if sources:
-            query = query.where(HistoryModel.source.in_(sources))
 
         result = await self.session.execute(query)
         return [
