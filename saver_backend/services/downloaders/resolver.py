@@ -521,7 +521,6 @@ class AdultDetector(Detector):
         "youjizz.com",
         "youporn.com",
         "zenporn.com",
-        "xnxxxxxarab.gay",
     )
 
     def match(self, url: str) -> Optional[Resolution]:
