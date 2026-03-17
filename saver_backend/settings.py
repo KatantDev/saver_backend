@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     instagram_account: str = "username:password"
 
     # VK Configuration
-    vk_service_token: str = ""
+    vk_service_token: list[str] = ["vk_token"]
 
     # Telegram bot API URL
     telegram_bot_api_url: str = "http://bot-api:8081"

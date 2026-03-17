@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 from typing import Any, ClassVar, List, Tuple, Union
 
 from vkbottle import API, VKAPIError
@@ -36,8 +37,10 @@ class VKAPIController(YtDlpController):
 
         if not settings.vk_service_token:
             logging.error("VK_SERVICE_TOKEN is not set in .env")
+        vk_service_token = secrets.choice(settings.vk_service_token)
+
         self._api = API(
-            token=settings.vk_service_token,
+            token=vk_service_token,
             http_client=AiohttpClient(),
         )
 
