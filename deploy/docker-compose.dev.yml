@@ -20,6 +20,14 @@ services:
       - scripts/start_taskiq_worker.sh
       - --with-reload
 
+  taskiq-scheduler:
+    volumes:
+      # Adds current directory as volume.
+      - .:/app/src/
+    command:
+      - scripts/start_taskiq_scheduler.sh
+      - --with-reload
+
   db:
     ports:
       - "5432:5432"
