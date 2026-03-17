@@ -7,6 +7,7 @@ from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
 )
 from saver_backend.services.downloaders.schema import VideoDTO
+from saver_backend.services.сleanup.clear_old import CleanupService
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
 
@@ -195,3 +196,20 @@ async def get_video_info(
             "quality_selection_message_id": quality_selection_message.message_id,
         },
     )
+
+
+@broker.task(
+    schedule=[{"cron": "*/10 * * * *"}],  # Every 10 minutes
+)
+async def cleanup_old_files_task(
+    state: SaverState = TaskiqDepends(),
+) -> None:
+    """
+    Periodic task to clean up old downloaded files.
+
+    Runs every 10 minutes and removes files older than 1 hour.
+    """
+    logging.info("Running scheduled cleanup task")
+
+    service = CleanupService()
+    await service.cleanup()

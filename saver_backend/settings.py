@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     admin_chat_id: int = -4816121008
     instagram_account: str = "username:password"
 
+    # VK Configuration
+    vk_service_token: list[str] = ["vk_token"]
+
     # Telegram bot API URL
     telegram_bot_api_url: str = "http://bot-api:8081"
 

@@ -65,6 +65,23 @@ services:
     networks:
       - default
 
+  taskiq-scheduler:
+    <<: *main_app
+    hostname: saver_backend-taskiq-scheduler
+    labels: [ ]
+    healthcheck:
+      disable: true
+    command:
+      - scripts/start_taskiq_scheduler.sh
+    logging: *default-logging
+    mem_limit: 1G
+    cpus: 1
+    depends_on:
+      - redis
+      - db
+    networks:
+      - default
+
   db:
     image: postgres:16.3-bullseye
     hostname: saver_backend-db
