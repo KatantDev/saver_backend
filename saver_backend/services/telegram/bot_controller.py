@@ -608,7 +608,7 @@ class TelegramBotController:
                 "Cannot send video: No direct URL or valid file path provided.",
             )
             return None
-        video_url_html = f'{video.title} <a href="{video.url}">→</a>'
+
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
@@ -616,7 +616,7 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=video_url_html, title=video.title),
+                ).format(url=video.url, title=self._format_title_html(video)),
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
@@ -641,6 +641,20 @@ class TelegramBotController:
             await self._send(coro2)
 
         return message.video
+
+    def _format_title_html(self, video: VideoDTO) -> str:
+        """Format title as html string."""
+        if video.channel:
+            title_html = (
+                f'📹 {video.title} <a href="{video.url}">→</a>\n'
+                f'👤 {video.channel} <a href="{video.channel_url}">→</a>'
+                f"\n"
+            )
+        elif video.title:
+            title_html = f'📹 {video.title} <a href="{video.url}">→</a>'
+        else:
+            title_html = ""
+        return title_html
 
     async def send_video_by_file_id(
         self,
@@ -668,7 +682,10 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=url, title=cache_item.meta_data_dto.title),
+                ).format(
+                    url=url,
+                    title=self._format_title_html(cache_item.meta_data_dto),
+                ),
             )
             return message.video
         except (TelegramForbiddenError, TelegramBadRequest) as e:
@@ -828,7 +845,7 @@ class TelegramBotController:
         text = _(
             "choose quality",
             locale=language or self.language,
-        ).format(title=video_dto.title)
+        ).format(title=self._format_title_html(video_dto))
         reply_markup = inline.get_video_formats_keyboard(
             labels=video_dto.unique_labels,
         )
