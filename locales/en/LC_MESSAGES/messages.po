@@ -30,6 +30,7 @@ msgstr ""
 msgid "result direct message"
 msgstr ""
 "{url}\n"
+"{title}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
 

@@ -35,6 +35,7 @@ from redis.asyncio import Redis
 from sentry_sdk import capture_exception
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
     PhotoDTO,
@@ -607,7 +608,7 @@ class TelegramBotController:
                 "Cannot send video: No direct URL or valid file path provided.",
             )
             return None
-
+        video_url_html = f'{video.title} <a href="{video.url}">→</a>'
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
@@ -615,7 +616,7 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=video.url),
+                ).format(url=video_url_html, title=video.title),
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
@@ -644,7 +645,7 @@ class TelegramBotController:
     async def send_video_by_file_id(
         self,
         telegram_id: int,
-        file_id: str,
+        cache_item: CacheModel,
         url: str,
         language: str | None = None,
     ) -> Video | None:
@@ -657,6 +658,9 @@ class TelegramBotController:
         :param language: The language of the caption.
         :return: The sent Video object or None on failure.
         """
+        if not cache_item or not isinstance(cache_item.meta_data_dto, VideoDTO):
+            return None
+        file_id = cache_item.file_id
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
@@ -664,7 +668,7 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=url),
+                ).format(url=url, title=cache_item.meta_data_dto.title),
             )
             return message.video
         except (TelegramForbiddenError, TelegramBadRequest) as e:

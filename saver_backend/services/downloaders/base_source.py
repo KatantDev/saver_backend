@@ -313,7 +313,7 @@ class BaseSourceController(ABC):
             quality,
         )
         video_dto = cached_item.meta_data_dto
-
+        logging.info(f"{cached_item.file_id}")
         if self._inline_query_id:
             await self._telegram_bot_controller.answer_inline_query_cached_video(
                 inline_query_id=self._inline_query_id,
@@ -324,7 +324,7 @@ class BaseSourceController(ABC):
             await self.delete_processing_message()
             await self._telegram_bot_controller.send_video_by_file_id(
                 telegram_id=self._telegram_id,
-                file_id=cached_item.file_id,
+                cache_item=cached_item,
                 url=self._resolution.url,
             )
         return True
