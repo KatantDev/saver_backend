@@ -322,7 +322,10 @@ class TelegramBotController:
             video_file_id=file_id,
             title=video_dto.title or "Video",
             description=video_dto.description,
-            caption=_("result direct message").format(url=video_dto.url),
+            caption=_("result direct message").format(
+                url=video_dto.url,
+                title=self._format_title_html(video_dto),
+            ),
         )
         coro = self._bot.answer_inline_query(
             inline_query_id=inline_query_id,
@@ -353,7 +356,7 @@ class TelegramBotController:
             mime_type="video/mp4",
             title=video_dto.title or "Video",
             description=video_dto.description or "via @saver",
-            caption=_("result direct message").format(url=video_dto.url),
+            caption=_("result direct message").format(url=video_dto.url, title=""),
         )
         coro = self._bot.answer_inline_query(
             inline_query_id=inline_query_id,
@@ -461,7 +464,7 @@ class TelegramBotController:
         caption = _(
             "result direct message",
             locale=language or self.language,
-        ).format(url=files[0].url)
+        ).format(url=files[0].url, title="")
 
         for i in range(0, total_files, chunk_size):
             chunk = files[i : i + chunk_size]
@@ -514,7 +517,7 @@ class TelegramBotController:
         caption = _(
             "result direct message",
             locale=language or self.language,
-        ).format(url=audio.url)
+        ).format(url=audio.url, title="")
 
         coro = self._bot.send_audio(
             chat_id=telegram_id,
@@ -560,7 +563,7 @@ class TelegramBotController:
             caption=_(
                 "result direct message",
                 locale=language or self.language,
-            ).format(url=photo.url),
+            ).format(url=photo.url, title=""),
         )
         await self._send(coro)
         if message_id is not None:
@@ -718,6 +721,7 @@ class TelegramBotController:
         """
         text = _("result direct message", locale=language or self.language).format(
             url=fixed_url,
+            title="",
         )
         coro = self._bot.send_message(chat_id=telegram_id, text=text)
         await self._send(coro)

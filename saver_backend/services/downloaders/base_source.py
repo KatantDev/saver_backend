@@ -313,7 +313,7 @@ class BaseSourceController(ABC):
             quality,
         )
         video_dto = cached_item.meta_data_dto
-        logging.info(f"{cached_item.file_id}")
+
         if self._inline_query_id:
             await self._telegram_bot_controller.answer_inline_query_cached_video(
                 inline_query_id=self._inline_query_id,
