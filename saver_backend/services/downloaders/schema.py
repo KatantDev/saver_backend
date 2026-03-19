@@ -195,6 +195,25 @@ class VideoDTO(BaseContentDTO):
         """
         return list(self.unique_formats.keys())
 
+    @property
+    def title_html(self) -> str:
+        """
+        Return the title of the video formatted as html.
+
+        :return: html string
+        """
+        if self.channel:
+            title_html = (
+                f'📹 {self.title} <a href="{self.url}">→</a>\n'
+                f'👤 {self.channel} <a href="{self.channel_url}">→</a>'
+                f"\n"
+            )
+        elif self.title:
+            title_html = f'📹 {self.title} <a href="{self.url}">→</a>'
+        else:
+            title_html = ""
+        return title_html
+
     def get_format_by_id(self, format_id: str) -> FormatDTO | None:
         """
         Get a FormatDTO by its ID.

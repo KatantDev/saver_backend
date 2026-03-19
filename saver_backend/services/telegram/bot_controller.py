@@ -324,7 +324,7 @@ class TelegramBotController:
             description=video_dto.description,
             caption=_("result direct message").format(
                 url=video_dto.url,
-                title=self._format_title_html(video_dto),
+                title=video_dto.title_html,
             ),
         )
         coro = self._bot.answer_inline_query(
@@ -619,7 +619,7 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=video.url, title=self._format_title_html(video)),
+                ).format(url=video.url, title=video.title_html),
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
@@ -644,20 +644,6 @@ class TelegramBotController:
             await self._send(coro2)
 
         return message.video
-
-    def _format_title_html(self, video: VideoDTO) -> str:
-        """Format title as html string."""
-        if video.channel:
-            title_html = (
-                f'📹 {video.title} <a href="{video.url}">→</a>\n'
-                f'👤 {video.channel} <a href="{video.channel_url}">→</a>'
-                f"\n"
-            )
-        elif video.title:
-            title_html = f'📹 {video.title} <a href="{video.url}">→</a>'
-        else:
-            title_html = ""
-        return title_html
 
     async def send_video_by_file_id(
         self,
@@ -687,7 +673,7 @@ class TelegramBotController:
                     locale=language or self.language,
                 ).format(
                     url=url,
-                    title=self._format_title_html(cache_item.meta_data_dto),
+                    title=cache_item.meta_data_dto.title_html,
                 ),
             )
             return message.video
@@ -849,7 +835,7 @@ class TelegramBotController:
         text = _(
             "choose quality",
             locale=language or self.language,
-        ).format(title=self._format_title_html(video_dto))
+        ).format(title=video_dto.title_html)
         reply_markup = inline.get_video_formats_keyboard(
             labels=video_dto.unique_labels,
         )
