@@ -163,7 +163,7 @@ services:
       - default
 
   bgutil:
-    image: brainicism/bgutil-ytdlp-pot-provider
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.0
     hostname: saver_backend-bgutil
     restart: always
     extra_hosts:

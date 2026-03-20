@@ -324,7 +324,7 @@ class BaseSourceController(ABC):
             await self.delete_processing_message()
             await self._telegram_bot_controller.send_video_by_file_id(
                 telegram_id=self._telegram_id,
-                file_id=cached_item.file_id,
+                cache_item=cached_item,
                 url=self._resolution.url,
             )
         return True
