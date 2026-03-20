@@ -59,7 +59,7 @@ async def on_empty_inline_query(
                 mpeg4_file_id=item.file_id,
                 caption=_(
                     "result direct message",
-                ).format(url=video_dto.url),
+                ).format(url=video_dto.url, title=""),
             ),
         )
 

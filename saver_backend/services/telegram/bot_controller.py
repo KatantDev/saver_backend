@@ -35,6 +35,7 @@ from redis.asyncio import Redis
 from sentry_sdk import capture_exception
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
     PhotoDTO,
@@ -321,7 +322,10 @@ class TelegramBotController:
             video_file_id=file_id,
             title=video_dto.title or "Video",
             description=video_dto.description,
-            caption=_("result direct message").format(url=video_dto.url),
+            caption=_("result direct message").format(
+                url=video_dto.url,
+                title=video_dto.title_html,
+            ),
         )
         coro = self._bot.answer_inline_query(
             inline_query_id=inline_query_id,
@@ -352,7 +356,7 @@ class TelegramBotController:
             mime_type="video/mp4",
             title=video_dto.title or "Video",
             description=video_dto.description or "via @saver",
-            caption=_("result direct message").format(url=video_dto.url),
+            caption=_("result direct message").format(url=video_dto.url, title=""),
         )
         coro = self._bot.answer_inline_query(
             inline_query_id=inline_query_id,
@@ -460,7 +464,7 @@ class TelegramBotController:
         caption = _(
             "result direct message",
             locale=language or self.language,
-        ).format(url=files[0].url)
+        ).format(url=files[0].url, title="")
 
         for i in range(0, total_files, chunk_size):
             chunk = files[i : i + chunk_size]
@@ -513,7 +517,7 @@ class TelegramBotController:
         caption = _(
             "result direct message",
             locale=language or self.language,
-        ).format(url=audio.url)
+        ).format(url=audio.url, title="")
 
         coro = self._bot.send_audio(
             chat_id=telegram_id,
@@ -559,7 +563,7 @@ class TelegramBotController:
             caption=_(
                 "result direct message",
                 locale=language or self.language,
-            ).format(url=photo.url),
+            ).format(url=photo.url, title=""),
         )
         await self._send(coro)
         if message_id is not None:
@@ -615,7 +619,7 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=video.url),
+                ).format(url=video.url, title=video.title_html),
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
@@ -644,7 +648,7 @@ class TelegramBotController:
     async def send_video_by_file_id(
         self,
         telegram_id: int,
-        file_id: str,
+        cache_item: CacheModel,
         url: str,
         language: str | None = None,
     ) -> Video | None:
@@ -657,6 +661,9 @@ class TelegramBotController:
         :param language: The language of the caption.
         :return: The sent Video object or None on failure.
         """
+        if not cache_item or not isinstance(cache_item.meta_data_dto, VideoDTO):
+            return None
+        file_id = cache_item.file_id
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
@@ -664,7 +671,10 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=url),
+                ).format(
+                    url=url,
+                    title=cache_item.meta_data_dto.title_html,
+                ),
             )
             return message.video
         except (TelegramForbiddenError, TelegramBadRequest) as e:
@@ -697,6 +707,7 @@ class TelegramBotController:
         """
         text = _("result direct message", locale=language or self.language).format(
             url=fixed_url,
+            title="",
         )
         coro = self._bot.send_message(chat_id=telegram_id, text=text)
         await self._send(coro)
@@ -824,7 +835,7 @@ class TelegramBotController:
         text = _(
             "choose quality",
             locale=language or self.language,
-        ).format(title=video_dto.title)
+        ).format(title=video_dto.title_html)
         reply_markup = inline.get_video_formats_keyboard(
             labels=video_dto.unique_labels,
         )

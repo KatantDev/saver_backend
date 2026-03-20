@@ -143,6 +143,9 @@ class VideoDTO(BaseContentDTO):
     thumbnail: str | Path | None = None
     thumbnail_url: str | None = None
 
+    channel: str | None = None
+    channel_id: str | None = None
+    channel_url: str | None = None
     description: str | None = None
 
     duration: int | None = None
@@ -192,6 +195,25 @@ class VideoDTO(BaseContentDTO):
         """
         return list(self.unique_formats.keys())
 
+    @property
+    def title_html(self) -> str:
+        """
+        Return the title of the video formatted as html.
+
+        :return: html string
+        """
+        if self.channel:
+            title_html = (
+                f'📹 {self.title} <a href="{self.url}">→</a>\n'
+                f'👤 {self.channel} <a href="{self.channel_url}">→</a>'
+                f"\n"
+            )
+        elif self.title:
+            title_html = f'📹 {self.title} <a href="{self.url}">→</a>'
+        else:
+            title_html = ""
+        return title_html
+
     def get_format_by_id(self, format_id: str) -> FormatDTO | None:
         """
         Get a FormatDTO by its ID.
@@ -226,6 +248,9 @@ class VideoDTO(BaseContentDTO):
 
         direct_download_url = info.get("url") if extract_direct_links else None
         title = info.get("fulltitle") or info.get("title")
+        channel = info.get("channel", "")
+        channel_id = info.get("uploader_id", "")
+        channel_url = info.get("uploader_url", "")
         duration = info.get("duration")
 
         available_formats = []
@@ -260,6 +285,9 @@ class VideoDTO(BaseContentDTO):
             path=file_path,
             thumbnail_url=info.get("thumbnail"),
             title=title,
+            channel=channel,
+            channel_id=channel_id,
+            channel_url=channel_url,
             direct_download_url=direct_download_url,
             url=info.get("original_url"),
             source_id=info.get("id"),
