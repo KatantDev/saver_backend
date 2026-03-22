@@ -204,12 +204,12 @@ class VideoDTO(BaseContentDTO):
         """
         if self.channel:
             title_html = (
-                f'📹 {self.title} <a href="{self.url}">→</a>\n'
-                f'👤 {self.channel} <a href="{self.channel_url}">→</a>'
+                f'📹 <b><a href="{self.url}">{self.title}</a></b>\n'
+                f'👤 <a href="{self.channel_url}">{self.channel}</a>'
                 f"\n"
             )
         elif self.title:
-            title_html = f'📹 {self.title} <a href="{self.url}">→</a>'
+            title_html = f'📹 <b><a href="{self.url}">{self.title}</a></b>'
         else:
             title_html = ""
         return title_html
