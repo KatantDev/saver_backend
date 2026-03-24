@@ -23,6 +23,9 @@ from saver_backend.services.downloaders.instagram_instaloader_source import (
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
+from saver_backend.services.downloaders.kinovod_ydl_source import (
+    KinovodYdlController,
+)
 from saver_backend.services.downloaders.m3u8_ydl_source import M3U8YdlController
 from saver_backend.services.downloaders.ok_ydl_source import (
     OkYdlController,
@@ -621,6 +624,30 @@ class FacebookDetector(Detector):
         return self._match_regex(url)
 
 
+@register_detector()
+class KinovodDetector(Detector):
+    """Detector for Kinovod videos."""
+
+    SOURCE = SourceEnum.KINOVOD_YDL
+    CONTROLLER = KinovodYdlController
+    HOSTS = (
+        "kinovod.pro",
+        "www.kinovod.pro",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "film": re.compile(r"^/film/(?P<code>[^/]+)(?:/.*)?$"),
+        "tv_show": re.compile(r"^/tv_show/(?P<code>[^/]+)(?:/.*)?$"),
+        "serial": re.compile(r"^/serial/(?P<code>[^/]+)(?:/.*)?$"),
+        "trailer": re.compile(r"^/trailer/(?P<code>[^/]+)(?:/.*)?$"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Kinovod video/serial url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
 class SourceResolver:
     """Resolver for source of the message."""
 
@@ -641,7 +668,6 @@ class SourceResolver:
         """
         url_match = self._URL_RE.search(text)
         url = url_match.group(1) if url_match else text
-
         for detector in self._detectors.values():
             res = detector.match(url)
             if res is not None:
