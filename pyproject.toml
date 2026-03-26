@@ -43,7 +43,6 @@ pycountry = {extras = ["locales"], version = "^26"}
 emoji-country-flag = "^2.1.0"
 httpx = {extras = ["socks"], version = "^0.27"}
 vkbottle = ">=4.6.2"
-zendriver = "^0.15.3"
 playwright = "^1.58.0"
 
 [tool.poetry.group.dev.dependencies]
