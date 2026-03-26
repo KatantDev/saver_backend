@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     proxies: list[str] = []
     proxies_ru: list[str] = []
 
+    # chrome headless settings
+    chrome_host: str = "saver_backend-chrome"
+    chrome_port: int = 9222
+    _chrome_cdp_url: Optional[str] = None
+
     @property
     def webhook_telegram_url(self) -> str:
         """
@@ -129,6 +134,33 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def chrome_cdp_url(self) -> str:
+        """
+        Assemble chrome CDP URL from settings.
+
+        :return: chrome CDP URL.
+        """
+        if self._chrome_cdp_url is None:
+            import socket
+
+            def get_chrome_ip(chrome_host: str = "saver_backend-chrome") -> str:
+                """
+                Get IP of chrome container.
+
+                :param chrome_host:
+                :return: ip of chrome container.
+                """
+                try:
+                    # try resolve host name
+                    return socket.gethostbyname(chrome_host)
+                except socket.gaierror:
+                    return "172.18.0.2"
+
+            chrome_ip = get_chrome_ip(self.chrome_host)
+            self._chrome_cdp_url = f"http://{chrome_ip}:{self.chrome_port}"
+        return self._chrome_cdp_url
 
 
 settings = Settings()

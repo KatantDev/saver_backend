@@ -171,6 +171,28 @@ services:
     networks:
       - default
 
+  chrome:
+    image: chromedp/headless-shell:latest
+    hostname: saver_backend-chrome
+    healthcheck:
+      disable: true
+    ports:
+      - "9223:9223"
+    volumes:
+      - /dev/shm:/dev/shm
+    shm_size: 2gb
+    command:
+      - --no-sandbox
+      - --disable-gpu
+      - --disable-dev-shm-usage
+      - --remote-debugging-address=0.0.0.0
+      - --remote-debugging-port=9223
+      - --remote-allow-origins=*
+      # - --proxy-server=${CHROME_HTTP_PROXY}
+    networks:
+      - default
+    restart: no
+
 networks:
   default:
     driver: bridge
