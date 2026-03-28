@@ -1,14 +1,12 @@
 import asyncio
 import logging
 from typing import Any, ClassVar, Optional
-from urllib.parse import urlparse
 
 from playwright.async_api import (
     Browser,
     BrowserContext,
     Page,
     Playwright,
-    ProxySettings,
     async_playwright,
 )
 from playwright.async_api import (
@@ -33,7 +31,7 @@ class KinovodYdlController(YtDlpController):
     """
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.KINOVOD_YDL
-    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.KINOVOD
     COOKIES: ClassVar[bool] = False
 
     # Selectors
@@ -212,27 +210,7 @@ class KinovodYdlController(YtDlpController):
         browser = await playwright.chromium.connect_over_cdp(chrome_cdp_url)
         self._browser = browser
 
-        # Create context with proxy if configured
-        proxy_settings = None
-        if self._proxy:
-            parsed_proxy = urlparse(self._proxy)
-            server = (
-                f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}"
-            )
-
-            if parsed_proxy.username and parsed_proxy.password:
-                proxy_settings = ProxySettings(
-                    server=server,
-                    username=parsed_proxy.username,
-                    password=parsed_proxy.password,
-                )
-            else:
-                proxy_settings = ProxySettings(server=server)
-            logging.info("Using proxy: %s", server)
-
-        # Create new context with proxy (this overrides browser proxy settings)
         self._context = await browser.new_context(
-            proxy=proxy_settings if proxy_settings else None,
             ignore_https_errors=True,
         )
 

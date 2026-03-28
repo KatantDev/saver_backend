@@ -181,13 +181,12 @@ services:
     ports:
       - "9223:9223"
     shm_size: 1gb
-    command:
-      - --no-sandbox
-      - --disable-gpu
-      - --remote-debugging-address=0.0.0.0
-      - --remote-debugging-port=9223
-      - --remote-allow-origins=*
-      # - --proxy-server=${CHROME_HTTP_PROXY}
+    volumes:
+      - ./scripts/entrypoint_chrome.sh:/entrypoint.sh
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
+    cap_add:
+     - NET_ADMIN
+     - NET_RAW
     networks:
       - default
     restart: no
