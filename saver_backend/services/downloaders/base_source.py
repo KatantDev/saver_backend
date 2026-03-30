@@ -3,9 +3,9 @@ import logging
 import random
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
-from aiogram.types import Video
+from aiogram.types import Audio, Video
 
 from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
@@ -230,10 +230,29 @@ class BaseSourceController(ABC):
                 telegram_video=telegram_video,
             )
 
+    async def _send_audio(
+        self,
+        audio_dto: AudioDTO,
+    ) -> None:
+        """Sends the audio to the user and then caches the result."""
+        telegram_audio = (
+            await (
+                self._telegram_bot_controller.send_finish_downloading_audio(
+                    audio=audio_dto,
+                    telegram_id=self._telegram_id,
+                    message_id=self._message_id,
+                )
+            )
+        )
+
+        if telegram_audio:
+            cache_model = await self._save_content_to_cache(audio_dto, telegram_audio)
+            await self._create_history_entry(cache_model)
+
     async def _save_content_to_cache(
         self,
         content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO,
-        telegram_video: Video,
+        telegram_video: Video | Audio,
     ) -> CacheModel | None:
         """
         Save content details to the cache.
@@ -383,7 +402,7 @@ class BaseSourceController(ABC):
                 error_text=_("inline mode blocked error"),
             )
 
-    def cleanup_files(self, dtos: list[VideoDTO | PhotoDTO]) -> None:
+    def cleanup_files(self, dtos: Sequence[VideoDTO | PhotoDTO | AudioDTO]) -> None:
         """
         Safely deletes the downloaded files and thumbnails from a list of DTOs.
 

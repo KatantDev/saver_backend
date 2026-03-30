@@ -19,6 +19,7 @@ from aiogram.exceptions import (
 )
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import (
+    Audio,
     FSInputFile,
     InlineQueryResultArticle,
     InlineQueryResultCachedVideo,
@@ -488,7 +489,7 @@ class TelegramBotController:
         telegram_id: int,
         message_id: int | None = None,
         language: str | None = None,
-    ) -> None:
+    ) -> Audio | None:
         """
         Send finish downloading audio message.
 
@@ -497,14 +498,18 @@ class TelegramBotController:
         :param message_id: Message ID to delete after sending.
         :param language: Language code.
         """
+
         audio_input: URLInputFile | FSInputFile | None = None
-        if audio.media_url:
+        if audio.media_url is not None:
             audio_input = URLInputFile(
                 url=audio.media_url,
-                filename=audio.title,
+                filename=(audio.title or "audio") + settings.telegram_filename_sufix,
             )
-        elif audio.path:
-            audio_input = FSInputFile(path=audio.path)
+        elif audio.path is not None:
+            audio_input = FSInputFile(
+                path=audio.path,
+                filename=(audio.title or "audio") + settings.telegram_filename_sufix,
+            )
 
         if not audio_input:
             logging.error(
@@ -512,21 +517,40 @@ class TelegramBotController:
             )
             if message_id:
                 await self.delete_message(telegram_id, message_id)
-            return
+            return None
 
         caption = _(
             "result direct message",
             locale=language or self.language,
-        ).format(url=audio.url, title="")
+        ).format(url="", title=audio.title_html)
 
-        coro = self._bot.send_audio(
-            chat_id=telegram_id,
-            audio=audio_input,
-            caption=caption,
-            title=audio.title,
-            duration=audio.duration,
-        )
-        await self._send(coro)
+        try:
+            message = await self._bot.send_audio(
+                chat_id=telegram_id,
+                audio=audio_input,
+                caption=caption,
+                title=audio.title,
+                duration=audio.duration,
+            )
+        except (TelegramForbiddenError, TelegramBadRequest) as e:
+            logging.warning(
+                "Failed to send audio to user %s: %s",
+                telegram_id,
+                e,
+            )
+            return None
+        except TelegramNetworkError as e:
+            logging.warning(
+                "Network error while sending audio to user %s: %s",
+                telegram_id,
+                e,
+            )
+            return None
+        except Exception as e:
+            if settings.environment == "local":
+                logging.exception(e)
+            capture_exception(e)
+            return None
 
         if message_id is not None:
             coro2 = self._bot.delete_message(
@@ -534,6 +558,8 @@ class TelegramBotController:
                 chat_id=telegram_id,
             )
             await self._send(coro2)
+
+        return message.audio
 
     async def send_finish_downloading_photo(
         self,
@@ -566,6 +592,77 @@ class TelegramBotController:
             ).format(url=photo.url, title=""),
         )
         await self._send(coro)
+        if message_id is not None:
+            coro2 = self._bot.delete_message(
+                message_id=message_id,
+                chat_id=telegram_id,
+            )
+            await self._send(coro2)
+
+    async def send_finish_downloading_doc_group(
+        self,
+        files: Sequence[AudioDTO],
+        telegram_id: int,
+        message_id: int | None = None,
+        language: str | None = None,
+    ) -> None:
+        """
+        Send finish downloading document group message.
+
+        :param files: List of AudioDTO objects.
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID to delete after sending.
+        :param language: Language code.
+        """
+        chunk_size = 10
+        total_audios = len(files)
+
+        for i in range(0, total_audios, chunk_size):
+            chunk = files[i : i + chunk_size]
+            caption = None
+            media_group = MediaGroupBuilder()
+            for audio in chunk:
+                document_input: URLInputFile | FSInputFile | None = None
+                if audio.media_url:
+                    document_input = URLInputFile(
+                        url=audio.media_url,
+                        filename=(audio.title or "audio")
+                        + settings.telegram_filename_sufix
+                        + ".mp3",
+                    )
+                elif audio.path:
+                    document_input = FSInputFile(
+                        path=audio.path,
+                        filename=(audio.title or "audio")
+                        + settings.telegram_filename_sufix
+                        + ".mp3",
+                    )
+
+                if not document_input:
+                    logging.error(
+                        "Cannot send audio document:"
+                        " No media_url or valid file path provided.",
+                    )
+                    continue
+
+                caption = _(
+                    "result direct message",
+                    locale=language or self.language,
+                ).format(url="", title=audio.title_html)
+
+                media_group.add_document(
+                    media=document_input,
+                    caption=caption,
+                    parse_mode=self._bot.default.parse_mode,
+                )
+
+            if media_group.build():
+                coro = self._bot.send_media_group(
+                    chat_id=telegram_id,
+                    media=media_group.build(),
+                )
+                await self._send(coro)
+
         if message_id is not None:
             coro2 = self._bot.delete_message(
                 message_id=message_id,

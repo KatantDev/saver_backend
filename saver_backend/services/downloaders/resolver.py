@@ -4,7 +4,11 @@ from abc import ABC, abstractmethod
 from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar
 from urllib.parse import urlparse, urlunparse
 
-from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
+from saver_backend.entities.enums import (
+    InstagramContentTypeEnum,
+    SourceEnum,
+    YandexMusicContentTypeEnum,
+)
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.adult_ydl_source import AdultYdlController
 from saver_backend.services.downloaders.base_source import BaseSourceController
@@ -48,6 +52,9 @@ from saver_backend.services.downloaders.vk_video_ydl_source import (
 )
 from saver_backend.services.downloaders.x_ydl_source import (
     XYdlController,
+)
+from saver_backend.services.downloaders.yandex_music_ydl import (
+    YandexMusicController,
 )
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
@@ -643,6 +650,32 @@ class KinovodDetector(Detector):
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Kinovod video/serial url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class YandexMusicDetector(Detector):
+    """Detector for Yandex Music."""
+
+    SOURCE = SourceEnum.YANDEX_MUSIC_YDL
+    CONTROLLER = YandexMusicController
+    HOSTS = (
+        "music.yandex.ru",
+        "music.yandex.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        YandexMusicContentTypeEnum.TRACK: re.compile(
+            r".*/track/(?P<code>\d+)(?:[?#]|$)",
+        ),
+        YandexMusicContentTypeEnum.ALBUM: re.compile(
+            r".*/album/(?P<code>\d+)(?:[?#]|$)",
+        ),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Yandex album/track url."""
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)

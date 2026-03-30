@@ -14,6 +14,7 @@ from saver_backend.services.consts import MAX_FILE_SIZE_BYTES
 from saver_backend.services.language_resolver import LanguageResolver
 
 if TYPE_CHECKING:
+    from aiogram.types import Audio as TgAudio
     from aiogram.types import Video as TgVideo
 
 
@@ -439,6 +440,12 @@ class AudioDTO(BaseContentDTO):
     path: str | Path | None = None
     media_url: str | None = None
     duration: int | None = None
+    artist: str | None = None
+    track: str | None = None
+    track_url: str | None = None
+    album_url: str | None = None
+
+    direct_download_url: str | None = None
 
     @classmethod
     def from_tikwm(cls, data: "TikWMData", resolution_url: str) -> "AudioDTO | None":
@@ -495,6 +502,51 @@ class AudioDTO(BaseContentDTO):
             duration=audio_data.get("duration"),
             source_id=source_id,
         )
+
+    @classmethod
+    def from_yandexmusic(
+        cls,
+        audio_data: dict[str, Any],
+        resolution_url: str,
+    ) -> Optional["AudioDTO"]:
+        """Create AudioDTO from yandex music audio object."""
+        source_id = audio_data.get("id")
+
+        if not source_id:
+            return None
+
+        duration = audio_data.get("duration")
+        if isinstance(duration, float):
+            duration = int(duration)
+
+        audio_url = audio_data.get("url", "")
+
+        title = audio_data.get("fulltitle") or audio_url.get("title")
+        track_url = audio_data.get("original_url", "")
+        album_url = track_url.split("/track")[0]
+        track = audio_data.get("track")
+
+        return cls(
+            media_url=audio_url,
+            url=resolution_url,
+            title=title,
+            duration=duration,
+            source_id=source_id,
+            artist=audio_data.get("artist"),
+            track=track,
+            track_url=track_url,
+            album_url=album_url,
+        )
+
+    @property
+    def title_html(self) -> Optional[str]:
+        """Make html title string."""
+        track_url = self.track_url
+        if track_url:
+            _title_html = f"<a href='{self.track_url}'>{self.title}</a>"
+        else:
+            _title_html = f"<a href='{self.url}'>{self.title}</a>"
+        return _title_html
 
 
 class PhotoListDTO(BaseContentDTO):
@@ -553,7 +605,7 @@ class CacheDTO(BaseModel):
     def from_telegram_object(
         cls,
         source: SourceEnum,
-        telegram_video: "TgVideo",
+        telegram_video: Union["TgVideo", "TgAudio"],
         content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO,
         quality: str | None,
     ) -> Optional["CacheDTO"]:

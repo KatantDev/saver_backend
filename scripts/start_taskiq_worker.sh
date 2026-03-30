@@ -1,5 +1,6 @@
 #!/bin/bash
 
+python scripts/patch_yt_dlp.py
 # Инициализация переменной
 reload=false
 

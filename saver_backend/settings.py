@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # Telegram bot configuration.
     telegram_bot_token: str = "42:TOKEN"
     telegram_secret_token: str = "verysecrettoken"
+    telegram_filename_sufix: str = " [@saver]"
     subscription_channels: list[str] = ["channel_username"]
     admin_chat_id: int = -4816121008
     instagram_account: str = "username:password"
