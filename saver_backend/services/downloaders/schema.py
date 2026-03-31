@@ -444,6 +444,8 @@ class AudioDTO(BaseContentDTO):
     track: str | None = None
     track_url: str | None = None
     album_url: str | None = None
+    thumbnail_url: str | None = None
+    thumbnail: str | Path | None = None
 
     direct_download_url: str | None = None
 
@@ -521,21 +523,31 @@ class AudioDTO(BaseContentDTO):
 
         audio_url = audio_data.get("url", "")
 
-        title = audio_data.get("fulltitle") or audio_url.get("title")
+        title = audio_data.get("fulltitle") or audio_data.get("title")
+
         track_url = audio_data.get("original_url", "")
         album_url = track_url.split("/track")[0]
         track = audio_data.get("track")
-
+        entries = audio_data.get("entries", [])
+        if entries:
+            thumbnail_url = entries[0].get("thumbnail")
+            artist = entries[0].get("artist")
+        else:
+            thumbnail_url = audio_data.get("thumbnail")
+            artist = audio_data.get("artist")
+        title = f"{artist} — {track}"
+        thumbnail_url = thumbnail_url.replace("/orig", "/300x300")
         return cls(
             media_url=audio_url,
             url=resolution_url,
             title=title,
             duration=duration,
             source_id=source_id,
-            artist=audio_data.get("artist"),
+            artist=artist,
             track=track,
             track_url=track_url,
             album_url=album_url,
+            thumbnail_url=thumbnail_url,
         )
 
     @property
@@ -543,7 +555,7 @@ class AudioDTO(BaseContentDTO):
         """Make html title string."""
         track_url = self.track_url
         if track_url:
-            _title_html = f"<a href='{self.track_url}'>{self.title}</a>"
+            _title_html = f"<a href='{self.track_url}'>{self.track}</a>"
         else:
             _title_html = f"<a href='{self.url}'>{self.title}</a>"
         return _title_html

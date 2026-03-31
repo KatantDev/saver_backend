@@ -24,6 +24,7 @@ from aiogram.types import (
     InlineQueryResultArticle,
     InlineQueryResultCachedVideo,
     InlineQueryResultVideo,
+    InputFile,
     InputTextMessageContent,
     Message,
     Update,
@@ -483,6 +484,20 @@ class TelegramBotController:
             )
             await self._send(coro2)
 
+    def _get_thumbnail(self, audio: AudioDTO) -> FSInputFile | URLInputFile | None:
+        """
+        Get thumbnail input for audio.
+
+        :param audio: AudioDTO object.
+        :return: Thumbnail input or None.
+        """
+        if isinstance(audio, AudioDTO):
+            if audio.thumbnail:
+                return FSInputFile(path=audio.thumbnail)
+            if audio.thumbnail_url:
+                return URLInputFile(url=audio.thumbnail_url, timeout=60)
+        return None
+
     async def send_finish_downloading_audio(
         self,
         audio: AudioDTO,
@@ -519,18 +534,24 @@ class TelegramBotController:
                 await self.delete_message(telegram_id, message_id)
             return None
 
-        caption = _(
+        caption = "\u200B\n" + _(
             "result direct message",
             locale=language or self.language,
-        ).format(url="", title=audio.title_html)
+        ).format(
+            url=audio.url,
+            title="",
+        )  #  audio.title_html)
+        thumbnail_input = self._get_thumbnail(audio)
 
         try:
             message = await self._bot.send_audio(
                 chat_id=telegram_id,
                 audio=audio_input,
                 caption=caption,
-                title=audio.title,
+                title=audio.track,
                 duration=audio.duration,
+                performer=audio.artist,
+                thumbnail=thumbnail_input,
             )
         except (TelegramForbiddenError, TelegramBadRequest) as e:
             logging.warning(
@@ -599,13 +620,13 @@ class TelegramBotController:
             )
             await self._send(coro2)
 
-    async def send_finish_downloading_doc_group(
+    async def send_finish_downloading_audio_group(
         self,
-        files: Sequence[AudioDTO],
+        files: Sequence[AudioDTO | CacheModel],
         telegram_id: int,
         message_id: int | None = None,
         language: str | None = None,
-    ) -> None:
+    ) -> list[Message]:
         """
         Send finish downloading document group message.
 
@@ -616,59 +637,114 @@ class TelegramBotController:
         """
         chunk_size = 10
         total_audios = len(files)
+        messages: list[Message] = []
 
         for i in range(0, total_audios, chunk_size):
             chunk = files[i : i + chunk_size]
-            caption = None
-            media_group = MediaGroupBuilder()
-            for audio in chunk:
-                document_input: URLInputFile | FSInputFile | None = None
-                if audio.media_url:
-                    document_input = URLInputFile(
-                        url=audio.media_url,
-                        filename=(audio.title or "audio")
-                        + settings.telegram_filename_sufix
-                        + ".mp3",
-                    )
-                elif audio.path:
-                    document_input = FSInputFile(
-                        path=audio.path,
-                        filename=(audio.title or "audio")
-                        + settings.telegram_filename_sufix
-                        + ".mp3",
-                    )
-
-                if not document_input:
-                    logging.error(
-                        "Cannot send audio document:"
-                        " No media_url or valid file path provided.",
-                    )
-                    continue
-
-                caption = _(
-                    "result direct message",
-                    locale=language or self.language,
-                ).format(url="", title=audio.title_html)
-
-                media_group.add_document(
-                    media=document_input,
-                    caption=caption,
-                    parse_mode=self._bot.default.parse_mode,
-                )
+            media_group = self._build_audio_media_group(chunk, language)
 
             if media_group.build():
-                coro = self._bot.send_media_group(
+                tg_messages = await self._bot.send_media_group(
                     chat_id=telegram_id,
                     media=media_group.build(),
                 )
-                await self._send(coro)
+                messages.extend(tg_messages)
 
         if message_id is not None:
-            coro2 = self._bot.delete_message(
+            coro = self._bot.delete_message(
                 message_id=message_id,
                 chat_id=telegram_id,
             )
-            await self._send(coro2)
+            await self._send(coro)
+
+        return messages
+
+    def _build_audio_media_group(
+        self,
+        chunk: Sequence[AudioDTO | CacheModel],
+        language: str | None = None,
+    ) -> MediaGroupBuilder:
+        """
+        Build a media group for audio files.
+
+        :param chunk: A chunk of audio files (max 10).
+        :param language: Language for captions.
+        :return: MediaGroupBuilder with added audio files.
+        """
+        media_group = MediaGroupBuilder()
+
+        for ind, audio in enumerate(chunk):
+            audio_input: str | InputFile | None = None
+            thumbnail_input: InputFile | None = None
+            track: str | None = None
+
+            # Prepare audio data based on type
+            if isinstance(audio, CacheModel) and isinstance(
+                audio.meta_data_dto,
+                AudioDTO,
+            ):
+                audio_input = audio.file_id
+                track = (
+                    audio.meta_data_dto.track
+                    if hasattr(audio.meta_data_dto, "track")
+                    else None
+                )
+                thumbnail_input = None
+                url = audio.meta_data_dto.url
+            elif isinstance(audio, AudioDTO):
+                url = audio.url
+                track = audio.track
+                thumbnail_input = (
+                    URLInputFile(url=audio.thumbnail_url)
+                    if audio.thumbnail_url
+                    else None
+                )
+
+                if audio.media_url:
+                    audio_input = URLInputFile(
+                        url=audio.media_url,
+                        filename=(audio.title or "audio")
+                        + settings.telegram_filename_sufix,
+                    )
+                elif audio.path:
+                    audio_input = FSInputFile(
+                        path=audio.path,
+                        filename=(audio.title or "audio")
+                        + settings.telegram_filename_sufix,
+                    )
+
+            if not audio_input:
+                logging.error(
+                    "Cannot send audio document: "
+                    "No media_url or valid file path provided.",
+                )
+                continue
+
+            if ind < len(chunk) - 1:
+                caption = "\u200B"
+            else:
+                caption = "\u200B\n" + _(
+                    "result direct message",
+                    locale=language or self.language,
+                ).format(url=url, title="")
+
+            # Add audio to media group
+            performer = None
+            if isinstance(audio, AudioDTO):
+                performer = (
+                    audio.artist or "Unknown"
+                ) + settings.telegram_filename_sufix
+
+            media_group.add_audio(
+                media=audio_input,
+                caption=caption,
+                performer=performer,
+                title=track,
+                parse_mode=self._bot.default.parse_mode,
+                thumbnail=thumbnail_input,
+            )
+
+        return media_group
 
     async def send_finish_downloading(
         self,

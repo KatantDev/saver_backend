@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
-from aiogram.types import Audio, Video
+from aiogram.types import Audio, Message, Video
 
 from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
@@ -248,6 +248,42 @@ class BaseSourceController(ABC):
         if telegram_audio:
             cache_model = await self._save_content_to_cache(audio_dto, telegram_audio)
             await self._create_history_entry(cache_model)
+
+    async def _send_audio_group(
+        self,
+        audios: list[AudioDTO],
+    ) -> None:
+        """
+        Send audio group and save to cache if not exists.
+
+        :param audios:   Original AudioDTO list
+        """
+        if not audios:
+            return
+
+        tg_messages: list[Message] | None = (
+            await self._telegram_bot_controller.send_finish_downloading_audio_group(
+                files=audios,
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+                language=self._telegram_bot_controller.language,
+            )
+        )
+
+        if not tg_messages:
+            return
+
+        for audio_dto, message in zip(audios, tg_messages):
+            if not message.audio:
+                continue
+
+            cache_model = await self._save_content_to_cache(
+                audio_dto,
+                message.audio,
+            )
+
+            if cache_model:
+                await self._create_history_entry(cache_model)
 
     async def _save_content_to_cache(
         self,

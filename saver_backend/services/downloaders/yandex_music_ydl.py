@@ -144,19 +144,7 @@ class YandexMusicController(YtDlpController):
         # Cleanup
         self.cleanup_files([audio_dto])
 
-    async def _send_audio_group(self, audio_dtos: List[AudioDTO]) -> None:
-        # Send audio group todo mark for del
-        for i, audio_dto in enumerate(audio_dtos):
-            should_del = (i == len(audio_dtos) - 1) and (self._message_id is not None)
-            msg_id_to_del = self._message_id if should_del else None
-
-            await self._telegram_bot_controller.send_finish_downloading_audio(
-                audio=audio_dto,
-                telegram_id=self._telegram_id,
-                message_id=msg_id_to_del,
-            )
-
-    async def _handle_album(self, album_id: str) -> None:
+    async def _handle_album(self, album_id: str, retries: int = 3) -> None:
         """
         Handle downloading of a full album.
 
@@ -168,16 +156,26 @@ class YandexMusicController(YtDlpController):
         self._process_percent(9)
 
         # First, get album info to extract track IDs
-        try:
-            info_dict = await asyncio.to_thread(
-                self._yt_dlp.extract_info,
-                url=album_url,
-                download=False,
-            )
-        except DownloadError as e:
-            logging.exception("Failed to fetch album info: %s", e)
-            await self._send_error_message()
-            return
+        for attempt in range(retries):
+            try:
+                info_dict = await asyncio.to_thread(
+                    self._yt_dlp.extract_info,
+                    url=album_url,
+                    download=False,
+                )
+                break
+            except DownloadError as e:
+                logging.exception(
+                    "Failed to fetch album info (attempt %d/%d): %s",
+                    attempt + 1,
+                    retries,
+                    e,
+                )
+                if attempt == retries - 1:  # Last attempt
+                    await self._send_error_message()
+                    return
+                # Wait a bit before retry (optional)
+                await asyncio.sleep(2**attempt)  # Exponential backoff: 1, 2, 4 seconds
 
         # Extract tracks from the album
         entries = info_dict.get("entries", [])
@@ -193,6 +191,7 @@ class YandexMusicController(YtDlpController):
 
         # Process each track
         audio_dtos: List[AudioDTO] = []
+
         for idx, entry in enumerate(entries):
             track_id = entry.get("id") or entry.get("display_id")
             if not track_id:
@@ -222,11 +221,7 @@ class YandexMusicController(YtDlpController):
 
         self._process_percent(73)
 
-        await self._telegram_bot_controller.send_finish_downloading_doc_group(
-            files=audio_dtos,
-            telegram_id=self._telegram_id,
-            message_id=self._message_id,
-        )
+        await self._send_audio_group(audios=audio_dtos)
 
         # Cleanup
         self.cleanup_files(audio_dtos)
