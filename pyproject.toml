@@ -12,7 +12,7 @@ maintainers = [
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.15"
+python = ">=3.12,<3.15"
 fastapi = "^0.121"
 uvicorn = { version = "^0.41", extras = ["standard"] }
 gunicorn = "^25"
@@ -44,6 +44,8 @@ emoji-country-flag = "^2.1.0"
 httpx = {extras = ["socks"], version = "^0.27"}
 vkbottle = ">=4.6.2"
 playwright = "^1.58.0"
+ymdantic = "^0.2.2"
+aiohttp-socks = "^0.11.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8"

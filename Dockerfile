@@ -1,4 +1,4 @@
-FROM python:3.11.4-slim-bullseye AS prod
+FROM python:3.13.12-slim-trixie AS prod
 RUN apt-get update && apt-get install -y \
   curl \
   ffmpeg \
