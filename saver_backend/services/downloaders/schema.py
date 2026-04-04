@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 
 from instaloader import Post, PostSidecarNode, StoryItem
 from pydantic import BaseModel, Field
+from ymdantic.models import TrackType
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import MAX_FILE_SIZE_BYTES
@@ -546,6 +547,54 @@ class AudioDTO(BaseContentDTO):
             artist=artist,
             track=track,
             track_url=track_url,
+            album_url=album_url,
+            thumbnail_url=thumbnail_url,
+        )
+
+    @classmethod
+    def from_yandmatic(
+        cls,
+        track: TrackType,
+        audio_url: str,
+        resolution_url: str,
+        album_id: Optional[str] = None,
+    ) -> Optional["AudioDTO"]:
+        """Create AudioDTO from yndmatic audio object."""
+        if track.id is None:
+            return None
+        title = f"{track.artists_names} — {track.title}"
+        thumbnail_url = None
+        # check for thumbnail in albums if available, it may differ from track thumb
+        if album_id and track.albums:
+            for album in track.albums:
+                if str(album.id) == str(album_id):
+                    if album.cover_uri:
+                        thumbnail_url = album.cover_uri
+                    break
+        # take default thumbnail from track model
+        if thumbnail_url is None:
+            thumbnail_url = track.cover_uri
+        if thumbnail_url is not None:
+            thumbnail_url = thumbnail_url.replace("%%", "300x300")
+            thumbnail_url = (
+                thumbnail_url
+                if thumbnail_url.startswith("http")
+                else "https://" + thumbnail_url
+            )
+
+        if "/track/" in resolution_url:
+            album_url = resolution_url.split("/track/")[0]
+        else:
+            album_url = resolution_url
+        return cls(
+            media_url=audio_url,
+            url=resolution_url,
+            title=title,
+            duration=int(track.duration_ms / 1000) if track.duration_ms else None,
+            source_id=str(track.id),
+            artist=track.artists_names,
+            track=track.title,
+            track_url=resolution_url,
             album_url=album_url,
             thumbnail_url=thumbnail_url,
         )

@@ -252,7 +252,7 @@ async def on_language_select(
             SourceEnum.FACEBOOK_YDL,
             SourceEnum.VK_API_YDL,
             SourceEnum.KINOVOD_YDL,
-            SourceEnum.YANDEX_MUSIC_YDL,
+            SourceEnum.YMDANTIC,
         ],
     ),
 )

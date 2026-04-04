@@ -56,17 +56,17 @@ def replace_in_files(replacements: List[Dict[str, str]]) -> None:
 # Example usage
 replacements = [
     {
-        "path": "/usr/local/lib/python3.11/site-packages/yt_dlp/extractor/yandexmusic.py",
+        "path": "/usr/local/lib/python3.13/site-packages/yt_dlp/extractor/yandexmusic.py",
         "search": "download_data['src'], track_id,",
         "replace": "f'https:{download_data[\"src\"]}' if download_data['src'].startswith('//')  else download_data['src'], track_id,",
     },
     {
-        "path": "/usr/local/lib/python3.11/site-packages/yt_dlp/extractor/yandexmusic.py",
+        "path": "/usr/local/lib/python3.13/site-packages/yt_dlp/extractor/yandexmusic.py",
         "search": "f_url = 'http://",
         "replace": "f_url = 'https://",
     },
     {
-        "path": "/usr/local/lib/python3.11/site-packages/yt_dlp/extractor/yandexmusic.py",
+        "path": "/usr/local/lib/python3.13/site-packages/yt_dlp/extractor/yandexmusic.py",
         "search": "thumbnail = 'http://",
         "replace": "thumbnail = 'https://",
     },

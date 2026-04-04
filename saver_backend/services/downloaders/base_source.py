@@ -246,6 +246,7 @@ class BaseSourceController(ABC):
         )
 
         if telegram_audio:
+            audio_dto.media_url = None
             cache_model = await self._save_content_to_cache(audio_dto, telegram_audio)
             await self._create_history_entry(cache_model)
 
@@ -276,7 +277,7 @@ class BaseSourceController(ABC):
         for audio_dto, message in zip(audios, tg_messages):
             if not message.audio:
                 continue
-
+            audio_dto.media_url = None
             cache_model = await self._save_content_to_cache(
                 audio_dto,
                 message.audio,

@@ -56,6 +56,9 @@ from saver_backend.services.downloaders.x_ydl_source import (
 from saver_backend.services.downloaders.yandex_music_ydl import (
     YandexMusicController,
 )
+from saver_backend.services.downloaders.yandex_ymdantic import (
+    YmdanticController,
+)
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
 )
@@ -650,6 +653,32 @@ class KinovodDetector(Detector):
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Kinovod video/serial url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class YmDanticDetector(Detector):
+    """Detector for Yandex Music ymdantic."""
+
+    SOURCE = SourceEnum.YMDANTIC
+    CONTROLLER = YmdanticController
+    HOSTS = (
+        "music.yandex.ru",
+        "music.yandex.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        YandexMusicContentTypeEnum.TRACK: re.compile(
+            r".*/track/(?P<code>\d+)(?:[?#]|$)",
+        ),
+        YandexMusicContentTypeEnum.ALBUM: re.compile(
+            r".*/album/(?P<code>\d+)(?:[?#]|$)",
+        ),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Yandex album/track url."""
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)

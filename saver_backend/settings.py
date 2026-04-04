@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     # VK Configuration
     vk_service_token: list[str] = ["vk_token"]
 
+    # Yandex music Configuration
+    ym_token: list[str] = ["ym_token"]
+
     # Telegram bot API URL
     telegram_bot_api_url: str = "http://bot-api:8081"
 
