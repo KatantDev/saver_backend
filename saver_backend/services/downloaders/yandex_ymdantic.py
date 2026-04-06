@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import secrets
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -35,7 +34,7 @@ class YmdanticController(BaseSourceController):
 
         proxy_url = self._proxy
         self._client = YMClient(
-            token=secrets.choice(settings.ym_token),
+            token=settings.ym_token,
             proxy=proxy_url or None,
         )
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value

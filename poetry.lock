@@ -4469,14 +4469,14 @@ propcache = ">=0.2.1"
 
 [[package]]
 name = "ymdantic"
-version = "0.2.2"
+version = "0.2.3"
 description = "Фреймворк предоставляющий доступ к API Яндекс Музыки (с Pydantic валидацией)"
 optional = false
 python-versions = "<3.15,>=3.12"
 groups = ["main"]
 files = [
-    {file = "ymdantic-0.2.2-py3-none-any.whl", hash = "sha256:67b9c960014258002edbbe1b5bdeda8b4f9b605217ba701fcf7adb24f1aeb4d7"},
-    {file = "ymdantic-0.2.2.tar.gz", hash = "sha256:8d9153d6e19fd0c07ded52ef6d7f4aee00b9226df237955cb63b974f5092638f"},
+    {file = "ymdantic-0.2.3-py3-none-any.whl", hash = "sha256:326536461a22d0427cc4bf702ac96298a215811affa6100020a9a7fd711bea5f"},
+    {file = "ymdantic-0.2.3.tar.gz", hash = "sha256:72b373753dbbfc488615a83456a0b04a2b87a9c979582ae8f18b8ecb02e93812"},
 ]
 
 [package.dependencies]
@@ -4513,4 +4513,4 @@ test = ["pytest (>=8.1,<9.0)", "pytest-rerunfailures (>=14.0,<15.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "cd60301cf947ab27142a45b16f22dfb8f50f91e1acfea1b9834254090976b6f0"
+content-hash = "819966a53aa6b04110e1f09b5944da7875e6dd1e9885e1ca0c712a44224b5a62"
