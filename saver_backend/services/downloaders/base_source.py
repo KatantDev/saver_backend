@@ -3,9 +3,9 @@ import logging
 import random
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
-from aiogram.types import Video
+from aiogram.types import Audio, Message, Video
 
 from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
@@ -103,7 +103,9 @@ class BaseSourceController(ABC):
         if language is None:
             user = await self._get_user_info()
             language = user.language
-
+        # A stub for other languages
+        if language not in ("ru", "en"):
+            language = "en"
         self._telegram_bot_controller.language = language
 
     async def _get_user_info(self) -> UserDTO:
@@ -230,10 +232,66 @@ class BaseSourceController(ABC):
                 telegram_video=telegram_video,
             )
 
+    async def _send_audio(
+        self,
+        audio_dto: AudioDTO,
+    ) -> None:
+        """Sends the audio to the user and then caches the result."""
+        telegram_audio = (
+            await (
+                self._telegram_bot_controller.send_finish_downloading_audio(
+                    audio=audio_dto,
+                    telegram_id=self._telegram_id,
+                    message_id=self._message_id,
+                )
+            )
+        )
+
+        if telegram_audio:
+            audio_dto.media_url = None
+            cache_model = await self._save_content_to_cache(audio_dto, telegram_audio)
+            await self._create_history_entry(cache_model)
+
+    async def _send_audio_group(
+        self,
+        audios: list[AudioDTO],
+    ) -> None:
+        """
+        Send audio group and save to cache if not exists.
+
+        :param audios:   Original AudioDTO list
+        """
+        if not audios:
+            return
+
+        tg_messages: list[Message] | None = (
+            await self._telegram_bot_controller.send_finish_downloading_audio_group(
+                files=audios,
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+                language=self._telegram_bot_controller.language,
+            )
+        )
+
+        if not tg_messages:
+            return
+
+        for audio_dto, message in zip(audios, tg_messages):
+            if not message.audio:
+                continue
+            audio_dto.media_url = None
+            cache_model = await self._save_content_to_cache(
+                audio_dto,
+                message.audio,
+            )
+
+            if cache_model:
+                await self._create_history_entry(cache_model)
+
     async def _save_content_to_cache(
         self,
         content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO,
-        telegram_video: Video,
+        telegram_video: Video | Audio,
     ) -> CacheModel | None:
         """
         Save content details to the cache.
@@ -383,7 +441,7 @@ class BaseSourceController(ABC):
                 error_text=_("inline mode blocked error"),
             )
 
-    def cleanup_files(self, dtos: list[VideoDTO | PhotoDTO]) -> None:
+    def cleanup_files(self, dtos: Sequence[VideoDTO | PhotoDTO | AudioDTO]) -> None:
         """
         Safely deletes the downloaded files and thumbnails from a list of DTOs.
 

@@ -12,7 +12,7 @@ from vkbottle_types.objects import (
     WallWallpostAttachmentType,
     WallWallpostFull,
 )
-from yt_dlp import DownloadError
+from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
 from saver_backend.services.downloaders.schema import AudioDTO, PhotoDTO, VideoDTO

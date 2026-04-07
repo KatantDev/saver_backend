@@ -61,12 +61,16 @@ class Settings(BaseSettings):
     # Telegram bot configuration.
     telegram_bot_token: str = "42:TOKEN"
     telegram_secret_token: str = "verysecrettoken"
+    telegram_filename_sufix: str = " [@saver]"
     subscription_channels: list[str] = ["channel_username"]
     admin_chat_id: int = -4816121008
     instagram_account: str = "username:password"
 
     # VK Configuration
     vk_service_token: list[str] = ["vk_token"]
+
+    # Yandex music Configuration
+    ym_token: str = "ym_token"
 
     # Telegram bot API URL
     telegram_bot_api_url: str = "http://bot-api:8081"
