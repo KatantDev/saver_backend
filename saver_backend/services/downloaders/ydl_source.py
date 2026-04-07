@@ -3,7 +3,7 @@ import logging
 import secrets
 from abc import ABC
 from pathlib import Path
-from typing import Any, ClassVar, Dict
+from typing import Any, ClassVar, Dict, Sequence
 
 import sentry_sdk
 import yt_dlp
@@ -16,7 +16,7 @@ from saver_backend.services.downloaders.exceptions import (
     IPAddressBlockedError,
     VideoInfoNotSetError,
 )
-from saver_backend.services.downloaders.schema import PhotoDTO, VideoDTO
+from saver_backend.services.downloaders.schema import AudioDTO, PhotoDTO, VideoDTO
 from saver_backend.settings import settings
 
 
@@ -271,7 +271,7 @@ class YtDlpController(BaseSourceController, ABC):
                 return None
             raise
 
-    def cleanup_files(self, dtos: list[VideoDTO | PhotoDTO]) -> None:
+    def cleanup_files(self, dtos: Sequence[VideoDTO | PhotoDTO | AudioDTO]) -> None:
         """
         Safely deletes the downloaded files and thumbnails from a list of DTOs.
 

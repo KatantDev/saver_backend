@@ -25,6 +25,8 @@ services:
         condition: service_healthy
       telegram-bot-api:
         condition: service_started
+      chrome:
+        condition: service_started
     environment:
       SAVER_BACKEND_HOST: 0.0.0.0
       SAVER_BACKEND_DB_HOST: saver_backend-db
@@ -170,6 +172,25 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - default
+
+  chrome:
+    image: chromedp/headless-shell:latest
+    hostname: saver_backend-chrome
+    healthcheck:
+      disable: true
+    ports:
+      - "9223:9223"
+    shm_size: 1gb
+    command:
+      - --no-sandbox
+      - --disable-gpu
+      - --remote-debugging-address=0.0.0.0
+      - --remote-debugging-port=9223
+      - --remote-allow-origins=*
+      # - --proxy-server=${CHROME_HTTP_PROXY}
+    networks:
+      - default
+    restart: no
 
 networks:
   default:

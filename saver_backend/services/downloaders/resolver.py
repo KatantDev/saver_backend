@@ -4,7 +4,11 @@ from abc import ABC, abstractmethod
 from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar
 from urllib.parse import urlparse, urlunparse
 
-from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
+from saver_backend.entities.enums import (
+    InstagramContentTypeEnum,
+    SourceEnum,
+    YandexMusicContentTypeEnum,
+)
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.adult_ydl_source import AdultYdlController
 from saver_backend.services.downloaders.base_source import BaseSourceController
@@ -22,6 +26,9 @@ from saver_backend.services.downloaders.instagram_instaloader_source import (
 )
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
+)
+from saver_backend.services.downloaders.kinovod_ydl_source import (
+    KinovodYdlController,
 )
 from saver_backend.services.downloaders.m3u8_ydl_source import M3U8YdlController
 from saver_backend.services.downloaders.ok_ydl_source import (
@@ -45,6 +52,9 @@ from saver_backend.services.downloaders.vk_video_ydl_source import (
 )
 from saver_backend.services.downloaders.x_ydl_source import (
     XYdlController,
+)
+from saver_backend.services.downloaders.yandex_ymdantic import (
+    YmdanticController,
 )
 from saver_backend.services.downloaders.youtube_shorts_ydl_source import (
     YouTubeShortsYdlController,
@@ -621,6 +631,56 @@ class FacebookDetector(Detector):
         return self._match_regex(url)
 
 
+@register_detector()
+class KinovodDetector(Detector):
+    """Detector for Kinovod videos."""
+
+    SOURCE = SourceEnum.KINOVOD_YDL
+    CONTROLLER = KinovodYdlController
+    HOSTS = (
+        "kinovod.pro",
+        "www.kinovod.pro",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "film": re.compile(r"^/film/(?P<code>[^/]+)(?:/.*)?$"),
+        "tv_show": re.compile(r"^/tv_show/(?P<code>[^/]+)(?:/.*)?$"),
+        "serial": re.compile(r"^/serial/(?P<code>[^/]+)(?:/.*)?$"),
+        "trailer": re.compile(r"^/trailer/(?P<code>[^/]+)(?:/.*)?$"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Kinovod video/serial url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class YmDanticDetector(Detector):
+    """Detector for Yandex Music ymdantic."""
+
+    SOURCE = SourceEnum.YMDANTIC
+    CONTROLLER = YmdanticController
+    HOSTS = (
+        "music.yandex.ru",
+        "music.yandex.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        YandexMusicContentTypeEnum.TRACK: re.compile(
+            r".*/track/(?P<code>\d+)(?:[?#]|$)",
+        ),
+        YandexMusicContentTypeEnum.ALBUM: re.compile(
+            r".*/album/(?P<code>\d+)(?:[?#]|$)",
+        ),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Yandex album/track url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
 class SourceResolver:
     """Resolver for source of the message."""
 
@@ -641,7 +701,6 @@ class SourceResolver:
         """
         url_match = self._URL_RE.search(text)
         url = url_match.group(1) if url_match else text
-
         for detector in self._detectors.values():
             res = detector.match(url)
             if res is not None:

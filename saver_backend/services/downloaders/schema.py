@@ -8,12 +8,14 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 
 from instaloader import Post, PostSidecarNode, StoryItem
 from pydantic import BaseModel, Field
+from ymdantic.models import TrackType
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import MAX_FILE_SIZE_BYTES
 from saver_backend.services.language_resolver import LanguageResolver
 
 if TYPE_CHECKING:
+    from aiogram.types import Audio as TgAudio
     from aiogram.types import Video as TgVideo
 
 
@@ -202,16 +204,25 @@ class VideoDTO(BaseContentDTO):
 
         :return: html string
         """
+        if self.quality is not None and self.quality != "best":
+            qualities = {}
+            for key, formats in self.unique_formats.items():
+                for fmt in formats:
+                    qualities[fmt.format_id] = key
+            quality = f"[{qualities[self.quality]}]"
+        else:
+            quality = "→"
         if self.channel:
             title_html = (
-                f'📹 {self.title} <a href="{self.url}">→</a>\n'
-                f'👤 {self.channel} <a href="{self.channel_url}">→</a>'
+                f'<b>{self.title}\u00A0<a href="{self.url}">{quality}</a></b>\n\n'
+                f"#{self.channel.replace(' ','_')}"
+                f'<a href="{self.channel_url}">\u00A0→</a>'
                 f"\n"
             )
         elif self.title:
-            title_html = f'📹 {self.title} <a href="{self.url}">→</a>'
+            title_html = f'<b>{self.title}{quality}\u00A0<a href="{self.url}">→</a></b>'
         else:
-            title_html = ""
+            title_html = self.url or ""
         return title_html
 
     def get_format_by_id(self, format_id: str) -> FormatDTO | None:
@@ -439,6 +450,14 @@ class AudioDTO(BaseContentDTO):
     path: str | Path | None = None
     media_url: str | None = None
     duration: int | None = None
+    artist: str | None = None
+    track: str | None = None
+    track_url: str | None = None
+    album_url: str | None = None
+    thumbnail_url: str | None = None
+    thumbnail: str | Path | None = None
+
+    direct_download_url: str | None = None
 
     @classmethod
     def from_tikwm(cls, data: "TikWMData", resolution_url: str) -> "AudioDTO | None":
@@ -495,6 +514,109 @@ class AudioDTO(BaseContentDTO):
             duration=audio_data.get("duration"),
             source_id=source_id,
         )
+
+    @classmethod
+    def from_yandexmusic(
+        cls,
+        audio_data: dict[str, Any],
+        resolution_url: str,
+    ) -> Optional["AudioDTO"]:
+        """Create AudioDTO from yandex music audio object."""
+        source_id = audio_data.get("id")
+
+        if not source_id:
+            return None
+
+        duration = audio_data.get("duration")
+        if isinstance(duration, float):
+            duration = int(duration)
+
+        audio_url = audio_data.get("url", "")
+
+        title = audio_data.get("fulltitle") or audio_data.get("title")
+
+        track_url = audio_data.get("original_url", "")
+        album_url = track_url.split("/track")[0]
+        track = audio_data.get("track")
+        entries = audio_data.get("entries", [])
+        if entries:
+            thumbnail_url = entries[0].get("thumbnail")
+            artist = entries[0].get("artist")
+        else:
+            thumbnail_url = audio_data.get("thumbnail")
+            artist = audio_data.get("artist")
+        title = f"{artist} — {track}"
+        thumbnail_url = thumbnail_url.replace("/orig", "/300x300")
+        return cls(
+            media_url=audio_url,
+            url=resolution_url,
+            title=title,
+            duration=duration,
+            source_id=source_id,
+            artist=artist,
+            track=track,
+            track_url=track_url,
+            album_url=album_url,
+            thumbnail_url=thumbnail_url,
+        )
+
+    @classmethod
+    def from_yandmatic(
+        cls,
+        track: TrackType,
+        audio_url: str,
+        resolution_url: str,
+        album_id: Optional[str] = None,
+    ) -> Optional["AudioDTO"]:
+        """Create AudioDTO from yndmatic audio object."""
+        if track.id is None:
+            return None
+        title = f"{track.artists_names} — {track.title}"
+        thumbnail_url = None
+        # check for thumbnail in albums if available, it may differ from track thumb
+        if album_id and track.albums:
+            for album in track.albums:
+                if str(album.id) == str(album_id):
+                    if album.cover_uri:
+                        thumbnail_url = album.cover_uri
+                    break
+        # take default thumbnail from track model
+        if thumbnail_url is None:
+            thumbnail_url = track.cover_uri
+        if thumbnail_url is not None:
+            thumbnail_url = thumbnail_url.replace("%%", "300x300")
+            thumbnail_url = (
+                thumbnail_url
+                if thumbnail_url.startswith("http")
+                else "https://" + thumbnail_url
+            )
+
+        if "/track/" in resolution_url:
+            album_url = resolution_url.split("/track/")[0]
+        else:
+            album_url = resolution_url
+        return cls(
+            media_url=audio_url,
+            url=resolution_url,
+            title=title,
+            duration=int(track.duration_ms / 1000) if track.duration_ms else None,
+            source_id=str(track.id),
+            artist=track.artists_names,
+            track=track.title,
+            track_url=resolution_url,
+            album_url=album_url,
+            thumbnail_url=thumbnail_url,
+        )
+
+    @property
+    def title_html(self) -> Optional[str]:
+        """Make html title string."""
+        track_url = self.track_url
+        if track_url:
+            _title_html = f"<a href='{self.track_url}'>{self.track}</a>"
+        else:
+            _title_html = f"<a href='{self.url}'>{self.title}</a>"
+        return _title_html
 
 
 class PhotoListDTO(BaseContentDTO):
@@ -553,7 +675,7 @@ class CacheDTO(BaseModel):
     def from_telegram_object(
         cls,
         source: SourceEnum,
-        telegram_video: "TgVideo",
+        telegram_video: Union["TgVideo", "TgAudio"],
         content_dto: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO,
         quality: str | None,
     ) -> Optional["CacheDTO"]:

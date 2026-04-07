@@ -19,10 +19,12 @@ from aiogram.exceptions import (
 )
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import (
+    Audio,
     FSInputFile,
     InlineQueryResultArticle,
     InlineQueryResultCachedVideo,
     InlineQueryResultVideo,
+    InputFile,
     InputTextMessageContent,
     Message,
     Update,
@@ -323,7 +325,7 @@ class TelegramBotController:
             title=video_dto.title or "Video",
             description=video_dto.description,
             caption=_("result direct message").format(
-                url=video_dto.url,
+                url="",
                 title=video_dto.title_html,
             ),
         )
@@ -482,13 +484,84 @@ class TelegramBotController:
             )
             await self._send(coro2)
 
+    def _get_thumbnail(self, audio: AudioDTO) -> FSInputFile | URLInputFile | None:
+        """
+        Get thumbnail input for audio.
+
+        :param audio: AudioDTO object.
+        :return: Thumbnail input or None.
+        """
+        if isinstance(audio, AudioDTO):
+            if audio.thumbnail:
+                return FSInputFile(path=audio.thumbnail)
+            if audio.thumbnail_url:
+                return URLInputFile(url=audio.thumbnail_url, timeout=60)
+        return None
+
+    async def _send_audio_with_media_input(
+        self,
+        audio_input: str | URLInputFile | FSInputFile,
+        thumbnail_input: URLInputFile | FSInputFile | None,
+        audio: AudioDTO,
+        telegram_id: int,
+        language: str | None = None,
+    ) -> Audio | None:
+        """
+        Send audio with prepared media input.
+
+        :param audio_input: Prepared audio input (URL, FSInputFile, or URLInputFile).
+        :param thumbnail_input: Prepared thumbnail input or None.
+        :param audio: Audio DTO.
+        :param telegram_id: Telegram ID of the user.
+        :param language: Language code.
+        :return: Sent Audio object or None.
+        """
+        caption = "\u200B\n" + _(
+            "result direct message",
+            locale=language or self.language,
+        ).format(
+            url=audio.url,
+            title="",
+        )
+
+        try:
+            message = await self._bot.send_audio(
+                chat_id=telegram_id,
+                audio=audio_input,
+                caption=caption,
+                title=audio.track,
+                duration=audio.duration,
+                performer=audio.artist,
+                thumbnail=thumbnail_input,
+            )
+            return message.audio
+        except (TelegramForbiddenError, TelegramBadRequest) as e:
+            logging.warning(
+                "Failed to send audio to user %s: %s",
+                telegram_id,
+                e,
+            )
+            return None
+        except TelegramNetworkError as e:
+            logging.warning(
+                "Network error while sending audio to user %s: %s",
+                telegram_id,
+                e,
+            )
+            return None
+        except Exception as e:
+            if settings.environment == "local":
+                logging.exception(e)
+            capture_exception(e)
+            return None
+
     async def send_finish_downloading_audio(
         self,
         audio: AudioDTO,
         telegram_id: int,
         message_id: int | None = None,
         language: str | None = None,
-    ) -> None:
+    ) -> Audio | None:
         """
         Send finish downloading audio message.
 
@@ -496,15 +569,24 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID to delete after sending.
         :param language: Language code.
+        :return: Sent Audio object or None.
         """
-        audio_input: URLInputFile | FSInputFile | None = None
-        if audio.media_url:
+        audio_input: str | URLInputFile | FSInputFile | None = None
+        thumbnail_input = self._get_thumbnail(audio)
+
+        if audio.direct_download_url is not None:
+            audio_input = audio.direct_download_url
+            thumbnail_input = None
+        elif audio.media_url is not None:
             audio_input = URLInputFile(
                 url=audio.media_url,
-                filename=audio.title,
+                filename=(audio.title or "audio") + settings.telegram_filename_sufix,
             )
-        elif audio.path:
-            audio_input = FSInputFile(path=audio.path)
+        elif audio.path is not None:
+            audio_input = FSInputFile(
+                path=audio.path,
+                filename=(audio.title or "audio") + settings.telegram_filename_sufix,
+            )
 
         if not audio_input:
             logging.error(
@@ -512,28 +594,24 @@ class TelegramBotController:
             )
             if message_id:
                 await self.delete_message(telegram_id, message_id)
-            return
+            return None
 
-        caption = _(
-            "result direct message",
-            locale=language or self.language,
-        ).format(url=audio.url, title="")
-
-        coro = self._bot.send_audio(
-            chat_id=telegram_id,
-            audio=audio_input,
-            caption=caption,
-            title=audio.title,
-            duration=audio.duration,
+        message_audio = await self._send_audio_with_media_input(
+            audio_input=audio_input,
+            thumbnail_input=thumbnail_input,
+            audio=audio,
+            telegram_id=telegram_id,
+            language=language,
         )
-        await self._send(coro)
 
-        if message_id is not None:
+        if message_id is not None and message_audio is not None:
             coro2 = self._bot.delete_message(
                 message_id=message_id,
                 chat_id=telegram_id,
             )
             await self._send(coro2)
+
+        return message_audio
 
     async def send_finish_downloading_photo(
         self,
@@ -573,6 +651,134 @@ class TelegramBotController:
             )
             await self._send(coro2)
 
+    async def send_finish_downloading_audio_group(
+        self,
+        files: Sequence[AudioDTO | CacheModel],
+        telegram_id: int,
+        message_id: int | None = None,
+        language: str | None = None,
+    ) -> list[Message]:
+        """
+        Send finish downloading document group message.
+
+        :param files: List of AudioDTO objects.
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID to delete after sending.
+        :param language: Language code.
+        """
+        chunk_size = 10
+        total_audios = len(files)
+        messages: list[Message] = []
+
+        for i in range(0, total_audios, chunk_size):
+            chunk = files[i : i + chunk_size]
+            media_group = self._build_audio_media_group(chunk, language)
+
+            if media_group.build():
+                tg_messages = await self._bot.send_media_group(
+                    chat_id=telegram_id,
+                    media=media_group.build(),
+                )
+                messages.extend(tg_messages)
+
+        if message_id is not None:
+            coro = self._bot.delete_message(
+                message_id=message_id,
+                chat_id=telegram_id,
+            )
+            await self._send(coro)
+
+        return messages
+
+    def _build_audio_media_group(
+        self,
+        chunk: Sequence[AudioDTO | CacheModel],
+        language: str | None = None,
+    ) -> MediaGroupBuilder:
+        """
+        Build a media group for audio files.
+
+        :param chunk: A chunk of audio files (max 10).
+        :param language: Language for captions.
+        :return: MediaGroupBuilder with added audio files.
+        """
+        media_group = MediaGroupBuilder()
+
+        for ind, audio in enumerate(chunk):
+            audio_input: str | URLInputFile | InputFile | None = None
+            thumbnail_input: URLInputFile | InputFile | None = None
+            track: str | None = None
+
+            # Prepare audio data based on type
+
+            if isinstance(audio, CacheModel) and isinstance(
+                audio.meta_data_dto,
+                AudioDTO,
+            ):
+                audio_input = audio.file_id
+                track = (
+                    audio.meta_data_dto.track
+                    if hasattr(audio.meta_data_dto, "track")
+                    else None
+                )
+                thumbnail_input = None
+                url = audio.meta_data_dto.url
+            elif isinstance(audio, AudioDTO):
+                url = audio.url
+                track = audio.track
+                thumbnail_input = (
+                    URLInputFile(url=audio.thumbnail_url)
+                    if audio.thumbnail_url
+                    else None
+                )
+                if audio.direct_download_url:
+                    audio_input = audio.direct_download_url
+                elif audio.media_url:
+                    audio_input = URLInputFile(
+                        url=audio.media_url,
+                        filename=(audio.title or "audio")
+                        + settings.telegram_filename_sufix,
+                    )
+                elif audio.path:
+                    audio_input = FSInputFile(
+                        path=audio.path,
+                        filename=(audio.title or "audio")
+                        + settings.telegram_filename_sufix,
+                    )
+
+            if not audio_input:
+                logging.error(
+                    "Cannot send audio document: "
+                    "No media_url or valid file path provided.",
+                )
+                continue
+
+            if ind < len(chunk) - 1:
+                caption = "\u200B"
+            else:
+                caption = "\u200B\n" + _(
+                    "result direct message",
+                    locale=language or self.language,
+                ).format(url=url, title="")
+
+            # Add audio to media group
+            performer = None
+            if isinstance(audio, AudioDTO):
+                performer = (
+                    audio.artist or "Unknown"
+                ) + settings.telegram_filename_sufix
+
+            media_group.add_audio(
+                media=audio_input,
+                caption=caption,
+                performer=performer,
+                title=track,
+                parse_mode=self._bot.default.parse_mode,
+                thumbnail=thumbnail_input,
+            )
+
+        return media_group
+
     async def send_finish_downloading(
         self,
         video: VideoDTO,
@@ -598,12 +804,20 @@ class TelegramBotController:
             video_input = (
                 video.direct_download_url
                 if video.duration and video.duration < 180
-                else URLInputFile(url=video.direct_download_url)
+                else URLInputFile(
+                    url=video.direct_download_url,
+                    filename=video.title
+                    or video.direct_download_url + settings.telegram_filename_sufix,
+                )
             )
             thumbnail_input = video.thumbnail_url
         elif video.path and video.path.exists():
             logging.info("Sending video via file upload: %s", video.path)
-            video_input = FSInputFile(path=video.path)
+            video_input = FSInputFile(
+                path=video.path,
+                filename=video.title
+                or str(video.source_id) + settings.telegram_filename_sufix,
+            )
             if video.thumbnail and Path(video.thumbnail).exists():
                 thumbnail_input = FSInputFile(path=video.thumbnail)
         else:
@@ -611,7 +825,6 @@ class TelegramBotController:
                 "Cannot send video: No direct URL or valid file path provided.",
             )
             return None
-
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
@@ -619,7 +832,7 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=video.url, title=video.title_html),
+                ).format(url="", title=video.title_html),
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
@@ -672,7 +885,7 @@ class TelegramBotController:
                     "result direct message",
                     locale=language or self.language,
                 ).format(
-                    url=url,
+                    url="",
                     title=cache_item.meta_data_dto.title_html,
                 ),
             )

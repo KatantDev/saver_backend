@@ -61,12 +61,16 @@ class Settings(BaseSettings):
     # Telegram bot configuration.
     telegram_bot_token: str = "42:TOKEN"
     telegram_secret_token: str = "verysecrettoken"
+    telegram_filename_sufix: str = " [@saver]"
     subscription_channels: list[str] = ["channel_username"]
     admin_chat_id: int = -4816121008
     instagram_account: str = "username:password"
 
     # VK Configuration
     vk_service_token: list[str] = ["vk_token"]
+
+    # Yandex music Configuration
+    ym_token: str = "ym_token"
 
     # Telegram bot API URL
     telegram_bot_api_url: str = "http://bot-api:8081"
@@ -78,6 +82,11 @@ class Settings(BaseSettings):
     # Downloader settings
     proxies: list[str] = []
     proxies_ru: list[str] = []
+
+    # chrome headless settings
+    chrome_host: str = "saver_backend-chrome"
+    chrome_port: int = 9222
+    _chrome_cdp_url: Optional[str] = None
 
     @property
     def webhook_telegram_url(self) -> str:
@@ -129,6 +138,33 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def chrome_cdp_url(self) -> str:
+        """
+        Assemble chrome CDP URL from settings.
+
+        :return: chrome CDP URL.
+        """
+        if self._chrome_cdp_url is None:
+            import socket
+
+            def get_chrome_ip(chrome_host: str = "saver_backend-chrome") -> str:
+                """
+                Get IP of chrome container.
+
+                :param chrome_host:
+                :return: ip of chrome container.
+                """
+                try:
+                    # try resolve host name
+                    return socket.gethostbyname(chrome_host)
+                except socket.gaierror:
+                    return "172.18.0.2"
+
+            chrome_ip = get_chrome_ip(self.chrome_host)
+            self._chrome_cdp_url = f"http://{chrome_ip}:{self.chrome_port}"
+        return self._chrome_cdp_url
 
 
 settings = Settings()

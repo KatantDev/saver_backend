@@ -251,6 +251,8 @@ async def on_language_select(
             SourceEnum.ADULT_YDL,
             SourceEnum.FACEBOOK_YDL,
             SourceEnum.VK_API_YDL,
+            SourceEnum.KINOVOD_YDL,
+            SourceEnum.YMDANTIC,
         ],
     ),
 )
