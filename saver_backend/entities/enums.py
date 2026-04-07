@@ -41,7 +41,6 @@ class SourceEnum(str, Enum):
     UNSUPPORTED = "unsupported"
     M3U8_YDL = "m3u8_ydl"
     KINOVOD_YDL = "kinovod_ydl"
-    YANDEX_MUSIC_YDL = "yandex_music_ydl"
     YMDANTIC = "ymdantic"
 
 
