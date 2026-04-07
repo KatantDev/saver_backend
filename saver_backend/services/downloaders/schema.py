@@ -204,16 +204,25 @@ class VideoDTO(BaseContentDTO):
 
         :return: html string
         """
+        if self.quality is not None and self.quality != "best":
+            qualities = {}
+            for key, formats in self.unique_formats.items():
+                for fmt in formats:
+                    qualities[fmt.format_id] = key
+            quality = f"[{qualities[self.quality]}]"
+        else:
+            quality = "→"
         if self.channel:
             title_html = (
-                f'📹 <b><a href="{self.url}">{self.title}</a></b>\n'
-                f'👤 <a href="{self.channel_url}">{self.channel}</a>'
+                f'<b>{self.title}\u00A0<a href="{self.url}">{quality}</a></b>\n\n'
+                f"#{self.channel.replace(' ','_')}"
+                f'<a href="{self.channel_url}">\u00A0→</a>'
                 f"\n"
             )
         elif self.title:
-            title_html = f'📹 <b><a href="{self.url}">{self.title}</a></b>'
+            title_html = f'<b>{self.title}{quality}\u00A0<a href="{self.url}">→</a></b>'
         else:
-            title_html = ""
+            title_html = self.url or ""
         return title_html
 
     def get_format_by_id(self, format_id: str) -> FormatDTO | None:

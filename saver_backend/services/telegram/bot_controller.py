@@ -325,7 +325,7 @@ class TelegramBotController:
             title=video_dto.title or "Video",
             description=video_dto.description,
             caption=_("result direct message").format(
-                url=video_dto.url,
+                url="",
                 title=video_dto.title_html,
             ),
         )
@@ -804,12 +804,20 @@ class TelegramBotController:
             video_input = (
                 video.direct_download_url
                 if video.duration and video.duration < 180
-                else URLInputFile(url=video.direct_download_url)
+                else URLInputFile(
+                    url=video.direct_download_url,
+                    filename=video.title
+                    or video.direct_download_url + settings.telegram_filename_sufix,
+                )
             )
             thumbnail_input = video.thumbnail_url
         elif video.path and video.path.exists():
             logging.info("Sending video via file upload: %s", video.path)
-            video_input = FSInputFile(path=video.path)
+            video_input = FSInputFile(
+                path=video.path,
+                filename=video.title
+                or str(video.source_id) + settings.telegram_filename_sufix,
+            )
             if video.thumbnail and Path(video.thumbnail).exists():
                 thumbnail_input = FSInputFile(path=video.thumbnail)
         else:
@@ -817,7 +825,6 @@ class TelegramBotController:
                 "Cannot send video: No direct URL or valid file path provided.",
             )
             return None
-
         try:
             message = await self._bot.send_video(
                 chat_id=telegram_id,
@@ -825,7 +832,7 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url=video.url, title=video.title_html),
+                ).format(url="", title=video.title_html),
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
@@ -878,7 +885,7 @@ class TelegramBotController:
                     "result direct message",
                     locale=language or self.language,
                 ).format(
-                    url=url,
+                    url="",
                     title=cache_item.meta_data_dto.title_html,
                 ),
             )

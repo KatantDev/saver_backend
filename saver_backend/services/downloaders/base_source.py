@@ -103,7 +103,9 @@ class BaseSourceController(ABC):
         if language is None:
             user = await self._get_user_info()
             language = user.language
-
+        # A stub for other languages
+        if language not in ("ru", "en"):
+            language = "en"
         self._telegram_bot_controller.language = language
 
     async def _get_user_info(self) -> UserDTO:
