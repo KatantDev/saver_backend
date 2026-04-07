@@ -1,8 +1,11 @@
 import asyncio
 import logging
+import socket
+from collections import deque
 from typing import Any, ClassVar, Optional
-from urllib.parse import urlparse
 
+import httpx
+import slippers
 from playwright.async_api import (
     Browser,
     BrowserContext,
@@ -66,6 +69,8 @@ class KinovodYdlController(YtDlpController):
         self._page: Optional[Page] = None
         self._source_id: Optional[str] = None
         self._title: Optional[str] = None
+        self._proxy_local: Optional[slippers.Proxy] = None
+        self._proxies_rotate: deque[str] = deque(self._proxies)
 
     async def close(self) -> None:
         """Close browser and page resources."""
@@ -193,6 +198,99 @@ class KinovodYdlController(YtDlpController):
             logging.exception("Unexpected error downloading video %s: %s", video_url, e)
             return None
 
+    def _is_port_free(self, port: int, host: str = settings.taskiq_worker_host) -> bool:
+        """
+        Check if a port is free on the given host.
+
+        Args:
+            port: Port number to check
+            host: Hostname or IP address
+
+        Returns:
+            True if port is free, False otherwise
+        """
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind((host, port))
+                return True
+            except socket.error:
+                return False
+
+    async def _prepare_proxy(self, url: str, timeout: int = 5) -> bool:
+        """
+        Check if proxy is working.
+
+        :param url: URL to test the proxy against.
+        :param timeout: Timeout in seconds.
+        :return: True if proxy works, False otherwise.
+        """
+        if not self._proxy:
+            return False
+
+        while True:
+            try:
+                async with httpx.AsyncClient(
+                    proxy=self._proxy,
+                    timeout=timeout,
+                ) as client:
+                    response = await client.get(url)
+                    return response.status_code < 500
+            except Exception:
+                logging.warning(f"Bad proxy {self._proxy}")
+                self._proxies_rotate.rotate(-1)
+                self._proxy = self._proxies_rotate[0]
+                return False
+
+    def _find_free_port(self, start_port: int = 31080, end_port: int = 31200) -> int:
+        """
+        Find a free port in the specified range.
+
+        Args:
+            start_port: Starting port number (inclusive)
+            end_port: Ending port number (inclusive)
+
+        Returns:
+            Free port number
+
+        Raises:
+            RuntimeError: If no free port found in the range
+        """
+        for port in range(start_port, end_port + 1):
+            if self._is_port_free(port):
+                logging.info("Found free port: %d", port)
+                return port
+        raise RuntimeError(f"No free port found in range {start_port}-{end_port}")
+
+    async def _raise_proxy(self, port: int) -> None:
+        """
+        Create and start a local SOCKS5 proxy passthrough for authenticated upstream.
+
+        The proxy is stored in self._proxy_local and automatically starts in background.
+        Upstream proxy URL is taken from settings._proxy
+
+        Args:
+            port: Local port to bind the proxy to
+
+        Raises:
+            RuntimeError: when local proxy is failed to start
+        """
+        await self._prepare_proxy(self._resolution.url)
+        upstream_proxy_url = self._proxy
+
+        logging.info("Starting slippers proxy on :%d -> %s", port, upstream_proxy_url)
+        self._proxy_local = slippers.Proxy(
+            upstream_proxy_url,
+            host=settings.taskiq_worker_host,
+            port=port,
+        )
+        self._proxy_local.start()
+        await asyncio.sleep(1)
+        # Verify proxy is actually running
+        if not self._is_port_free(port):
+            logging.info("Slippers proxy successfully started on port %d", port)
+        else:
+            raise RuntimeError(f"Failed to start slippers proxy on port {port}")
+
     async def start_cdp(self) -> None:
         """
         Start cdp session.
@@ -203,37 +301,28 @@ class KinovodYdlController(YtDlpController):
         playwright = await async_playwright().start()
         self._playwright = playwright
 
+        # Find free port for slippers proxy
+        local_proxy_port = self._find_free_port()
+
+        # Start slippers proxy
+        await self._raise_proxy(local_proxy_port)
+
         # Get Chrome CDP URL from settings
         chrome_cdp_url = settings.chrome_cdp_url
 
-        logging.info("Connecting to Chrome CDP: %s", chrome_cdp_url)
+        logging.info("Connecting... to Chrome CDP: %s", chrome_cdp_url)
 
         # Connect to existing Chrome container
         browser = await playwright.chromium.connect_over_cdp(chrome_cdp_url)
         self._browser = browser
 
-        # Create context with proxy if configured
-        proxy_settings = None
-        if self._proxy:
-            parsed_proxy = urlparse(self._proxy)
-            server = (
-                f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}"
-            )
-
-            if parsed_proxy.username and parsed_proxy.password:
-                proxy_settings = ProxySettings(
-                    server=server,
-                    username=parsed_proxy.username,
-                    password=parsed_proxy.password,
-                )
-            else:
-                proxy_settings = ProxySettings(server=server)
-            logging.info("Using proxy: %s", server)
-
-        # Create new context with proxy (this overrides browser proxy settings)
+        # Create context with proxy (per-context proxy overrides global if set) #
+        proxy_settings = ProxySettings(
+            server=f"socks5://{settings.taskiq_worker_host}:{local_proxy_port}",
+        )
         self._context = await browser.new_context(
-            proxy=proxy_settings if proxy_settings else None,
             ignore_https_errors=True,
+            proxy=proxy_settings,
         )
 
         self._page = await self._context.new_page()
@@ -256,7 +345,6 @@ class KinovodYdlController(YtDlpController):
             return
 
         try:
-
             self._source_id = url.split("/")[-1].split(".")[0]
 
             # Check cache first
@@ -324,5 +412,9 @@ class KinovodYdlController(YtDlpController):
             await self._context.close()
         if self._browser:
             await self._browser.close()
+        # Stop slippers proxy if it was started
+        if self._proxy_local:
+            self._proxy_local.stop()
+            logging.info("Stopped slippers proxy")
         if self._playwright:
             await self._playwright.stop()

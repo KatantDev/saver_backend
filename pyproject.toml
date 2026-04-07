@@ -46,6 +46,7 @@ vkbottle = ">=4.6.2"
 playwright = "^1.58.0"
 ymdantic = "^0.2.3"
 aiohttp-socks = "^0.11.0"
+slippers-proxy = "^0.3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8"
