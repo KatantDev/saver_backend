@@ -36,7 +36,7 @@ class KinovodYdlController(YtDlpController):
     """
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.KINOVOD_YDL
-    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.ALL
     COOKIES: ClassVar[bool] = False
 
     # Selectors
@@ -239,6 +239,7 @@ class KinovodYdlController(YtDlpController):
                 logging.warning(f"Bad proxy {self._proxy}")
                 self._proxies_rotate.rotate(-1)
                 self._proxy = self._proxies_rotate[0]
+                self._yt_dlp.params.update({"proxy": self._proxy})
                 return False
 
     def _find_free_port(self, start_port: int = 31080, end_port: int = 31200) -> int:
