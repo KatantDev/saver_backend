@@ -342,6 +342,8 @@ class YmdanticController(BaseSourceController):
         await self._create_history_entry(cached_item)
 
         cached_dto = cached_item.meta_data_dto.model_copy()
+        if "/track" in self._resolution.url:
+            cached_dto.url = self._resolution.url
         cached_dto.direct_download_url = cached_item.file_id
         cached_dto.path = None
 
