@@ -209,20 +209,29 @@ class VideoDTO(BaseContentDTO):
             for key, formats in self.unique_formats.items():
                 for fmt in formats:
                     qualities[fmt.format_id] = key
-            quality = f"[{qualities[self.quality]}]"
+            quality = f"[{qualities[self.quality]}]".replace("p", "")
         else:
-            quality = "→"
-        if self.channel:
+            quality = ""
+        if self.channel and self.channel_url:
             title_html = (
-                f'<b>{self.title}\u00A0<a href="{self.url}">{quality}</a></b>\n\n'
+                f'<b>{self.title}\u00A0<a href="{self.url}">{quality or '→'}</a></b>'
+                f"\n\n"
                 f"#{self.channel.replace(' ','_')}"
                 f'<a href="{self.channel_url}">\u00A0→</a>'
                 f"\n"
             )
         elif self.title:
-            title_html = f'<b>{self.title}{quality}\u00A0<a href="{self.url}">→</a></b>'
+            if quality:
+                title_html = (
+                    f'<b>{self.title}\u00A0<a href="{self.url}">{quality}\n</a></b>'
+                )
+            else:
+                title_html = (
+                    f'<b>{self.title}{quality}\u00A0<a href="{self.url}">→\n</a></b>'
+                )
+
         else:
-            title_html = self.url or ""
+            title_html = f"{self.url}\n"
         return title_html
 
     def get_format_by_id(self, format_id: str) -> FormatDTO | None:

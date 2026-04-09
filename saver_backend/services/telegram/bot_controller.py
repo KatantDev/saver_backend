@@ -523,14 +523,13 @@ class TelegramBotController:
             url=audio.url,
             title="",
         )
-
         try:
             message = await self._bot.send_audio(
                 chat_id=telegram_id,
                 audio=audio_input,
                 caption=caption,
                 title=audio.track,
-                duration=audio.duration,
+                duration=int(audio.duration or 0),
                 performer=audio.artist,
                 thumbnail=thumbnail_input,
             )
@@ -716,6 +715,7 @@ class TelegramBotController:
                 AudioDTO,
             ):
                 audio_input = audio.file_id
+                duration = audio.meta_data_dto.duration
                 track = (
                     audio.meta_data_dto.track
                     if hasattr(audio.meta_data_dto, "track")
@@ -726,6 +726,7 @@ class TelegramBotController:
             elif isinstance(audio, AudioDTO):
                 url = audio.url
                 track = audio.track
+                duration = audio.duration
                 thumbnail_input = (
                     URLInputFile(url=audio.thumbnail_url)
                     if audio.thumbnail_url
@@ -770,6 +771,7 @@ class TelegramBotController:
 
             media_group.add_audio(
                 media=audio_input,
+                duration=int(duration or 0),
                 caption=caption,
                 performer=performer,
                 title=track,
@@ -832,7 +834,10 @@ class TelegramBotController:
                 caption=_(
                     "result direct message",
                     locale=language or self.language,
-                ).format(url="", title=video.title_html),
+                ).format(
+                    url="",
+                    title=video.title_html,
+                ),
                 width=video.width,
                 height=video.height,
                 duration=video.duration,

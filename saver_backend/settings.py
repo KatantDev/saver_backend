@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     proxies_ru: list[str] = []
 
     # chrome headless settings
+    taskiq_worker_host: str = "saver_backend-taskiq-worker"
     chrome_host: str = "saver_backend-chrome"
     chrome_port: int = 9222
     _chrome_cdp_url: Optional[str] = None

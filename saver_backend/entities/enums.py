@@ -7,6 +7,7 @@ class ProxyType(str, Enum):
     LOCAL = "local"
     RU = "ru"
     ALL = "all"
+    KINOVOD = "kinovod"
 
 
 class ContentTypeEnum(str, Enum):

@@ -52,9 +52,12 @@ class DailyReportService:
         source_lines = []
         if source_counts:
             for source, count in source_counts:
+                if source.value.upper() == "INSTAGRAM_INSTALOADER":
+                    continue
                 source_lines.append(f"<b>{source.value.upper()}:</b> {count:,}")
         source_stats_str = "\n".join(source_lines)
-
+        for key, value in {"YMDANTIC": "YANDEX MUSIC"}.items():
+            source_stats_str = source_stats_str.replace(key, value)
         return _("stats_report_template").format(
             date=str((datetime.now(tz=timezone.utc) + timedelta(hours=3)).date()),
             new_users_24h=f"{new_users_24h:,}",
