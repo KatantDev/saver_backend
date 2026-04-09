@@ -36,7 +36,7 @@ class KinovodYdlController(YtDlpController):
     """
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.KINOVOD_YDL
-    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.ALL
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.LOCAL
     COOKIES: ClassVar[bool] = False
 
     # Selectors
