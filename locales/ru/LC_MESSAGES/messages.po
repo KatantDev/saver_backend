@@ -61,7 +61,6 @@ msgstr "⚠️ Не найдено доступных форматов для с
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"
-"\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🎥</tg-emoji> Выберите качество видео:"
 
 msgid "stats_report_template"

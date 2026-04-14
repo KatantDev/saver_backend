@@ -239,6 +239,33 @@ class TelegramBotController:
 
         await context.set_data(data)
 
+    async def get_fsm_data(
+        self,
+        user_id: int,
+        chat_id: int,
+    ) -> dict[str, Any] | None:
+        """
+        Get FSM data for a specific user and chat.
+
+        :param user_id: The user's Telegram ID.
+        :param chat_id: The chat's Telegram ID.
+        :return: Dictionary with FSM data or None if context resolution fails.
+        """
+        context = self._dispatcher.fsm.resolve_context(
+            bot=self.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        if not context:
+            logging.warning(
+                "Failed to resolve FSM context for user_id=%s, chat_id=%s",
+                user_id,
+                chat_id,
+            )
+            return None
+
+        return await context.get_data()
+
     async def get_username(self) -> str:
         """
         Get username of bot.

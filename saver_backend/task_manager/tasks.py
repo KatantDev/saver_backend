@@ -1,3 +1,4 @@
+import json
 import logging
 
 from taskiq import TaskiqDepends
@@ -192,6 +193,7 @@ async def get_video_info(
         chat_id=telegram_id,
         data={
             "video_dto": video_dto.model_dump(mode="json"),
+            "info_dict": json.dumps(info_dict),
             "resolution": resolution.model_dump(mode="json"),
             "quality_selection_message_id": quality_selection_message.message_id,
         },

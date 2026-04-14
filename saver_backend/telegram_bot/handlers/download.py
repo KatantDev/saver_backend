@@ -92,6 +92,7 @@ async def _trigger_download(
             SourceEnum.RUTUBE_YDL,
             SourceEnum.M3U8_YDL,
             SourceEnum.OK_YDL,
+            SourceEnum.KINOVOD_YDL,
         ],
     ),
 )
@@ -251,7 +252,6 @@ async def on_language_select(
             SourceEnum.ADULT_YDL,
             SourceEnum.FACEBOOK_YDL,
             SourceEnum.VK_API_YDL,
-            SourceEnum.KINOVOD_YDL,
             SourceEnum.YMDANTIC,
         ],
     ),

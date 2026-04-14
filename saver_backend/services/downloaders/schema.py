@@ -6,6 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+import ffmpeg
 from instaloader import Post, PostSidecarNode, StoryItem
 from pydantic import BaseModel, Field
 from ymdantic.models import TrackType
@@ -153,6 +154,7 @@ class VideoDTO(BaseContentDTO):
     duration: int | None = None
     width: int | None = None
     height: int | None = None
+    ext: str | None = None
 
     direct_download_url: str | None = None
 
@@ -209,7 +211,10 @@ class VideoDTO(BaseContentDTO):
             for key, formats in self.unique_formats.items():
                 for fmt in formats:
                     qualities[fmt.format_id] = key
-            quality = f"[{qualities[self.quality]}]".replace("p", "")
+            if qualities:
+                quality = f"[{qualities[self.quality]}]".replace("p", "")
+            else:
+                quality = f"[{self.quality}]".replace("p", "")
         else:
             quality = ""
         if self.channel and self.channel_url:
@@ -247,6 +252,41 @@ class VideoDTO(BaseContentDTO):
         )
 
     @classmethod
+    def get_video_dimensions_ffmpeg(
+        cls,
+        file_path: Path,
+    ) -> tuple[int | None, int | None]:
+        """
+        Get video dimensions (width and height) using ffmpeg probe.
+
+        Args:
+            file_path (Path): Path to the video file.
+
+        Returns:
+            tuple: A tuple (width, height) as integers if successful,
+                   otherwise (None, None)
+        """
+        try:
+            if not file_path.exists():
+                return None, None
+            probe = ffmpeg.probe(str(file_path))
+            video_stream = next(
+                (
+                    stream
+                    for stream in probe["streams"]
+                    if stream["codec_type"] == "video"
+                ),
+                None,
+            )
+            if video_stream:
+                w = int(video_stream["width"])
+                h = int(video_stream["height"])
+                return w, h
+        except Exception as e:
+            logging.warning(f"Ошибка: {e}")
+        return None, None
+
+    @classmethod
     def from_yt_dlp(
         cls,
         info: dict[str, Any],
@@ -281,7 +321,6 @@ class VideoDTO(BaseContentDTO):
                 continue
             if acodec == "none":
                 continue
-
             dto = FormatDTO.from_yt_dlp(format_info, duration)
             if not dto:
                 continue
@@ -300,7 +339,10 @@ class VideoDTO(BaseContentDTO):
         unique_formats = list(
             {(f.resolution, f.language): f for f in available_formats}.values(),
         )
-
+        _width = int(w) if (w := info.get("width")) else None
+        _height = int(h) if (h := info.get("height")) else None
+        if file_path and (_width is None or _height is None):
+            _width, _height = cls.get_video_dimensions_ffmpeg(file_path)
         return cls(
             path=file_path,
             thumbnail_url=info.get("thumbnail"),
@@ -311,11 +353,12 @@ class VideoDTO(BaseContentDTO):
             direct_download_url=direct_download_url,
             url=info.get("original_url"),
             source_id=info.get("id"),
-            width=int(w) if (w := info.get("width")) else None,
-            height=int(h) if (h := info.get("height")) else None,
+            width=_width,
+            height=_height,
             quality=quality,
             formats=unique_formats,
             duration=int(duration) if duration else None,
+            ext=info.get("ext"),
         )
 
     @classmethod
