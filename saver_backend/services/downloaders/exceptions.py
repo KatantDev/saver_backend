@@ -23,3 +23,7 @@ class IPAddressBlockedError(DownloaderError):
 
 class TikTokYtDlpDownloaderError(YtDlpDownloaderError):
     """Exception for TikTok yt-dlp."""
+
+
+class KinovodCaptchaError(DownloaderError):
+    """Exception for Kinovod Captcha error."""

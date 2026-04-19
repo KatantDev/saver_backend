@@ -17,6 +17,7 @@ class ContentTypeEnum(str, Enum):
     PHOTO = "photo"
     AUDIO = "audio"
     PHOTO_LIST = "photo_list"
+    FILM_DICT = "film_dict"
 
 
 class SourceEnum(str, Enum):

@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     chrome_port: int = 9222
     _chrome_cdp_url: Optional[str] = None
 
+    # expired dto timeout in hours
+    dto_expire_timeout: int = 12
+
     @property
     def webhook_telegram_url(self) -> str:
         """

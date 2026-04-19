@@ -155,7 +155,9 @@ class VideoDTO(BaseContentDTO):
     width: int | None = None
     height: int | None = None
     ext: str | None = None
-
+    season: str | None = None
+    translation: str | None = None
+    episode: str | None = None
     direct_download_url: str | None = None
 
     formats: list[FormatDTO] = Field(default_factory=list)
@@ -200,7 +202,7 @@ class VideoDTO(BaseContentDTO):
         return list(self.unique_formats.keys())
 
     @property
-    def title_html(self) -> str:
+    def title_html(self) -> str:  # noqa: PLR0912, C901
         """
         Return the title of the video formatted as html.
 
@@ -231,9 +233,13 @@ class VideoDTO(BaseContentDTO):
                     f'<b>{self.title}\u00A0<a href="{self.url}">{quality}\n</a></b>'
                 )
             else:
-                title_html = (
-                    f'<b>{self.title}{quality}\u00A0<a href="{self.url}">→\n</a></b>'
-                )
+                title_html = f'<b>{self.title}\u00A0<a href="{self.url}">→\n</a></b>'
+            if self.season:
+                title_html += f"› {self.season}\n"  # noqa RUF001
+            if self.episode:
+                title_html += f"› {self.episode}\n"  # noqa RUF001
+            if self.translation:
+                title_html += f"› {self.translation}\n"  # noqa RUF001
 
         else:
             title_html = f"{self.url}\n"
@@ -706,7 +712,46 @@ class PhotoListDTO(BaseContentDTO):
         )
 
 
-CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO]
+class VideoTheatreDTO(BaseContentDTO):
+    """Data Transfer Object for Video from online theatries."""
+
+    thumbnail_url: str | None = None
+    duration: int | None = None
+    perevod_from_html: str | None = None
+    proxy: str | None = None
+    info_dict: dict[str, Any] | str
+
+    @classmethod
+    def from_kinovod(
+        cls,
+        info_dict: dict[str, Any] | str,
+        resolution_url: str,
+        title: Optional[str] = None,
+        thumbnail_url: Optional[str] = None,
+        proxy: Optional[str] = None,
+        perevod_from_html: Optional[str] = None,
+    ) -> "VideoTheatreDTO":
+        """Data Transfer Object for Video from Kinovod."""
+        source_id = resolution_url.split("/")[-1]
+        if isinstance(info_dict, dict):
+            title = info_dict["title"]
+            thumbnail_url = info_dict["thumbnail_url"]
+            perevod_from_html = info_dict["perevod_from_html"]
+            proxy = info_dict["proxy"]
+            info_dict = info_dict["info_dict"]
+
+        return cls(
+            title=title,
+            url=resolution_url,
+            source_id=source_id,
+            thumbnail_url=thumbnail_url,
+            perevod_from_html=perevod_from_html,
+            proxy=proxy,
+            info_dict=info_dict,
+        )
+
+
+CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO, VideoTheatreDTO]
 
 
 class CacheDTO(BaseModel):
@@ -721,7 +766,7 @@ class CacheDTO(BaseModel):
     file_id: str
     file_unique_id: str
     quality: str
-    meta_data: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO
+    meta_data: VideoDTO | PhotoDTO | AudioDTO | PhotoListDTO | VideoTheatreDTO
 
     @classmethod
     def from_telegram_object(
@@ -754,6 +799,35 @@ class CacheDTO(BaseModel):
             meta_data=content_dto,
             file_id=telegram_video.file_id,
             file_unique_id=telegram_video.file_unique_id,
+        )
+
+    @classmethod
+    def from_dto_object(
+        cls,
+        source: SourceEnum,
+        content_dto: VideoTheatreDTO,
+    ) -> Optional["CacheDTO"]:
+        """
+        Create a CacheDTO instance from a content DTO object.
+
+        :param source: The source of the content.
+        :param content_dto: The original DTO of the content.
+        :return: A CacheDTO instance or None if not possible.
+        """
+        source_id = getattr(content_dto, "source_id", None)
+        if not source_id:
+            logging.warning(
+                "Cannot create cache: source_id not found in content DTO.",
+            )
+            return None
+
+        return cls(
+            source=source,
+            source_id=source_id,
+            quality="best",
+            meta_data=content_dto,
+            file_id=str(uuid.uuid4()),
+            file_unique_id=str(uuid.uuid4()),
         )
 
 

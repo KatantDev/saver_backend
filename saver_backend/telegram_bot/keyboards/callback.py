@@ -13,3 +13,21 @@ class VideoLanguageCallback(CallbackData, prefix="lang"):
     """Callback for selecting video language from a resolution."""
 
     format_id: str
+
+
+class VideoSeasonCallback(CallbackData, prefix="seas"):
+    """Callback for selecting video season."""
+
+    label: str
+
+
+class VideoTranslationCallback(CallbackData, prefix="transl"):
+    """Callback for selecting translations."""
+
+    label: str
+
+
+class VideoSeriesCallback(CallbackData, prefix="series"):
+    """Callback for selecting series within a season."""
+
+    label: str

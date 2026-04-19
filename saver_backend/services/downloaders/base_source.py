@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
@@ -18,6 +19,7 @@ from saver_backend.services.downloaders.schema import (
     PhotoDTO,
     PhotoListDTO,
     VideoDTO,
+    VideoTheatreDTO,
 )
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
@@ -324,6 +326,63 @@ class BaseSourceController(ABC):
                 model_to_return = alias_model
 
         return model_to_return
+
+    async def create_or_update_cache_entry(
+        self,
+        content_dto: VideoTheatreDTO,
+    ) -> CacheModel | None:
+        """
+        Create a new cache entry or update existing one if it already exists.
+
+        Updates only meta_data field and updated_at timestamp.
+
+        :param content_dto: The content DTO object.
+        :return: The created or updated CacheModel instance,
+         or None if operation failed.
+        """
+        dto_for_cache = content_dto.model_copy(update={"path": None, "thumbnail": None})
+        cache_dto = CacheDTO.from_dto_object(
+            source=self.SOURCE,
+            content_dto=dto_for_cache,
+        )
+        if cache_dto is None:
+            return None
+        logging.info(
+            "Successfully cached content with source_id=%s, quality=%s",
+            cache_dto.source_id,
+            cache_dto.quality,
+        )
+
+        return await self._cache_dao.update_or_create(cache_dto)
+
+    async def get_dto_from_cache(
+        self,
+        source_id: str,
+        timeout: int = 3,
+    ) -> CacheModel | None:
+        """Returns dto object from cache or None if not found or expired."""
+        cached_dto = await self._cache_dao.get_by_filters(
+            source=self.SOURCE,
+            source_id=source_id,
+            quality="best",
+            content_type=ContentTypeEnum.FILM_DICT,
+        )
+
+        if not cached_dto:
+            return None
+        # Make both datetime objects timezone-aware or naive consistently
+        now = (
+            datetime.now(timezone.utc)
+            if cached_dto.updated_at.tzinfo
+            else datetime.now()
+        )
+        if now - cached_dto.updated_at > timedelta(hours=timeout):
+            return None
+        logging.info(
+            "Cache hit for source_id=%s,",
+            source_id,
+        )
+        return cached_dto
 
     async def _create_cache_entry_if_not_exists(
         self,
