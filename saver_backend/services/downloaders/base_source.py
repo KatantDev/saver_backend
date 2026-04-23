@@ -75,6 +75,11 @@ class BaseSourceController(ABC):
     async def close(self) -> None:
         """Close resources if needed."""
 
+    @property
+    def message_id(self) -> int | None:
+        """Get the telegram message ID."""
+        return self._message_id
+
     def _select_proxies(self) -> list[str]:
         """
         Selects a list of proxies based on the controller's PROXY_TYPE.
@@ -206,6 +211,7 @@ class BaseSourceController(ABC):
                 telegram_id=self._telegram_id,
                 message_id=self._message_id,
             )
+            self._message_id = None
 
     async def _send_video(
         self,

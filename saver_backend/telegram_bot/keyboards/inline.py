@@ -1,8 +1,9 @@
-from typing import Any
+from typing import Any, Type
 
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from saver_backend.entities.enums import ContentTypeEnum
 from saver_backend.services.downloaders.schema import FormatDTO
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
@@ -49,6 +50,7 @@ def get_subscribe_keyboard() -> InlineKeyboardMarkup:
     :return: subscribe keyboard.
     """
     builder = InlineKeyboardBuilder()
+
     for channel in settings.subscription_channels:
         builder.button(
             text=_("subscribe to channel").format(channel=channel),
@@ -56,25 +58,35 @@ def get_subscribe_keyboard() -> InlineKeyboardMarkup:
         )
     builder.button(text=_("check subscriptions"), callback_data=CHECK_SUBSCRIPTIONS)
     builder.adjust(1)
+
     return builder.as_markup()
 
 
-def get_video_formats_keyboard(labels: list[str]) -> InlineKeyboardMarkup:
+def get_video_formats_keyboard(
+    labels: list[str],
+    contenttype: ContentTypeEnum = ContentTypeEnum.VIDEO,
+) -> InlineKeyboardMarkup:
     """
     Create a keyboard with buttons for each unique video resolution.
 
     :param labels: unique video resolution labels.
+    :param contenttype: content type of data,
     :return: An InlineKeyboardMarkup.
     """
     builder = InlineKeyboardBuilder()
+
     for label in labels:
         button_text = f"📹 {label}"
 
         builder.button(
             text=button_text,
-            callback_data=VideoFormatCallback(label=label).pack(),
+            callback_data=VideoFormatCallback(
+                label=label,
+                contenttype=contenttype,
+            ).pack(),
         )
     builder.adjust(1)
+
     return builder.as_markup()
 
 
@@ -96,53 +108,7 @@ def get_language_keyboard(
             ).pack(),
         )
     builder.adjust(2)
-    return builder.as_markup()
 
-
-def get_season_keyboard(
-    seasons: list[str],
-) -> InlineKeyboardMarkup:
-    """
-    Create a keyboard for selecting a language for a specific resolution.
-
-    :param seasons: A list of seasons.
-    :return: An InlineKeyboardMarkup.
-    """
-    builder = InlineKeyboardBuilder()
-    for season in seasons:
-        builder.button(
-            text=season,
-            callback_data=VideoSeasonCallback(
-                label=season,
-            ).pack(),
-        )
-
-    # Calculate rows: alternate between 5 and 4 buttons
-    buttons_count = len(seasons)
-    rows_config = []
-    row_index = 0
-    remaining = buttons_count
-
-    while remaining > 0:
-        # Even row index (0, 2, 4...) -> 4 buttons
-        # Odd row index (1, 3, 5...) -> 3 buttons
-        buttons_in_row = 5 if row_index % 2 == 0 else 4
-        if remaining >= buttons_in_row:
-            rows_config.append(buttons_in_row)
-            remaining -= buttons_in_row
-        else:
-            rows_config.append(remaining)
-            remaining = 0
-        row_index += 1
-
-    builder.button(
-        text=_("Back"),
-        callback_data=VideoSeasonCallback(
-            label="back_to_formats",
-        ).pack(),
-    )
-    # Apply configuration: series rows + 1 row for back button
-    builder.adjust(*rows_config, 1)
     return builder.as_markup()
 
 
@@ -164,65 +130,122 @@ def get_translations_keyboard(
             ).pack(),
         )
     builder.adjust(1)
+
     builder.button(
         text=_("Back"),
         callback_data=VideoTranslationCallback(
             label="back_to_season",
-            part2="",
         ).pack(),
     )
+
     builder.adjust(1, 1)
     return builder.as_markup()
 
 
-def get_series_keyboard(
-    series_list: list[dict[str, Any]],
+def _build_grid_keyboard(
+    items: list[str],
+    row_pattern: list[int],
+    callback_class: Type[VideoSeasonCallback] | Type[VideoSeriesCallback],
+    back_label: str,
 ) -> InlineKeyboardMarkup:
     """
-    Create a keyboard for selecting series within a season.
+    Build a keyboard with buttons arranged in a grid pattern.
 
-    Displays 4 buttons per row on even rows, 3 buttons per row on odd rows.
-
-    :param series_list: A list of series numbers or names.
+    :param items: List of button texts.
+    :param row_pattern: Pattern of buttons per row (e.g., [5, 4]  ).
+    :param callback_class: Callback data for the back button.
+    :param back_label: Text for the back button. If None, uses localized "Back".
     :return: An InlineKeyboardMarkup.
     """
     builder = InlineKeyboardBuilder()
 
-    for episode in series_list:
+    # Add all item buttons
+    for item in items:
         builder.button(
-            text=f"{episode.get('title')}",
-            callback_data=VideoSeriesCallback(
-                label=episode.get("title"),
+            text=item,
+            callback_data=callback_class(
+                label=item,
             ).pack(),
         )
 
-    # Calculate rows: alternate between 4 and 3 buttons
-    buttons_count = len(series_list)
+    # Calculate rows configuration based on pattern
+    buttons_count = len(items)
     rows_config = []
-    row_index = 0
+    pattern_index = 0
     remaining = buttons_count
 
     while remaining > 0:
-        # Even row index (0, 2, 4...) -> 4 buttons
-        # Odd row index (1, 3, 5...) -> 3 buttons
-        buttons_in_row = 4 if row_index % 2 == 0 else 3
+        buttons_in_row = row_pattern[pattern_index % len(row_pattern)]
         if remaining >= buttons_in_row:
             rows_config.append(buttons_in_row)
             remaining -= buttons_in_row
         else:
             rows_config.append(remaining)
             remaining = 0
-        row_index += 1
+        pattern_index += 1
 
     # Add back button
-    builder.button(
-        text=_("Back"),
-        callback_data=VideoSeriesCallback(
-            label="back_to_translations",
-        ).pack(),
-    )
+    builder.button(text=_("Back"), callback_data=callback_class(label=back_label))
 
-    # Apply configuration: series rows + 1 row for back button
+    # Apply configuration: item rows + 1 row for back button
     builder.adjust(*rows_config, 1)
 
     return builder.as_markup()
+
+
+def get_season_keyboard(
+    seasons: list[str],
+) -> InlineKeyboardMarkup:
+    """
+    Create a keyboard for selecting a season.
+
+    :param seasons: A list of seasons.
+    :return: An InlineKeyboardMarkup.
+    """
+    return _build_grid_keyboard(
+        items=seasons,
+        row_pattern=[5, 4],
+        callback_class=VideoSeasonCallback,
+        back_label="back_to_formats",
+    )
+
+
+def get_episodes_keyboard(
+    episodes_list: list[dict[str, Any]],
+) -> InlineKeyboardMarkup:
+    """
+    Create a keyboard for selecting episodes within a season.
+
+    :param episodes_list: A list of episodes.
+    :return: An InlineKeyboardMarkup.
+    """
+    episode_titles: list[str] = [episode.get("title", "") for episode in episodes_list]
+
+    return _build_grid_keyboard(
+        items=episode_titles,
+        row_pattern=[4, 3],
+        callback_class=VideoSeriesCallback,
+        back_label="back_to_translations",
+    )
+
+
+async def edit_telegram_message_keyboard(
+    query: CallbackQuery,
+    caption: str,
+    reply_markup: InlineKeyboardMarkup,
+) -> None:
+    """
+    Edit telegram message keyboard.
+
+    :param query: The callback query object.
+    :param caption: New caption or text for the message.
+    :param reply_markup: New inline keyboard markup to attach to the message.
+    """
+    if not isinstance(query.message, Message) or not query.from_user:
+        await query.answer()
+        return
+
+    if query.message.caption:
+        await query.message.edit_caption(caption=caption, reply_markup=reply_markup)
+    else:
+        await query.message.edit_text(caption, reply_markup=reply_markup)

@@ -118,7 +118,7 @@ class CacheDAO(BaseDAO):
             file_unique_id=cache_dto.file_unique_id,
             quality=cache_dto.quality,
             content_type=content_type,
-            meta_data=cache_dto.meta_data.model_dump(mode="json"),
+            meta_data=cache_dto.meta_data.model_dump(mode="json", exclude_unset=True),
         )
 
         # ON CONFLICT: update meta_data and updated_at

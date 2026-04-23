@@ -23,9 +23,17 @@ from playwright.async_api import (
 )
 from yt_dlp import DownloadError
 
-from saver_backend.entities.enums import ProxyType, SourceEnum
-from saver_backend.services.downloaders.exceptions import KinovodCaptchaError
-from saver_backend.services.downloaders.schema import VideoDTO, VideoTheatreDTO
+from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
+from saver_backend.services.downloaders.exceptions import (
+    Kinovod404Error,
+    KinovodAlertError,
+    KinovodCaptchaError,
+)
+from saver_backend.services.downloaders.schema import (
+    VideoDTO,
+    VideoTheatreDTO,
+    VtTranslations,
+)
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 from saver_backend.settings import settings
 from saver_backend.telegram_bot.keyboards.callback import VideoTranslationCallback
@@ -66,6 +74,8 @@ class KinovodYdlController(YtDlpController):
         }
         self._yt_dlp.params.update(kinovod_params)
 
+        # Content type for aiogram filter
+        self.contenttype = ContentTypeEnum.FILM_DICT
         # Store browser and page for cleanup
         self._browser: Optional[Browser] = None
         self._playwright: Optional[Playwright] = None
@@ -75,16 +85,13 @@ class KinovodYdlController(YtDlpController):
         self._title: Optional[str] = None
         self._proxy_local: Optional[slippers.Proxy] = None
         self._proxies_rotate: deque[str] = deque(self._proxies)
-        self._perevod_from_html: Optional[str] = None
+        self._perevod_from_html: str = ""
         self._thumbnail_url: Optional[str] = None
-        self._translation_names: dict[str, Any] = {}
+        self._translation_names: VtTranslations = VtTranslations()
 
     async def close(self) -> None:
         """Close browser and page resources."""
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        await self._cleanup_resources()
         await super().close()
 
     async def _load_film(self, url: str) -> None:
@@ -140,12 +147,85 @@ class KinovodYdlController(YtDlpController):
             logging.error(f"Error getting translation: {e}")
             return None
 
-    async def _check_load(self) -> Optional[str]:  # noqa: C901
+    async def _check_element_exists(
+        self,
+        selector: str,
+        exception_class: Optional[type[Exception]] = None,
+        error_message: Optional[str] = None,
+        timeout: Optional[int] = None,
+    ) -> bool:
         """
-        Check for alert or video element.
+        Generic method to check if an element exists on the page.
+
+        Args:
+            selector: CSS or XPath selector to look for
+            exception_class: Optional exception to raise if element is found
+            error_message: Optional error message for the exception
+            timeout: Timeout in ms for waiting
+             (uses ELEMENT_CHECK_INTERVAL if not specified)
 
         Returns:
-            Direct video URL if video found, None if alert found or timeout
+            bool: True if element exists, False otherwise
+
+        Raises:
+            exception_class: If element is found and exception_class is provided
+        """
+        if self._page is None:
+            return False
+
+        timeout_ms = timeout or self.ELEMENT_CHECK_INTERVAL
+
+        try:
+            element = await self._page.wait_for_selector(
+                selector,
+                timeout=timeout_ms,
+            )
+
+            if element:
+                logging.debug("Element found: %s", selector)
+                if exception_class:
+                    error_msg = (
+                        error_message or f"Element found with selector: {selector}"
+                    )
+                    logging.error(error_msg)
+                    raise exception_class(error_msg)
+                return True
+            return False
+
+        except PlaywrightTimeoutError:
+            return False
+
+    async def _check_alert(self) -> None:
+        """Check if alert div exists on the page. Raises KinovodAlertError if found."""
+        await self._check_element_exists(
+            selector=self.ALERT_SELECTOR,
+            exception_class=KinovodAlertError,
+            error_message="Site error: alert found on page",
+        )
+
+    async def _check_captcha(self) -> None:
+        """Check if captcha image exists on the page."""
+        await self._check_element_exists(
+            selector='//img[@id="captcha_image"]',
+            exception_class=KinovodCaptchaError,
+            error_message="Captcha found on page",
+        )
+
+    async def _check_page_not_found(self) -> None:
+        """Check if 404 error div exists on the page."""
+        await self._check_element_exists(
+            selector='//div[@id="error404"]',
+            exception_class=Kinovod404Error,
+            error_message="[Kinovod] Page not found",
+        )
+
+    async def _check_load(self) -> Optional[str]:
+        """
+        Check for alert or video element or not found element.
+
+        Returns:
+            Direct video URL if video found,
+            None if alert or 404 element found or timeout
 
         Raises:
             Exception: If alert message is found
@@ -153,35 +233,26 @@ class KinovodYdlController(YtDlpController):
         start_time = asyncio.get_event_loop().time()
         if self._page is None:
             return None
+
         while True:
             elapsed = (asyncio.get_event_loop().time() - start_time) * 1000
             if elapsed > self.MAX_WAIT_TIME:
                 logging.error(
-                    "Timeout waiting for video or alert after %d ms",  # todo reload
+                    "Timeout waiting for video or alert after %d ms",
                     self.MAX_WAIT_TIME,
                 )
                 return None
 
-            # Check for alert
             try:
-                alert_element = await self._page.wait_for_selector(
-                    self.ALERT_SELECTOR,
-                    timeout=self.ELEMENT_CHECK_INTERVAL,
-                )
-                if alert_element:
-                    alert_text = await alert_element.text_content()
-                    logging.error("Alert found on page: %s", alert_text)
-                    raise Exception(f"Site error: {alert_text}")
-                # Check for captcha
-                captcha_element = await self._page.wait_for_selector(
-                    '//img[@id="captcha_image"]',
-                    timeout=self.ELEMENT_CHECK_INTERVAL,
-                )
-                if captcha_element:
-                    logging.error("Captcha found on page")
-                    raise KinovodCaptchaError
-            except PlaywrightTimeoutError:
-                pass  # No alert found, continue
+                # Check for alert, captcha, and 404 using unified method
+                await self._check_alert()
+                await self._check_captcha()
+                await self._check_page_not_found()
+            except (KinovodAlertError, KinovodCaptchaError, Kinovod404Error):
+                raise
+            except Exception as e:
+                # Log unexpected errors but continue checking
+                logging.debug(f"Unexpected error during element checks: {e}")
 
             # Check for video element with src
             try:
@@ -198,8 +269,6 @@ class KinovodYdlController(YtDlpController):
                         )
                         if h1_element:
                             self._title = await h1_element.text_content()
-                        if video_element:
-                            video_src = await video_element.get_attribute("src")
                         logging.info(f"Found video '{self._title}' source: {video_src}")
                         return video_src
             except PlaywrightTimeoutError:
@@ -498,6 +567,15 @@ class KinovodYdlController(YtDlpController):
             logging.exception(f"Error getting playlist dict: {e}")
             return ""
 
+    @staticmethod
+    def _get_crc_32(text: str) -> str:
+        import zlib
+
+        """Returns a deterministic 32-bit hash for a string."""
+        hash_int = zlib.crc32(text.encode("utf-8"))
+
+        return str(hash_int & 0xFFFFFFFF)
+
     def _normalize_translation_key(self, translation: str) -> str:
         """Normalize length of translation."""
         prefix = VideoTranslationCallback.__prefix__
@@ -508,8 +586,11 @@ class KinovodYdlController(YtDlpController):
                 "",
                 translation,
             ).strip()
-            if not _translation:
-                _translation = str(hash(translation))
+
+            pattern = r'^[0-9!@#$%^&*()_+\-=\[\]{};:\'",.<>/?\\|`~]+$'
+
+            if not _translation or bool(re.match(pattern, _translation)):
+                _translation = self._get_crc_32(translation)
         else:
             _translation = translation
         return _translation
@@ -558,7 +639,7 @@ class KinovodYdlController(YtDlpController):
                 if "," not in (self._perevod_from_html, "")
                 else ""
             ),
-            "translations": {},
+            "translations": VtTranslations,
             "qualities": set(),
         }
 
@@ -582,8 +663,6 @@ class KinovodYdlController(YtDlpController):
                 for quality in parsed_file:
                     result["qualities"].add(quality)
 
-                result["translations"] = self._translation_names
-
                 processed_episode = {
                     "id": episode_id,
                     "title": episode_title,
@@ -602,6 +681,7 @@ class KinovodYdlController(YtDlpController):
             key=lambda x: int(x.replace("p", "")),
         )
         result["qualities"] = qualities_list
+        result["translations"] = self._translation_names
 
         return result
 
@@ -619,6 +699,7 @@ class KinovodYdlController(YtDlpController):
             Dictionary: {quality: {translation_key: [urls]}}
         """
         result: dict[str, Any] = {}
+        quality: str = ""
 
         # Step 1: Split by ';' to separate different audio tracks
         # Format: [360p]content or [720p]content or ...
@@ -632,7 +713,7 @@ class KinovodYdlController(YtDlpController):
                 quality, semicolon_part = _semicolon_part.split("]")
                 quality = quality.lstrip("[")
             else:
-                pass  # todo del
+                semicolon_part = _semicolon_part
 
             if quality not in result:
                 result[quality] = {}
@@ -645,22 +726,36 @@ class KinovodYdlController(YtDlpController):
 
                 translation_key = self._normalize_translation_key(translation_name)
 
-                self._translation_names[translation_key] = translation_name
+                self._translation_names.named_translations[translation_key] = (
+                    translation_name
+                )
 
                 # Step 4: Split by ' or ' to get URLs
                 urls = self._split_urls(urls_part)
 
-                result[quality][translation_key] = urls
             else:
                 # No translation in braces, treat as URLs
                 urls = self._split_urls(semicolon_part)
-                if "," in (self._perevod_from_html or ""):
-                    translation_key = "FromEpisode" if perevod else "Unknown"
-                else:
+                if perevod:
+                    translation_key = perevod
+                    self._translation_names.from_episode_translations[
+                        translation_key
+                    ] = translation_key
+                elif "," not in self._perevod_from_html:
                     translation_key = self._normalize_translation_key(
-                        self._perevod_from_html or "",
+                        self._perevod_from_html,
                     )
-                result[quality][translation_key] = urls
+                    self._translation_names.from_episode_translations[
+                        translation_key
+                    ] = self._perevod_from_html
+                else:
+                    logging.warning(
+                        f"[kinoovod] translation unexpected:"
+                        f" {self._resolution.url}; {self._perevod_from_html}",
+                    )
+                    continue
+
+            result[quality][translation_key] = urls
 
         return result
 
@@ -684,32 +779,10 @@ class KinovodYdlController(YtDlpController):
             if url and url.startswith("http"):
                 urls.append(url)
 
+        if not urls:
+            logging.debug(f"[kinovod] urls empty: {self._resolution.url}")
+
         return urls
-
-    def _get_language_code(self, language_name: str) -> str | None:
-        """Converts Russian language name to ISO 639-1 code."""  # todo del
-        # Mapping of Russian language names to ISO 639-1 codes
-        russian_to_iso = {
-            "русский": "ru",
-            "украинский": "uk",
-            "английский": "en",
-            "немецкий": "de",
-            "французский": "fr",
-            "испанский": "es",
-            "итальянский": "it",
-            "китайский": "zh",
-            "японский": "ja",
-            "польский": "pl",
-            "турецкий": "tr",
-            "арабский": "ar",
-            "хинди": "hi",
-        }
-
-        # Normalize input: lowercase and strip whitespace
-        normalized_name = language_name.lower().strip()
-
-        # Return the code if found, otherwise None
-        return russian_to_iso.get(normalized_name)
 
     def _create_ytdlp_formats(
         self,
@@ -770,11 +843,14 @@ class KinovodYdlController(YtDlpController):
 
         return formats
 
+    # for yt-dlp compatibility
     def _video_info_from_dto(
         self,
         videotheatre_dto: VideoTheatreDTO,
+        playlist_dict: dict[str, Any],
     ) -> dict[str, Any]:
-        playlist_dict = videotheatre_dto.info_dict
+        videotheatre_dto.info_dict = playlist_dict
+
         if not isinstance(playlist_dict, dict):
             return {}
         formats = self._create_ytdlp_formats(playlist_dict)
@@ -785,7 +861,7 @@ class KinovodYdlController(YtDlpController):
             "title": videotheatre_dto.title,
             "original_url": self._resolution.url,
             "url": self._resolution.url,
-            "seasons": json.loads(videotheatre_dto.model_dump_json()),
+            "videotheatre_dto": json.loads(videotheatre_dto.model_dump_json()),
             "formats": formats,
             "ext": "mp4",
             "thumbnail": videotheatre_dto.thumbnail_url,
@@ -822,7 +898,7 @@ class KinovodYdlController(YtDlpController):
         self._thumbnail_url = await self._get_thumb()
 
         # Translation info
-        self._perevod_from_html = await self._parse_perevod()
+        self._perevod_from_html = await self._parse_perevod() or ""
 
         # Get playlist data
         return await self._get_playlist_dict()
@@ -845,44 +921,111 @@ class KinovodYdlController(YtDlpController):
             )
             if cachemodel:
                 videotheatre_dto = cachemodel.meta_data_dto
-                if not isinstance(videotheatre_dto, VideoTheatreDTO):
+                if not isinstance(videotheatre_dto, VideoTheatreDTO) or not isinstance(
+                    videotheatre_dto.raw_data,
+                    str,
+                ):
                     return None
-                self._perevod_from_html = videotheatre_dto.perevod_from_html
-                if not isinstance(videotheatre_dto.info_dict, str):
-                    return None
-                playlist_dict = self._parse_playlist_string(videotheatre_dto.info_dict)
-                videotheatre_dto.info_dict = playlist_dict
+
+                self._perevod_from_html = videotheatre_dto.perevod_from_html or ""
+
+                playlist_dict = self._parse_playlist_string(videotheatre_dto.raw_data)
 
                 # Build result in yt-dlp style
-                return self._video_info_from_dto(videotheatre_dto)
+                return self._video_info_from_dto(videotheatre_dto, playlist_dict)
 
             playlist_str = await self._parse_kinovod()
             if not playlist_str:
                 logging.warning("No playlist dict found, may be captcha")
                 return None
 
-            videotheatre_dto = VideoTheatreDTO.from_kinovod(
+            videotheatre_dto = VideoTheatreDTO.from_raw_data(
                 playlist_str,
                 self._resolution.url,
-                title=self._title,
-                thumbnail_url=self._thumbnail_url,
-                proxy=self._proxy,
-                perevod_from_html=self._perevod_from_html,
+                title=self._title or "",
+                thumbnail_url=self._thumbnail_url or "",
+                proxy=self._proxy or "",
+                perevod_from_html=self._perevod_from_html or "",
             )
             await self.create_or_update_cache_entry(videotheatre_dto)
             # Parse the received string into a dictionary
             playlist_dict = self._parse_playlist_string(playlist_str)
-            videotheatre_dto.info_dict = playlist_dict
 
-            return self._video_info_from_dto(videotheatre_dto)
+            return self._video_info_from_dto(videotheatre_dto, playlist_dict)
 
+        except Kinovod404Error:
+            await self.delete_processing_message()
+            self._message_id = None
+            await self._telegram_bot_controller.send_content_not_found_error(
+                telegram_id=self._telegram_id,
+            )
         except Exception as e:
-            logging.exception(f"Error in get_video_info: {e}")
-            return None
-        finally:
-            await self._cleanup_resources()
+            logging.exception(f"[kinovod] Error in get_video_info: {e}")
 
-    async def download_video(self) -> None:  # noqa: PLR0912, PLR0915, C901
+        return None
+
+    def _get_video_urls_from_seasons(
+        self,
+        videotheatre_dto: VideoTheatreDTO,
+    ) -> list[str]:
+        """
+        Extract video URLs from season/folder structure based on selected labels.
+
+        The method navigates through a nested structure of seasons, episodes,
+        quality levels, and translations to retrieve the appropriate video URLs.
+
+        Args:
+            videotheatre_dto: DTO containing:
+                - seasons: list of season dicts with 'title' and 'folder'
+                - season_label: title of the target season
+                - episode_label: title of the target episode
+                - quality: preferred quality key (e.g. '1080p')
+                - qualities: fallback list of quality names (used in reverse order)
+                - translation_label: key for the desired translation
+
+        Returns:
+            list[str]: Video URLs for the selected quality and translation.
+
+        Raises:
+            StopIteration: If season_label or episode_label is not found
+                          (when multiple seasons/episodes exist).
+            KeyError: If the required nested keys are missing in the structure.
+        """
+        quality_label = videotheatre_dto.quality
+        seasons = videotheatre_dto.seasons or [{}]
+        season_label = videotheatre_dto.season_label
+        episode_label = videotheatre_dto.episode_label
+        translation_label = videotheatre_dto.translation_label
+
+        video_urls: list[str] = []
+        if len(seasons) > 1:
+            season = next(item for item in seasons if item["title"] == season_label)
+        else:
+            season = seasons[0]
+        episodes = season["folder"]
+
+        if len(episodes) > 1:
+            episode = next(ep for ep in episodes if ep["title"] == episode_label)
+        else:
+            episode = episodes[0]
+
+        if quality_label in episode["file"]:
+            translations = episode["file"][quality_label]
+            if len(translations) > 1:
+                video_urls = episode["file"][quality_label][translation_label]
+            else:
+                ((_, video_urls),) = episode["file"][quality_label].items()
+        else:
+            qualities = videotheatre_dto.qualities or []
+            qualities.reverse()
+            for quality in qualities:
+                if quality in episode["file"]:
+                    video_urls = episode["file"][quality][translation_label]
+                    break
+
+        return video_urls
+
+    async def download_video(self) -> None:
         """
         Main entry point for Kinovod video download.
 
@@ -900,86 +1043,47 @@ class KinovodYdlController(YtDlpController):
 
         try:
             # 1. Check fsm context data
-            video_info = await self._telegram_bot_controller.get_fsm_data(
+            fsm_data = await self._telegram_bot_controller.get_fsm_data(
                 user_id=self._telegram_id,
                 chat_id=self._telegram_id,
             )
-            if not video_info:
+            if not fsm_data:
                 return
-            quality_label = video_info.get("quality_label", "")
-            season_label = video_info.get("season_label", "")
-            translation_label = video_info.get("translation_label", "")
-            episode_label = video_info.get("episode_label", "")
-            info_dict_fsm = json.loads(video_info["info_dict"])
-            info_dict = info_dict_fsm["seasons"]["info_dict"]
 
-            video_data = VideoTheatreDTO.from_kinovod(info_dict_fsm["seasons"], url)
-            self._proxy = video_data.proxy
+            videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, url)
+
+            self._proxy = videotheatre_dto.proxy
             self._yt_dlp.params.update({"proxy": self._proxy})
-            info_dict = video_data.info_dict
-            if not isinstance(info_dict, dict):
-                return
-            seasons = info_dict["seasons"]
-            if season_label:
-                season = next(item for item in seasons if item["title"] == season_label)
-            else:
-                season = seasons[0]
-            if episode_label:
-                episode = next(
-                    item for item in season["folder"] if item["title"] == episode_label
-                )
-            else:
-                episode = season["folder"][0]
-            if quality_label in episode["file"]:
-                if translation_label:
-                    video_urls = episode["file"][quality_label][translation_label]
-                else:
-                    ((_, video_urls),) = episode["file"][quality_label].items()
-            else:
-                info_dict["qualities"].reverse()
-                for quality in info_dict["qualities"]:
-                    if quality in episode["file"]:
-                        video_urls = episode["file"][quality][translation_label]
-                        break
-
-            season_num = season_label.split(" ")[0]
-            episode_num = episode_label.split(" ")[0]
-            self._source_id = info_dict_fsm["id"] + f"_{season_num}_{episode_num}"
 
             # 2: Check cache first
-            if await self.send_video_from_cache(self._source_id, quality_label):
+            if await self.send_video_from_cache(
+                videotheatre_dto.source_id or "",
+                videotheatre_dto.quality_real or "",
+            ):
                 return
 
             logging.info(
                 "Cache miss for source_id=%s and quality=%s. Starting download.",
-                self._source_id,
-                quality_label,
+                videotheatre_dto.source_id,
+                videotheatre_dto.quality_real or "",
             )
             self._process_percent(16)
+
+            video_urls = self._get_video_urls_from_seasons(videotheatre_dto)
 
             video_dto = await self._download_video_by_urls(video_urls)
 
             self._process_percent(86)
 
-            if not video_dto:
+            if not isinstance(video_dto, VideoDTO):
                 await self._send_error_message()
                 return
 
-            video_dto.source_id = self._source_id
-            video_dto.url = self._resolution.url
-            video_dto.title = video_info["video_dto"]["title"]
-            video_dto.quality = quality_label
-            if video_data.perevod_from_html and "," not in video_data.perevod_from_html:
-                video_dto.translation = video_data.perevod_from_html
-            if self._resolution.metadata["type"] != "film" and season_label:
-                video_dto.season = season_label
-                video_dto.episode = episode_label
-                if (
-                    not video_dto.translation
-                    and len(seasons[0]["folder"][0]["file"][quality_label]) > 1
-                    and isinstance(info_dict, dict)
-                ):
-                    video_dto.translation = info_dict["translations"][translation_label]
+            video_dto = VideoDTO.from_kinovod(
+                video_dto=video_dto,
+                videotheatre_dto=videotheatre_dto,
+                resolution=self._resolution,
+            )
 
             #  3: Send to Telegram
 
@@ -994,8 +1098,6 @@ class KinovodYdlController(YtDlpController):
             await self._telegram_bot_controller.send_content_not_found_error(
                 telegram_id=self._telegram_id,
             )
-        finally:
-            await self._cleanup_resources()
 
     async def _cleanup_resources(self) -> None:
         """Clean up browser resources."""

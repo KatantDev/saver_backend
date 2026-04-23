@@ -27,3 +27,11 @@ class TikTokYtDlpDownloaderError(YtDlpDownloaderError):
 
 class KinovodCaptchaError(DownloaderError):
     """Exception for Kinovod Captcha error."""
+
+
+class KinovodAlertError(DownloaderError):
+    """Exception for Kinovod Alert error."""
+
+
+class Kinovod404Error(DownloaderError):
+    """Exception for Kinovod 404 error."""

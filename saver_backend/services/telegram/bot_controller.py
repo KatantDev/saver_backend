@@ -38,6 +38,7 @@ from sentry_sdk import capture_exception
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from saver_backend.db.models.cache_model import CacheModel
+from saver_backend.entities.enums import ContentTypeEnum
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
     PhotoDTO,
@@ -729,7 +730,7 @@ class TelegramBotController:
         :return: MediaGroupBuilder with added audio files.
         """
         media_group = MediaGroupBuilder()
-
+        duration = 0
         for ind, audio in enumerate(chunk):
             audio_input: str | URLInputFile | InputFile | None = None
             thumbnail_input: URLInputFile | InputFile | None = None
@@ -742,7 +743,7 @@ class TelegramBotController:
                 AudioDTO,
             ):
                 audio_input = audio.file_id
-                duration = audio.meta_data_dto.duration
+                duration = audio.meta_data_dto.duration or 0
                 track = (
                     audio.meta_data_dto.track
                     if hasattr(audio.meta_data_dto, "track")
@@ -753,7 +754,7 @@ class TelegramBotController:
             elif isinstance(audio, AudioDTO):
                 url = audio.url
                 track = audio.track
-                duration = audio.duration
+                duration = audio.duration or 0
                 thumbnail_input = (
                     URLInputFile(url=audio.thumbnail_url)
                     if audio.thumbnail_url
@@ -835,8 +836,8 @@ class TelegramBotController:
                 if video.duration and video.duration < 180
                 else URLInputFile(
                     url=video.direct_download_url,
-                    filename=video.title
-                    or video.direct_download_url + settings.telegram_filename_sufix,
+                    filename=(video.filename or video.direct_download_url)
+                    + settings.telegram_filename_sufix,
                 )
             )
             thumbnail_input = video.thumbnail_url
@@ -844,8 +845,8 @@ class TelegramBotController:
             logging.info("Sending video via file upload: %s", video.path)
             video_input = FSInputFile(
                 path=video.path,
-                filename=video.title
-                or str(video.source_id) + settings.telegram_filename_sufix,
+                filename=(video.filename or str(video.source_id))
+                + settings.telegram_filename_sufix,
             )
             if video.thumbnail and Path(video.thumbnail).exists():
                 thumbnail_input = FSInputFile(path=video.thumbnail)
@@ -1024,7 +1025,7 @@ class TelegramBotController:
     async def edit_failed_video_info(
         self,
         telegram_id: int,
-        message_id: int,
+        message_id: int | None = None,
         language: str | None = None,
     ) -> None:
         """
@@ -1034,6 +1035,9 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language for message.
         """
+        if not message_id:
+            return
+
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,
@@ -1066,6 +1070,7 @@ class TelegramBotController:
         telegram_id: int,
         video_dto: VideoDTO,
         language: str | None = None,
+        contenttype: ContentTypeEnum = ContentTypeEnum.VIDEO,
     ) -> Message | None:
         """
         Send choose quality.
@@ -1076,6 +1081,7 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param video_dto: Video DTO.
         :param language: The language of the caption.
+        :param contenttype: ContentType enum.
         """
         text = _(
             "choose quality",
@@ -1083,6 +1089,7 @@ class TelegramBotController:
         ).format(title=video_dto.title_html)
         reply_markup = inline.get_video_formats_keyboard(
             labels=video_dto.unique_labels,
+            contenttype=contenttype,
         )
 
         message: Message | None = None

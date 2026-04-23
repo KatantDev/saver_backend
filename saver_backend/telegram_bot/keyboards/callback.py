@@ -1,5 +1,7 @@
 from aiogram.filters.callback_data import CallbackData
 
+from saver_backend.entities.enums import ContentTypeEnum
+
 CHECK_SUBSCRIPTIONS = "check_subscriptions"
 
 
@@ -7,6 +9,7 @@ class VideoFormatCallback(CallbackData, prefix="vid"):
     """Callback for selecting video resolution."""
 
     label: str
+    contenttype: ContentTypeEnum
 
 
 class VideoLanguageCallback(CallbackData, prefix="lang"):

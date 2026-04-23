@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import re
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 from ymdantic.models import TrackType
 
 from saver_backend.entities.enums import SourceEnum
+from saver_backend.entities.resolution import Resolution
 from saver_backend.services.consts import MAX_FILE_SIZE_BYTES
 from saver_backend.services.language_resolver import LanguageResolver
 
@@ -159,6 +161,7 @@ class VideoDTO(BaseContentDTO):
     translation: str | None = None
     episode: str | None = None
     direct_download_url: str | None = None
+    filename: str | None = None
 
     formats: list[FormatDTO] = Field(default_factory=list)
 
@@ -202,7 +205,7 @@ class VideoDTO(BaseContentDTO):
         return list(self.unique_formats.keys())
 
     @property
-    def title_html(self) -> str:  # noqa: PLR0912, C901
+    def title_html(self) -> str:
         """
         Return the title of the video formatted as html.
 
@@ -214,7 +217,7 @@ class VideoDTO(BaseContentDTO):
                 for fmt in formats:
                     qualities[fmt.format_id] = key
             if qualities:
-                quality = f"[{qualities[self.quality]}]".replace("p", "")
+                quality = f"[{qualities.get(self.quality,'')}]".replace("p", "")
             else:
                 quality = f"[{self.quality}]".replace("p", "")
         else:
@@ -234,12 +237,12 @@ class VideoDTO(BaseContentDTO):
                 )
             else:
                 title_html = f'<b>{self.title}\u00A0<a href="{self.url}">→\n</a></b>'
-            if self.season:
-                title_html += f"› {self.season}\n"  # noqa RUF001
-            if self.episode:
-                title_html += f"› {self.episode}\n"  # noqa RUF001
-            if self.translation:
-                title_html += f"› {self.translation}\n"  # noqa RUF001
+
+            title_html += f"› {self.season}\n" if self.season else ""  # noqa RUF001
+            title_html += f"› {self.episode}\n" if self.episode else ""  # noqa RUF001
+            title_html += (
+                f"› {self.translation}\n" if self.translation else ""  # noqa RUF001
+            )
 
         else:
             title_html = f"{self.url}\n"
@@ -353,6 +356,7 @@ class VideoDTO(BaseContentDTO):
             path=file_path,
             thumbnail_url=info.get("thumbnail"),
             title=title,
+            filename=title,
             channel=channel,
             channel_id=channel_id,
             channel_url=channel_url,
@@ -386,6 +390,7 @@ class VideoDTO(BaseContentDTO):
             direct_download_url=data.play,
             thumbnail_url=data.cover,
             title=data.title,
+            filename=data.title,
             description=data.author_name,
             url=url,
             source_id=data.id,
@@ -413,13 +418,55 @@ class VideoDTO(BaseContentDTO):
 
         thumbnail_url = getattr(item, "url", getattr(item, "display_url", None))
 
+        title = caption or getattr(item, "caption", None)
+
         return cls(
             url=url,
             source_id=source_id,
-            title=caption or getattr(item, "caption", None),
+            title=title,
+            filename=title,
             duration=duration,
             direct_download_url=direct_download_url,
             thumbnail_url=thumbnail_url,
+        )
+
+    @classmethod
+    def from_kinovod(
+        cls,
+        video_dto: "VideoDTO",
+        videotheatre_dto: "VideoTheatreDTO",
+        resolution: Resolution,
+    ) -> "VideoDTO":
+        """Creates a VideoDTO from Kinovod fsm data."""
+        url = resolution.url
+        season_label = videotheatre_dto.season_label
+        episode_label = videotheatre_dto.episode_label
+
+        if resolution.metadata["type"] == "film":
+            season_label = ""
+            episode_label = ""
+
+        title = videotheatre_dto.title
+
+        if video_dto.path:
+            (video_dto.width, video_dto.height) = cls.get_video_dimensions_ffmpeg(
+                video_dto.path,
+            )
+
+        return cls(
+            path=video_dto.path,
+            source_id=videotheatre_dto.source_id,
+            url=url,
+            width=video_dto.width,
+            height=video_dto.height,
+            ext=video_dto.ext,
+            title=title,
+            filename=(title or "") + (videotheatre_dto.suffix or ""),
+            quality=videotheatre_dto.quality_real,
+            thumbnail_url=videotheatre_dto.thumbnail_url,
+            season=season_label or "",
+            translation=videotheatre_dto.translation_name or "",
+            episode=episode_label or "",
         )
 
 
@@ -591,8 +638,6 @@ class AudioDTO(BaseContentDTO):
 
         audio_url = audio_data.get("url", "")
 
-        title = audio_data.get("fulltitle") or audio_data.get("title")
-
         track_url = audio_data.get("original_url", "")
         album_url = track_url.split("/track")[0]
         track = audio_data.get("track")
@@ -712,34 +757,72 @@ class PhotoListDTO(BaseContentDTO):
         )
 
 
+class VtTranslations(BaseModel):
+    """Data Transfer Object for translation in video theatries."""
+
+    named_translations: dict[str, Any] = {}
+    from_episode_translations: dict[str, Any] = {}
+
+    @classmethod
+    def from_dict(cls, translation_dict: dict[str, Any]) -> "VtTranslations":
+        """Create VtTranslations instance from a dictionary."""
+        return cls(
+            named_translations=translation_dict["named_translations"],
+            from_episode_translations=translation_dict["from_episode_translations"],
+        )
+
+
 class VideoTheatreDTO(BaseContentDTO):
     """Data Transfer Object for Video from online theatries."""
 
-    thumbnail_url: str | None = None
-    duration: int | None = None
-    perevod_from_html: str | None = None
-    proxy: str | None = None
-    info_dict: dict[str, Any] | str
+    suffix: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    perevod_from_html: Optional[str] = None
+    proxy: Optional[str] = None
+    raw_data: Optional[str] = None
+    info_dict: dict[str, Any] = {}
+    qualities: list[str] = []
+    quality: Optional[str] = None
+    quality_real: Optional[str] = None
+    seasons: list[dict[str, Any]] = [{}]
+    selected_season: dict[str, Any] = {}
+    episodes: list[dict[str, Any]] = [{}]
+    selected_episode: dict[str, Any] = {}
+    translations: dict[str, Any] = {}
+    translation_names: VtTranslations = VtTranslations()
+    translation_name: Optional[str] = None
+    season_label: Optional[str] = None
+    translation_label: Optional[str] = None
+    episode_label: Optional[str] = None
 
     @classmethod
-    def from_kinovod(
+    def from_raw_data(
         cls,
-        info_dict: dict[str, Any] | str,
+        raw_data: str,
         resolution_url: str,
-        title: Optional[str] = None,
-        thumbnail_url: Optional[str] = None,
-        proxy: Optional[str] = None,
+        title: str,
+        thumbnail_url: str,
+        proxy: str,
         perevod_from_html: Optional[str] = None,
     ) -> "VideoTheatreDTO":
-        """Data Transfer Object for Video from Kinovod."""
-        source_id = resolution_url.split("/")[-1]
-        if isinstance(info_dict, dict):
-            title = info_dict["title"]
-            thumbnail_url = info_dict["thumbnail_url"]
-            perevod_from_html = info_dict["perevod_from_html"]
-            proxy = info_dict["proxy"]
-            info_dict = info_dict["info_dict"]
+        """
+        Create a VideoTheatreDTO from raw scraping data.
 
+        This factory method is used when building the DTO from directly scraped
+        HTML/JSON data before any user interaction (seasons/qualities selection).
+
+        Args:
+            raw_data: Raw scraped data (typically JSON string containing video info)
+            resolution_url: URL pointing to the video resolution/playlist
+            title: Title of the video content
+            thumbnail_url: URL of the video thumbnail image
+            proxy: Proxy server URL to use for requests
+            perevod_from_html: Optional translation info extracted from HTML
+
+        Returns:
+            VideoTheatreDTO: Populated DTO instance with source_id derived from URL
+        """
+        source_id = resolution_url.split("/")[-1]
         return cls(
             title=title,
             url=resolution_url,
@@ -747,8 +830,131 @@ class VideoTheatreDTO(BaseContentDTO):
             thumbnail_url=thumbnail_url,
             perevod_from_html=perevod_from_html,
             proxy=proxy,
-            info_dict=info_dict,
+            raw_data=raw_data,
         )
+
+    @classmethod
+    def from_fsm_data(
+        cls,
+        fsm_data: dict[str, Any],
+        resolution_url: str,
+    ) -> "VideoTheatreDTO":
+        """
+        Create a VideoTheatreDTO from FSM context data.
+
+        This factory method reconstructs the DTO after user selections have been
+        made in an FSM workflow (e.g., chosen season, episode, quality, translation).
+
+        The method extracts nested data from the FSM context, builds a unique
+        source_id by appending suffixes from user selections, and populates
+        all video navigation fields.
+
+        Args:
+            fsm_data: Dictionary from FSM context containing:
+                - quality_label: User-selected quality (e.g., '1080p')
+                - season_label: User-selected season (e.g., 'Season 1')
+                - translation_label: User-selected translation/voiceover
+                - episode_label: User-selected episode (e.g., 'Episode 1')
+                - info_dict: JSON string containing nested structure with:
+                    - title: Video title
+                    - thumbnail_url: Thumbnail URL
+                    - perevod_from_html: Translation info
+                    - videotheatre_dto: Contains proxy and original info_dict
+                        with seasons and translations data
+            resolution_url: URL pointing to the video resolution/playlist
+
+        Returns:
+            VideoTheatreDTO: Populated DTO instance with all selection fields
+                            and a source_id that includes user choices as suffix.
+
+        """
+        quality_label = fsm_data.get("quality_label", "")
+        season_label = fsm_data.get("season_label", "")
+        translation_label = fsm_data.get("translation_label", "")
+        episode_label = fsm_data.get("episode_label", "")
+
+        info_dict_fsm = json.loads(fsm_data.get("info_dict", "{}"))
+        title = info_dict_fsm["title"]
+        thumbnail_url = info_dict_fsm["thumbnail"]
+        perevod_from_html = info_dict_fsm["videotheatre_dto"]["perevod_from_html"]
+        proxy = info_dict_fsm["videotheatre_dto"]["proxy"]
+
+        info_dict = info_dict_fsm["videotheatre_dto"]["info_dict"]
+        seasons = info_dict["seasons"]
+
+        selected_season = get_selected_season_or_episode(seasons, season_label)
+        episodes = selected_season["folder"]
+        selected_episode = get_selected_season_or_episode(episodes, episode_label)
+
+        translations = selected_episode["file"].get(quality_label, {})
+        quality_real = quality_label
+        if not translations:
+            qualities = info_dict["qualities"]
+            qualities.remove(quality_label)
+            qualities.reverse()
+            for quality in info_dict["qualities"]:
+                translations = selected_episode["file"].get(quality, {})
+                if translations:
+                    quality_real = quality
+                    break
+
+        translation_names = VtTranslations.from_dict(info_dict["translations"])
+        translation_name = translation_names.named_translations.get(translation_label)
+        if translation_name is None:
+            translation_name = translation_names.from_episode_translations.get(
+                translation_label,
+                "",
+            )
+
+        suffix = ""
+        if season_label:
+            suffix += "_" + season_label.split(" ")[0]
+        if episode_label:
+            suffix += "_" + episode_label.split(" ")[0]
+
+        if translation_label:
+            suffix += "_" + translation_label.split(" ")[0]
+
+        source_id = resolution_url.split("/")[-1]
+
+        if "," in perevod_from_html:
+            perevod_from_html = ""
+
+        return cls(
+            title=title,
+            source_id=source_id + suffix,
+            suffix=suffix,
+            url=resolution_url,
+            thumbnail_url=thumbnail_url,
+            perevod_from_html=perevod_from_html,
+            proxy=proxy,
+            quality=quality_label,
+            quality_real=quality_real,
+            qualities=info_dict["qualities"],
+            seasons=seasons,
+            selected_season=selected_season,
+            episodes=episodes,
+            selected_episode=selected_episode,
+            translations=translations,
+            translation_name=translation_name,
+            translation_names=translation_names,
+            season_label=season_label,
+            translation_label=translation_label,
+            episode_label=episode_label,
+        )
+
+
+def get_selected_season_or_episode(
+    video_items: list[dict[str, Any]],
+    item_label: str | None,
+) -> dict[str, Any]:
+    """Return season or episode by its label."""
+    if item_label:
+        result = next(item for item in video_items if item["title"] == item_label)
+    else:
+        result = video_items[0]
+
+    return result
 
 
 CacheableDTO = Union[VideoDTO, PhotoDTO, AudioDTO, PhotoListDTO, VideoTheatreDTO]
