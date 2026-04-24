@@ -4,15 +4,16 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from saver_backend.entities.enums import ContentTypeEnum
-from saver_backend.services.downloaders.schema import FormatDTO
+from saver_backend.entities.enums import KeyboardBacksEnum as Back
+from saver_backend.services.downloaders.schema import EpisodeDTO, FormatDTO, SeasonDTO
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
 from saver_backend.telegram_bot.keyboards.callback import (
     CHECK_SUBSCRIPTIONS,
+    VideoEpisodesCallback,
     VideoFormatCallback,
     VideoLanguageCallback,
     VideoSeasonCallback,
-    VideoSeriesCallback,
     VideoTranslationCallback,
 )
 
@@ -129,12 +130,13 @@ def get_translations_keyboard(
                 label=key,
             ).pack(),
         )
+
     builder.adjust(1)
 
     builder.button(
         text=_("Back"),
         callback_data=VideoTranslationCallback(
-            label="back_to_season",
+            label=Back.TO_EPISODES,
         ).pack(),
     )
 
@@ -143,46 +145,56 @@ def get_translations_keyboard(
 
 
 def _build_grid_keyboard(
-    items: list[str],
+    items: list[EpisodeDTO] | list[SeasonDTO],
     row_pattern: list[int],
-    callback_class: Type[VideoSeasonCallback] | Type[VideoSeriesCallback],
+    callback_class: Type[VideoSeasonCallback] | Type[VideoEpisodesCallback],
     back_label: str,
 ) -> InlineKeyboardMarkup:
     """
     Build a keyboard with buttons arranged in a grid pattern.
 
-    :param items: List of button texts.
-    :param row_pattern: Pattern of buttons per row (e.g., [5, 4]  ).
-    :param callback_class: Callback data for the back button.
-    :param back_label: Text for the back button. If None, uses localized "Back".
-    :return: An InlineKeyboardMarkup.
+    Buttons with text longer than 20 characters occupy their own row.
     """
     builder = InlineKeyboardBuilder()
-
+    # telegram API supports max 95 buttons
+    items = items[:95]
     # Add all item buttons
+    text_lengths = []
     for item in items:
+        text_lengths.append(len(item.title or ""))
         builder.button(
-            text=item,
+            text=item.title or "",
             callback_data=callback_class(
-                label=item,
+                label=item.label,
             ).pack(),
         )
 
-    # Calculate rows configuration based on pattern
-    buttons_count = len(items)
+    # Calculate rows configuration
     rows_config = []
     pattern_index = 0
-    remaining = buttons_count
+    i = 0
 
-    while remaining > 0:
-        buttons_in_row = row_pattern[pattern_index % len(row_pattern)]
-        if remaining >= buttons_in_row:
-            rows_config.append(buttons_in_row)
-            remaining -= buttons_in_row
+    while i < len(items):
+        if text_lengths[i] > 20:
+            # Long text button - single button row
+            rows_config.append(1)
+            i += 1
+            pattern_index += 1
         else:
-            rows_config.append(remaining)
-            remaining = 0
-        pattern_index += 1
+            # Use pattern for normal buttons
+            buttons_in_row = row_pattern[pattern_index % len(row_pattern)]
+
+            # Count consecutive normal buttons (not long)
+            normal_buttons = 0
+            for j in range(i, min(i + buttons_in_row, len(items))):
+                if text_lengths[j] > 20:
+                    break
+                normal_buttons += 1
+
+            if normal_buttons > 0:
+                rows_config.append(normal_buttons)
+                i += normal_buttons
+                pattern_index += 1
 
     # Add back button
     builder.button(text=_("Back"), callback_data=callback_class(label=back_label))
@@ -194,7 +206,7 @@ def _build_grid_keyboard(
 
 
 def get_season_keyboard(
-    seasons: list[str],
+    seasons: list[SeasonDTO],
 ) -> InlineKeyboardMarkup:
     """
     Create a keyboard for selecting a season.
@@ -206,12 +218,12 @@ def get_season_keyboard(
         items=seasons,
         row_pattern=[5, 4],
         callback_class=VideoSeasonCallback,
-        back_label="back_to_formats",
+        back_label=Back.TO_FORMATS,
     )
 
 
 def get_episodes_keyboard(
-    episodes_list: list[dict[str, Any]],
+    episodes_list: list[EpisodeDTO],
 ) -> InlineKeyboardMarkup:
     """
     Create a keyboard for selecting episodes within a season.
@@ -219,13 +231,12 @@ def get_episodes_keyboard(
     :param episodes_list: A list of episodes.
     :return: An InlineKeyboardMarkup.
     """
-    episode_titles: list[str] = [episode.get("title", "") for episode in episodes_list]
 
     return _build_grid_keyboard(
-        items=episode_titles,
+        items=episodes_list,
         row_pattern=[4, 3],
-        callback_class=VideoSeriesCallback,
-        back_label="back_to_translations",
+        callback_class=VideoEpisodesCallback,
+        back_label=Back.TO_SEASONS,
     )
 
 

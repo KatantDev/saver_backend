@@ -35,3 +35,12 @@ class KinovodAlertError(DownloaderError):
 
 class Kinovod404Error(DownloaderError):
     """Exception for Kinovod 404 error."""
+
+class KinovodParseError(Exception):
+    """Exception for Kinovod Parse error."""
+
+class KinovodQualityParseError(KinovodParseError):
+    """Exception for Kinovod QualityParse error."""
+
+class KinovodTranslationParseError(KinovodParseError):
+    """Exception for Kinovod translation parse error."""

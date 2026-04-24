@@ -448,7 +448,6 @@ class BaseSourceController(ABC):
             await self._telegram_bot_controller.send_video_by_file_id(
                 telegram_id=self._telegram_id,
                 cache_item=cached_item,
-                url=self._resolution.url,
             )
         return True
 
@@ -493,7 +492,7 @@ class BaseSourceController(ABC):
                 file_id=telegram_video.file_id,
             )
         elif video_dto.direct_download_url:
-            # Fallback for when upload failed but we have a direct URL
+            # Fallback for when upload failed, but we have a direct URL
             await self._telegram_bot_controller.answer_inline_query_video(
                 inline_query_id=self._inline_query_id,
                 video_dto=video_dto,

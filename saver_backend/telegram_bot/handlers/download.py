@@ -1,7 +1,6 @@
 import logging
 import re
 from contextlib import suppress
-from typing import Any, Optional
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -12,7 +11,13 @@ from aiogram.types import (
     Message,
 )
 
-from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
+from saver_backend.entities.enums import (
+    ContentTypeEnum,
+    SourceEnum,
+)
+from saver_backend.entities.enums import (
+    KeyboardBacksEnum as Back,
+)
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO, VideoTheatreDTO
 from saver_backend.services.i18n import gettext as _
@@ -23,10 +28,10 @@ from saver_backend.task_manager.tasks import (
 )
 from saver_backend.telegram_bot.filters.source import SourceFilter
 from saver_backend.telegram_bot.keyboards.callback import (
+    VideoEpisodesCallback,
     VideoFormatCallback,
     VideoLanguageCallback,
     VideoSeasonCallback,
-    VideoSeriesCallback,
     VideoTranslationCallback,
 )
 from saver_backend.telegram_bot.keyboards.inline import (
@@ -35,9 +40,9 @@ from saver_backend.telegram_bot.keyboards.inline import (
 )
 from saver_backend.telegram_bot.keyboards.videotheatre import (
     check_fsm_data,
+    choose_episodes,
     choose_quality,
     choose_season,
-    choose_series,
     choose_translations,
 )
 
@@ -165,8 +170,8 @@ async def on_format_select_for_videotheatre(
     """
     Handle selection of a video resolution for VideoTheatreDTO.
 
-    If multiple languages are available for this resolution, it shows a
-    language selection keyboard. Otherwise, it shows the final format info.
+    If multiple seasons are available for this resolution, it shows a
+    seasons selection keyboard. Otherwise, it shows the episodes keyboard.
     """
     if not isinstance(query.message, Message) or not query.from_user:
         await query.answer()
@@ -187,11 +192,9 @@ async def on_format_select_for_videotheatre(
     resolution: Resolution = Resolution.model_validate(resolution_data)
 
     fsm_data["quality_label"] = callback_data.label
-    videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, resolution.url)
+    videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, resolution)
 
-    lang = "en"  # todo from fsm_data
-
-    seasons = videotheatre_dto.seasons or [{}]
+    seasons = videotheatre_dto.seasons
     caption: str | None = None
     data_to_fsm = {"quality_label": callback_data.label}
     reply_markup: InlineKeyboardMarkup | None = None
@@ -201,26 +204,27 @@ async def on_format_select_for_videotheatre(
         caption, reply_markup = choose_season(video_dto.title_html, seasons)
     else:
         selected_season = videotheatre_dto.selected_season
-        data_to_fsm["season_label"] = selected_season.get("title", "")
-        episodes = videotheatre_dto.episodes or [{}]
-        translations = videotheatre_dto.translations
-        if len(translations) > 1:
+        data_to_fsm["season_label"] = selected_season.label
+        video_dto.season = videotheatre_dto.selected_season_title
+
+        if len(selected_season.episodes) > 1:
+            caption, reply_markup = choose_episodes(
+                title_html=video_dto.title_html,
+                episodes_list=selected_season.episodes,
+            )
+        elif len(videotheatre_dto.available_translations) > 1:
+            data_to_fsm["translation_label"] = next(
+                iter(videotheatre_dto.available_translations),
+            )
             caption, reply_markup = choose_translations(
                 title_html=video_dto.title_html,
-                season_label=seasons[0]["title"],
-                translations=videotheatre_dto.translation_names.named_translations,
-                lang=lang,
-            )
-        elif len(episodes) > 1:
-            data_to_fsm["translation_label"] = next(iter(translations))
-            caption, reply_markup = choose_series(
-                title_html=video_dto.title_html,
-                season_label=seasons[0]["title"],
-                translation_name=videotheatre_dto.perevod_from_html or "",
-                episodes_list=episodes,
+                translations=videotheatre_dto.available_translations,
             )
         else:
-            data_to_fsm["translation_label"] = next(iter(translations))
+            video_dto.episode = videotheatre_dto.selected_episode.title
+            data_to_fsm["translation_label"] = next(
+                iter(videotheatre_dto.available_translations),
+            )
             await _trigger_download(
                 query=query,
                 resolution=resolution,
@@ -336,7 +340,7 @@ async def on_language_select(
 
 
 @download_router.callback_query(VideoSeasonCallback.filter())
-async def on_seasons_select(  # noqa C901
+async def on_seasons_select(
     query: CallbackQuery,
     callback_data: VideoSeasonCallback,
     state: FSMContext,
@@ -344,8 +348,8 @@ async def on_seasons_select(  # noqa C901
     """
     Handle selection of a season.
 
-    If multiple translations are available for this season, it shows a
-    translation selection keyboard. Otherwise, it shows the series selection.
+    If multiple episodes are available for this season, it shows an
+    episodes selection keyboard. Otherwise, it shows the translation selection.
     """
     if not isinstance(query.message, Message) or not query.from_user:
         await query.answer()
@@ -368,15 +372,14 @@ async def on_seasons_select(  # noqa C901
     caption = None
     reply_markup: InlineKeyboardMarkup | None = None
     lang = "en"  # todo lang from info dict
-    data_to_fsm: Optional[dict[str, Any]] = None
 
-    if callback_data.label != "back_to_formats":
+    if callback_data.label != Back.TO_FORMATS:
         fsm_data["season_label"] = callback_data.label
-    videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, resolution.url)
+    videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, resolution)
 
-    if callback_data.label == "back_to_formats":
+    if callback_data.label == Back.TO_FORMATS:
+        data_to_fsm = {"season_label": "", "episode_label": "", "translation_label": ""}
         # Handle back button
-        video_dto.quality = videotheatre_dto.quality
         caption, reply_markup = choose_quality(
             title_html=video_dto.title_html,
             lables=video_dto.unique_labels,
@@ -388,36 +391,34 @@ async def on_seasons_select(  # noqa C901
         video_dto.quality = videotheatre_dto.quality_real
         data_to_fsm = {"season_label": season_label}
 
-        translations = videotheatre_dto.translations
-        if len(translations) > 1:
-            # Sending translations selection message
-            caption, reply_markup = choose_translations(
+        selected_season = videotheatre_dto.selected_season
+        video_dto.season = videotheatre_dto.selected_season_title
+        if len(selected_season.episodes) > 1:
+            # Sending episodes selection message
+            caption, reply_markup = choose_episodes(
                 title_html=video_dto.title_html,
-                season_label=season_label,
-                translations=videotheatre_dto.translation_names.named_translations,
-                lang=lang,
+                episodes_list=selected_season.episodes,
             )
 
-        elif len(translations) == 1:
-            translation_key = next(iter(translations.keys()))
+        elif len(videotheatre_dto.available_translations) > 1:
+            video_dto.episode = videotheatre_dto.selected_episode_title
+
+            data_to_fsm["episode_label"] = videotheatre_dto.selected_episode.label
+
+            caption, reply_markup = choose_translations(
+                title_html=video_dto.title_html,
+                translations=videotheatre_dto.available_translations,
+            )
+        else:
+            translation_key = next(iter(videotheatre_dto.available_translations))
+            data_to_fsm["episode_label"] = videotheatre_dto.selected_episode.label
             data_to_fsm["translation_label"] = translation_key
-            episodes: list[dict[str, Any]] = videotheatre_dto.episodes or [{}]
-            if isinstance(episodes, list):
-                if len(episodes) > 1:
-                    # Multiple series available
-                    caption, reply_markup = choose_series(
-                        title_html=video_dto.title_html,
-                        season_label=season_label,
-                        translation_name=videotheatre_dto.translation_name or "",
-                        episodes_list=episodes,
-                    )
-                elif len(episodes) == 1:
-                    data_to_fsm["episode_label"] = episodes[0]["title"]
-                    await _trigger_download(
-                        query=query,
-                        resolution=resolution,
-                        format_id=None,
-                    )
+
+            await _trigger_download(
+                query=query,
+                resolution=resolution,
+                format_id=None,
+            )
     if data_to_fsm:
         await state.update_data(data=data_to_fsm)
     if caption and reply_markup:
@@ -425,112 +426,17 @@ async def on_seasons_select(  # noqa C901
     await query.answer()
 
 
-@download_router.callback_query(VideoTranslationCallback.filter())
-async def on_translations_select(
+@download_router.callback_query(VideoEpisodesCallback.filter())
+async def on_episodes_select(
     query: CallbackQuery,
-    callback_data: VideoTranslationCallback,
+    callback_data: VideoEpisodesCallback,
     state: FSMContext,
 ) -> None:
     """
-    Handle selection of a translation for a specific season.
+    Handle selection of a specific episode.
 
-    Shows series selection keyboard for the chosen translation,
-    or triggers download if it's a movie (single series).
-
-    :param query: CallbackQuery object from the translation selection.
-    :param callback_data: Parsed callback data with translation info.
-    :param state: FSM context.
-    """
-    if not isinstance(query.message, Message) or not query.from_user:
-        await query.answer()
-        return
-
-    fsm_data = await state.get_data()
-    video_dto_data = fsm_data.get("video_dto")
-    resolution_data = fsm_data.get("resolution")
-
-    if not await check_fsm_data(query, fsm_data, message="selection expired"):
-        return
-
-    video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
-    resolution: Resolution = Resolution.model_validate(resolution_data)
-
-    if callback_data.label != "back_to_season":
-        fsm_data["translation_label"] = callback_data.label
-    videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, resolution.url)
-
-    video_dto.quality = videotheatre_dto.quality_real
-    # Handle back button
-    if callback_data.label == "back_to_season":
-        if videotheatre_dto.seasons and len(videotheatre_dto.seasons) > 1:
-            caption, reply_markup = choose_season(
-                title_html=video_dto.title_html,
-                seasons=videotheatre_dto.seasons,
-            )
-        else:
-            caption, reply_markup = choose_quality(
-                title_html=video_dto.title_html,
-                lables=video_dto.unique_labels,
-                contenttype=ContentTypeEnum.FILM_DICT,
-            )
-
-        await edit_telegram_message_keyboard(query, caption, reply_markup)
-    else:
-        # Get series data for the selected translation
-        quality_label = videotheatre_dto.quality
-        season_label = videotheatre_dto.season_label
-
-        if not quality_label or not season_label:
-            await query.answer(_("selection expired"), show_alert=True)
-            return
-
-        try:
-            episodes = videotheatre_dto.episodes
-        except KeyError:
-            await query.answer(_("selection expired"), show_alert=True)
-            return
-
-        # Store translation selection
-        await state.update_data(
-            {
-                "translation_label": callback_data.label,
-            },
-        )
-
-        # Check if it's a series (multiple episodes) or a movie (single)
-        if isinstance(episodes, list) and len(episodes) > 1:
-            # Multiple series available
-            caption, reply_markup = choose_series(
-                title_html=video_dto.title_html,
-                season_label=season_label,
-                translation_name=videotheatre_dto.translation_name or "",
-                episodes_list=episodes,
-            )
-
-            await edit_telegram_message_keyboard(query, caption, reply_markup)
-
-        else:
-            # Single series/movie - ask if download all or just this one
-            await _trigger_download(
-                query=query,
-                resolution=resolution,
-                format_id=None,
-            )
-
-    await query.answer()
-
-
-@download_router.callback_query(VideoSeriesCallback.filter())
-async def on_series_select(
-    query: CallbackQuery,
-    callback_data: VideoSeriesCallback,
-    state: FSMContext,
-) -> None:
-    """
-    Handle selection of a specific series or downloading all series.
-
-    :param query: CallbackQuery object from the series selection.
-    :param callback_data: Parsed callback data with series info.
+    :param query: CallbackQuery object from the episode selection.
+    :param callback_data: Callback data for filter to episodes keyboard .
     :param state: FSM context.
     """
     if not isinstance(query.message, Message) or not query.from_user:
@@ -551,53 +457,140 @@ async def on_series_select(
     video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
     resolution: Resolution = Resolution.model_validate(resolution_data)
 
-    if callback_data.label != "back_to_translations":
+    if callback_data.label != Back.TO_SEASONS:
         fsm_data["episode_label"] = callback_data.label
-    videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, resolution.url)
+    videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, resolution)
 
-    seasons = videotheatre_dto.seasons
-    season_label = videotheatre_dto.season_label
-    translations = videotheatre_dto.translations
+    available_translations = videotheatre_dto.available_translations
 
-    if not seasons or not translations:
+    if not videotheatre_dto.seasons:
         await query.answer()
         return
 
-        # Handle back button
-    if callback_data.label == "back_to_translations":
-        if len(translations) > 1:
+    # Handle back button
+    if callback_data.label == Back.TO_SEASONS:
+        await state.update_data(
+            data={"season_label": "", "episode_label": "", "translation_label": ""},
+        )
+        if len(videotheatre_dto.seasons) > 1:
             video_dto.quality = videotheatre_dto.quality
-            caption, reply_markup = choose_translations(
-                title_html=video_dto.title_html,
-                season_label=season_label or "",
-                translations=videotheatre_dto.translation_names.named_translations,
-            )
-        elif len(seasons) > 1:
-            video_dto.quality = videotheatre_dto.quality
+
             caption, reply_markup = choose_season(
                 title_html=video_dto.title_html,
-                seasons=seasons,
+                seasons=videotheatre_dto.seasons,
             )
         else:
             caption, reply_markup = choose_quality(
                 title_html=video_dto.title_html,
                 lables=video_dto.unique_labels,
                 contenttype=ContentTypeEnum.FILM_DICT,
-                lang="en",  # todo lang from info dict
             )
 
         await edit_telegram_message_keyboard(query, caption, reply_markup)
+    elif len(videotheatre_dto.available_translations) > 1:
+        await state.update_data(data={"episode_label": callback_data.label})
+        video_dto.quality = videotheatre_dto.quality_real
+        video_dto.season = videotheatre_dto.selected_season_title
+        video_dto.episode = videotheatre_dto.selected_episode_title
 
+        caption, reply_markup = choose_translations(
+            title_html=video_dto.title_html,
+            translations=available_translations,
+        )
+        await edit_telegram_message_keyboard(query, caption, reply_markup)
+
+    else:
+        await state.update_data(
+            data={
+                "episode_label": callback_data.label,
+                "translation_label": next(iter(available_translations)),
+            },
+        )
+        # Download single series
+        await _trigger_download(
+            query=query,
+            resolution=resolution,
+            format_id=None,
+        )
+
+    await query.answer()
+
+
+@download_router.callback_query(VideoTranslationCallback.filter())
+async def on_translations_select(
+    query: CallbackQuery,
+    callback_data: VideoTranslationCallback,
+    state: FSMContext,
+) -> None:
+    """
+    Handle selection of a translation for a specific episode.
+
+    Triggers download.
+
+    :param query: CallbackQuery object from the translation selection.
+    :param callback_data: Callback data for filter to translation keyboard.
+    :param state: FSM context.
+    """
+    if not isinstance(query.message, Message) or not query.from_user:
         await query.answer()
         return
 
-    await state.update_data(data={"episode_label": callback_data.label})
-    # Download single series
-    await _trigger_download(
-        query=query,
-        resolution=resolution,
-        format_id=None,
-    )
+    fsm_data = await state.get_data()
+    video_dto_data = fsm_data.get("video_dto")
+    resolution_data = fsm_data.get("resolution")
+
+    if not await check_fsm_data(query, fsm_data, message="selection expired"):
+        return
+
+    video_dto: VideoDTO = VideoDTO.model_validate(video_dto_data)
+    resolution: Resolution = Resolution.model_validate(resolution_data)
+
+    if callback_data.label != Back.TO_EPISODES:
+        fsm_data["translation_label"] = callback_data.label
+    videotheatre_dto = VideoTheatreDTO.from_fsm_data(fsm_data, resolution)
+
+    # Handle back button
+    selected_season = videotheatre_dto.selected_season
+    if callback_data.label == Back.TO_EPISODES:
+        await state.update_data(
+            {"episode_label": "", "translation_label": ""},
+        )
+        if len(selected_season.episodes) > 1:
+            video_dto.quality = videotheatre_dto.quality
+            video_dto.season = selected_season.title
+            caption, reply_markup = choose_episodes(
+                title_html=video_dto.title_html,
+                episodes_list=selected_season.episodes,
+            )
+        else:
+            caption, reply_markup = choose_quality(
+                title_html=video_dto.title_html,
+                lables=video_dto.unique_labels,
+                contenttype=ContentTypeEnum.FILM_DICT,
+            )
+
+        await edit_telegram_message_keyboard(query, caption, reply_markup)
+    else:
+        video_dto.quality = videotheatre_dto.quality_real
+        quality_label = videotheatre_dto.quality
+
+        if not quality_label:
+            await query.answer(_("selection expired"), show_alert=True)
+            return
+
+        # Store translation selection
+        await state.update_data(
+            {
+                "translation_label": callback_data.label,
+            },
+        )
+
+        # Single translation
+        await _trigger_download(
+            query=query,
+            resolution=resolution,
+            format_id=None,
+        )
 
     await query.answer()
 

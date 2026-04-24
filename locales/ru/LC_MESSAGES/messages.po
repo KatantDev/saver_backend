@@ -94,22 +94,19 @@ msgstr ""
 
 msgid "choose season"
 msgstr ""
-"<b>{title}</b>\n"
+"<b>{title}</b>"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Сезон:"
 
 msgid "choose translations"
 msgstr ""
 "<b>{title}</b>"
-"› {season}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Перевод:"
 
 msgid "choose series"
 msgstr ""
 "<b>{title}</b>"
-"› {season}\n"
-"› {translation}\n"
 "\n"
 "<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Серия:"
 

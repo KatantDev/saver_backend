@@ -30,7 +30,7 @@ class VideoTranslationCallback(CallbackData, prefix="transl"):
     label: str
 
 
-class VideoSeriesCallback(CallbackData, prefix="series"):
+class VideoEpisodesCallback(CallbackData, prefix="series"):
     """Callback for selecting series within a season."""
 
     label: str

@@ -5,6 +5,7 @@ import aiogram.types
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 
 from saver_backend.entities.enums import ContentTypeEnum
+from saver_backend.services.downloaders.schema import EpisodeDTO, SeasonDTO
 from saver_backend.services.i18n import gettext as _
 from saver_backend.telegram_bot.keyboards.inline import (
     get_episodes_keyboard,
@@ -43,7 +44,7 @@ async def check_fsm_data(
 
 def choose_season(
     title_html: str,
-    seasons: list[dict[str, Any]],
+    seasons: list[SeasonDTO],
 ) -> tuple[str, InlineKeyboardMarkup]:
     """
     Generate caption and keyboard for season selection.
@@ -53,8 +54,8 @@ def choose_season(
     :return: Tuple of (caption text, inline keyboard markup)
     """
     caption = _("choose season").format(title=title_html)
-    season_titles = [item["title"] for item in seasons]
-    reply_markup = get_season_keyboard(season_titles)
+
+    reply_markup = get_season_keyboard(seasons)
     return caption, reply_markup
 
 
@@ -104,7 +105,6 @@ def choose_quality(
 
 def choose_translations(
     title_html: str,
-    season_label: str,
     translations: dict[str, Any],
     lang: str = "en",
 ) -> tuple[str, InlineKeyboardMarkup]:
@@ -112,38 +112,30 @@ def choose_translations(
     Generate caption and keyboard for translation selection.
 
     :param title_html: Video title HTML str
-    :param season_label: Season number/label
     :param translations: Dictionary of available translations
     :param lang: Language code for localization
     :return: Tuple of (caption text, inline keyboard markup)
     """
     caption = _("choose translations", locale=lang).format(
         title=title_html,
-        season=season_label,
     )
     reply_markup = get_translations_keyboard(translations=translations)
     return caption, reply_markup
 
 
-def choose_series(
+def choose_episodes(
     title_html: str,
-    season_label: str,
-    translation_name: str,
-    episodes_list: list[dict[str, Any]],
+    episodes_list: list[EpisodeDTO],
 ) -> tuple[str, InlineKeyboardMarkup]:
     """
     Generate caption and keyboard for series/episode selection.
 
     :param title_html: Video title HTML str
-    :param season_label: Season number/label
-    :param translation_name: Name of the translation/dubbing
     :param episodes_list: List of available series/episodes
     :return: Tuple of (caption text with normalized line breaks, inline keyboard markup)
     """
     caption = _("choose series").format(
         title=title_html,
-        season=f"› {season_label}" if season_label else "",  # noqa: RUF001
-        translation=f"› {translation_name}" if translation_name else "",  # noqa: RUF001
     )
     caption = re.sub(r"\n{3,}", "\n\n", caption)
     reply_markup = get_episodes_keyboard(episodes_list=episodes_list)
