@@ -204,12 +204,12 @@ class VideoDTO(BaseContentDTO):
 
         :return: html string
         """
-        if self.quality is not None and self.quality != "best":
+        if self.quality is not None and self.quality not in ["best", "default"]:
             qualities = {}
             for key, formats in self.unique_formats.items():
                 for fmt in formats:
                     qualities[fmt.format_id] = key
-            quality = f"[{qualities[self.quality]}]".replace("p", "")
+            quality = f"[{qualities.get(self.quality,'')}]".replace("p", "")
         else:
             quality = ""
         if self.channel and self.channel_url:
