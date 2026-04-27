@@ -17,6 +17,7 @@ class ContentTypeEnum(str, Enum):
     PHOTO = "photo"
     AUDIO = "audio"
     PHOTO_LIST = "photo_list"
+    FILM_DICT = "film_dict"
 
 
 class SourceEnum(str, Enum):
@@ -59,3 +60,17 @@ class YandexMusicContentTypeEnum(str, Enum):
 
     TRACK = "track"
     ALBUM = "album"
+
+
+class VideoTheatreEnum(str, Enum):
+    """Enum for Video Theatre."""
+
+    FILM = "film"
+
+
+class KeyboardBacksEnum(str, Enum):
+    """Enum for keyboard backs type."""
+
+    TO_SEASONS = "to_seasons"
+    TO_EPISODES = "to_episodes"
+    TO_FORMATS = "to_format"

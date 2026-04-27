@@ -34,10 +34,11 @@ from aiogram.types import (
 from aiogram.utils.i18n import I18n, SimpleI18nMiddleware
 from aiogram.utils.media_group import MediaGroupBuilder
 from redis.asyncio import Redis
-from sentry_sdk import capture_exception
+from sentry_sdk import capture_exception, new_scope
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from saver_backend.db.models.cache_model import CacheModel
+from saver_backend.entities.enums import ContentTypeEnum
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
     PhotoDTO,
@@ -238,6 +239,33 @@ class TelegramBotController:
             return
 
         await context.set_data(data)
+
+    async def get_fsm_data(
+        self,
+        user_id: int,
+        chat_id: int,
+    ) -> dict[str, Any] | None:
+        """
+        Get FSM data for a specific user and chat.
+
+        :param user_id: The user's Telegram ID.
+        :param chat_id: The chat's Telegram ID.
+        :return: Dictionary with FSM data or None if context resolution fails.
+        """
+        context = self._dispatcher.fsm.resolve_context(
+            bot=self.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        if not context:
+            logging.warning(
+                "Failed to resolve FSM context for user_id=%s, chat_id=%s",
+                user_id,
+                chat_id,
+            )
+            return None
+
+        return await context.get_data()
 
     async def get_username(self) -> str:
         """
@@ -551,6 +579,9 @@ class TelegramBotController:
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
+            with new_scope() as scope:
+                scope.set_tag("url", audio.url)
+                capture_exception(e)
             capture_exception(e)
             return None
 
@@ -652,7 +683,7 @@ class TelegramBotController:
 
     async def send_finish_downloading_audio_group(
         self,
-        files: Sequence[AudioDTO | CacheModel],
+        files: Sequence[AudioDTO],
         telegram_id: int,
         message_id: int | None = None,
         language: str | None = None,
@@ -691,7 +722,7 @@ class TelegramBotController:
 
     def _build_audio_media_group(
         self,
-        chunk: Sequence[AudioDTO | CacheModel],
+        chunk: Sequence[AudioDTO],
         language: str | None = None,
     ) -> MediaGroupBuilder:
         """
@@ -705,8 +736,6 @@ class TelegramBotController:
 
         for ind, audio in enumerate(chunk):
             audio_input: str | URLInputFile | InputFile | None = None
-            thumbnail_input: URLInputFile | InputFile | None = None
-            track: str | None = None
 
             # Prepare audio data based on type
 
@@ -715,7 +744,7 @@ class TelegramBotController:
                 AudioDTO,
             ):
                 audio_input = audio.file_id
-                duration = audio.meta_data_dto.duration
+                duration = audio.meta_data_dto.duration or 0
                 track = (
                     audio.meta_data_dto.track
                     if hasattr(audio.meta_data_dto, "track")
@@ -723,10 +752,10 @@ class TelegramBotController:
                 )
                 thumbnail_input = None
                 url = audio.meta_data_dto.url
-            elif isinstance(audio, AudioDTO):
+            else:
                 url = audio.url
                 track = audio.track
-                duration = audio.duration
+                duration = audio.duration or 0
                 thumbnail_input = (
                     URLInputFile(url=audio.thumbnail_url)
                     if audio.thumbnail_url
@@ -808,8 +837,8 @@ class TelegramBotController:
                 if video.duration and video.duration < 180
                 else URLInputFile(
                     url=video.direct_download_url,
-                    filename=video.title
-                    or video.direct_download_url + settings.telegram_filename_sufix,
+                    filename=(video.filename or video.direct_download_url)
+                    + settings.telegram_filename_sufix,
                 )
             )
             thumbnail_input = video.thumbnail_url
@@ -817,8 +846,8 @@ class TelegramBotController:
             logging.info("Sending video via file upload: %s", video.path)
             video_input = FSInputFile(
                 path=video.path,
-                filename=video.title
-                or str(video.source_id) + settings.telegram_filename_sufix,
+                filename=(video.filename or str(video.source_id))
+                + settings.telegram_filename_sufix,
             )
             if video.thumbnail and Path(video.thumbnail).exists():
                 thumbnail_input = FSInputFile(path=video.thumbnail)
@@ -851,7 +880,9 @@ class TelegramBotController:
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
-            capture_exception(e)
+            with new_scope() as scope:
+                scope.set_tag("url", video.url)
+                capture_exception(e)
             return None
 
         if message_id is not None:
@@ -867,15 +898,13 @@ class TelegramBotController:
         self,
         telegram_id: int,
         cache_item: CacheModel,
-        url: str,
         language: str | None = None,
     ) -> Video | None:
         """
         Send video by file_id from cache.
 
         :param telegram_id: Telegram ID of the user.
-        :param file_id: The file_id to send.
-        :param url: The original source URL for the caption.
+        :param cache_item: Cachable object
         :param language: The language of the caption.
         :return: The sent Video object or None on failure.
         """
@@ -907,7 +936,9 @@ class TelegramBotController:
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
-            capture_exception(e)
+            with new_scope() as scope:
+                scope.set_tag("url", cache_item.meta_data_dto.url)
+                capture_exception(e)
             return None
 
     async def send_x_fallback_message(
@@ -997,7 +1028,7 @@ class TelegramBotController:
     async def edit_failed_video_info(
         self,
         telegram_id: int,
-        message_id: int,
+        message_id: int | None = None,
         language: str | None = None,
     ) -> None:
         """
@@ -1007,6 +1038,9 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language for message.
         """
+        if not message_id:
+            return
+
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,
@@ -1039,6 +1073,7 @@ class TelegramBotController:
         telegram_id: int,
         video_dto: VideoDTO,
         language: str | None = None,
+        contenttype: ContentTypeEnum = ContentTypeEnum.VIDEO,
     ) -> Message | None:
         """
         Send choose quality.
@@ -1049,6 +1084,7 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param video_dto: Video DTO.
         :param language: The language of the caption.
+        :param contenttype: ContentType enum.
         """
         text = _(
             "choose quality",
@@ -1056,6 +1092,7 @@ class TelegramBotController:
         ).format(title=video_dto.title_html)
         reply_markup = inline.get_video_formats_keyboard(
             labels=video_dto.unique_labels,
+            contenttype=contenttype,
         )
 
         message: Message | None = None
@@ -1089,7 +1126,9 @@ class TelegramBotController:
                     telegram_id,
                     e,
                 )
-                capture_exception(e)
+                with new_scope() as scope:
+                    scope.set_tag("url", video_dto.url)
+                    capture_exception(e)
                 return None
 
         return message
