@@ -127,6 +127,7 @@ class CacheDAO(BaseDAO):
             set_={
                 "meta_data": stmt.excluded.meta_data,
                 "updated_at": func.now(),
+                "content_type": content_type,
             },
         )
 
