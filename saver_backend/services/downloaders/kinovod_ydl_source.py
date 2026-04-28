@@ -526,9 +526,10 @@ class KinovodYdlController(YtDlpController):
             body = await response.text()
 
             # Modify JavaScript code
-            modified_body = body.replace(
-                "function Playerjs(options){",
-                "function Playerjs(options){RTCCertificate.plstdic = options.file;",
+            modified_body = re.sub(
+                r"function Playerjs\(options\)\s*\{",
+                r"function Playerjs(options){RTCCertificate.plstdic = options.file;",
+                body,
             )
 
             await route.fulfill(
@@ -673,7 +674,7 @@ class KinovodYdlController(YtDlpController):
 
         # Setup request interception for playerjs.js
         await self._page.route(
-            re.compile(r".*/playerjs.js.*"),
+            re.compile(r".*/playerjs.*js.*"),
             self._change_playerjs,
         )
 
