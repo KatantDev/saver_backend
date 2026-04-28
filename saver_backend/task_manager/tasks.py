@@ -1,7 +1,9 @@
+import json
 import logging
 
 from taskiq import TaskiqDepends
 
+from saver_backend.entities.enums import ContentTypeEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
@@ -141,6 +143,7 @@ async def get_video_info(
         user_dao=db.user_dao,
         history_dao=db.history_dao,
         cache_dao=db.cache_dao,
+        message_id=processing_message_id,
     )
     await controller.set_user_language()
 
@@ -156,7 +159,7 @@ async def get_video_info(
     if not info_dict:
         await state.telegram_bot_controller.edit_failed_video_info(
             telegram_id=telegram_id,
-            message_id=processing_message_id,
+            message_id=controller.message_id,
         )
         return
 
@@ -173,6 +176,7 @@ async def get_video_info(
     quality_selection_message = await state.telegram_bot_controller.send_choose_quality(
         telegram_id=telegram_id,
         video_dto=video_dto,
+        contenttype=getattr(controller, "contenttype", ContentTypeEnum.VIDEO),
     )
     await state.telegram_bot_controller.delete_message(
         telegram_id=telegram_id,
@@ -192,6 +196,7 @@ async def get_video_info(
         chat_id=telegram_id,
         data={
             "video_dto": video_dto.model_dump(mode="json"),
+            "videotheatre_dto": json.dumps(info_dict.get("videotheatre_dto", {})),
             "resolution": resolution.model_dump(mode="json"),
             "quality_selection_message_id": quality_selection_message.message_id,
         },

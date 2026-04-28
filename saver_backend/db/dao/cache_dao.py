@@ -1,4 +1,5 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 
 from saver_backend.db.dao.base_dao import BaseDAO
 from saver_backend.db.models.cache_model import CacheModel
@@ -89,3 +90,49 @@ class CacheDAO(BaseDAO):
         query = query.limit(limit)
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def update_or_create(
+        self,
+        cache_dto: CacheDTO,
+    ) -> CacheModel | None:
+        """
+        Update existing cache entry or create a new one.
+
+        If a record with the same (source, source_id, quality) exists,
+        updates its meta_data and updated_at fields.
+        Otherwise creates a new record.
+
+        Uses PostgreSQL's ON CONFLICT DO UPDATE for atomic operation.
+
+        :param cache_dto: The cache DTO containing all necessary information.
+        :return: The created or updated CacheModel instance.
+        """
+        content_type = DTO_TO_CONTENT_TYPE_MAP.get(type(cache_dto.meta_data))
+        if not content_type:
+            raise ValueError("Unsupported meta_data type for caching")
+
+        stmt = insert(CacheModel).values(
+            source=cache_dto.source,
+            source_id=cache_dto.source_id,
+            file_id=cache_dto.file_id,
+            file_unique_id=cache_dto.file_unique_id,
+            quality=cache_dto.quality,
+            content_type=content_type,
+            meta_data=cache_dto.meta_data.model_dump(mode="json", exclude_unset=True),
+        )
+
+        # ON CONFLICT: update meta_data and updated_at
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["source", "source_id", "quality"],
+            set_={
+                "meta_data": stmt.excluded.meta_data,
+                "updated_at": func.now(),
+                "content_type": content_type,
+            },
+        )
+
+        returning_stmt = stmt.returning(CacheModel)
+
+        result = await self.session.execute(returning_stmt)
+        await self.session.flush()
+        return result.scalar_one_or_none()
