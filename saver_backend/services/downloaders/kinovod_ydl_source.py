@@ -4,6 +4,7 @@ import re
 import secrets
 import socket
 from collections import deque
+from datetime import datetime, timedelta
 from typing import Any, ClassVar, Optional
 
 import httpx
@@ -27,6 +28,7 @@ from saver_backend.services.downloaders.exceptions import (
     Kinovod404Error,
     KinovodAlertError,
     KinovodCaptchaError,
+    KinovodMirrorError,
 )
 from saver_backend.services.downloaders.schema import (
     VideoDTO,
@@ -48,7 +50,7 @@ class KinovodYdlController(YtDlpController):
     """
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.KINOVOD_YDL
-    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.LOCAL
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
     COOKIES: ClassVar[bool] = False
 
     # Selectors
@@ -85,19 +87,19 @@ class KinovodYdlController(YtDlpController):
         self._proxies_rotate: deque[str] = deque(self._proxies)
         self._perevod_from_html: str = ""
         self._thumbnail_url: Optional[str] = None
+        self._mirror_url: Optional[str] = None
+        self._used_mirrors: list[str] = []
 
     async def close(self) -> None:
         """Close browser and page resources."""
         await self._cleanup_resources()
         await super().close()
 
-    async def _load_film(self, url: str) -> None:
-        """
-        Load the film page and wait for initial load.
+    async def _load_film(self) -> None:
+        """Load the film page and wait for initial load."""
 
-        Args:
-            url: Kinovod film URL
-        """
+        url = self._mirror_url if self._mirror_url else self._resolution.url
+
         logging.info("Loading film page: %s", url)
         if self._page is None:
             return
@@ -374,7 +376,25 @@ class KinovodYdlController(YtDlpController):
                     return False
         return False
 
-    async def _prepare_proxy(self, url: str, timeout: int = 5) -> bool:
+    def _get_mirror(self) -> Optional[str]:
+        """Generate mirror url."""
+        today = datetime.now()
+        for d in range(5, -1, -1):
+            mirror_date = (today - timedelta(days=d)).strftime("%d%m%y")
+            mirror_host = f"kinovod{mirror_date}.pro"
+
+            if mirror_host not in self._used_mirrors:
+                self._used_mirrors.append(mirror_host)
+                logging.info(f"[kinovod] Found mirror: {mirror_host}")
+                self._mirror_url = self._resolution.url.replace(
+                    "/kinovod.pro",
+                    f"/{mirror_host}",
+                )
+                return self._mirror_url
+
+        raise KinovodMirrorError("[kinovod] Could not find mirror")
+
+    async def _prepare_proxy(self, timeout: int = 5) -> bool:
         """
         Search working proxy.
 
@@ -385,6 +405,8 @@ class KinovodYdlController(YtDlpController):
         if not self._proxy:
             return False
 
+        url = self._resolution.url
+
         while True:
             try:
                 async with httpx.AsyncClient(
@@ -394,12 +416,10 @@ class KinovodYdlController(YtDlpController):
                     response = await client.get(url)
                     return response.status_code < 500
             except Exception:
-                logging.warning(f"Bad proxy {self._proxy}")
-                if len(self._proxies_rotate) > 0:
-                    self._proxies_rotate.rotate(-1)
-                    self._proxy = self._proxies_rotate[0]
-                    self._yt_dlp.params.update({"proxy": self._proxy})
-                return False
+                logging.warning(f"Bad mirror: {url}")
+                url = self._get_mirror() or ""
+                continue
+        return False
 
     async def _check_proxy(
         self,
@@ -466,7 +486,7 @@ class KinovodYdlController(YtDlpController):
         """
         if not self._proxy:
             return
-        await self._prepare_proxy(self._resolution.url)
+        await self._prepare_proxy()
         upstream_proxy_url = self._proxy
 
         logging.info("Starting slippers proxy on :%d -> %s", port, upstream_proxy_url)
@@ -477,11 +497,6 @@ class KinovodYdlController(YtDlpController):
         )
         self._proxy_local.start()
         await asyncio.sleep(3)
-        # Verify proxy is actually running
-        if await self._check_proxy(f"socks5://{settings.taskiq_worker_host}:{port}"):
-            logging.info("Slippers proxy successfully started on port %d", port)
-            return
-        raise RuntimeError(f"Failed to start slippers proxy on port {port}")
 
     async def start_cdp(self) -> None:
         """
@@ -679,7 +694,7 @@ class KinovodYdlController(YtDlpController):
         )
 
         # Load film page
-        await self._load_film(self._resolution.url)
+        await self._load_film()
 
         # Wait for video element to load
         await self._check_load()
@@ -703,6 +718,7 @@ class KinovodYdlController(YtDlpController):
         3. Extracts playlist data
         4. Converts to yt-dlp format
         """
+
         try:
             source_id = self._resolution.url.split("/")[-1]
             cachemodel = await self.get_dto_from_cache(

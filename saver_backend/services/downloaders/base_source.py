@@ -202,6 +202,7 @@ class BaseSourceController(ABC):
             )
         await self._telegram_bot_controller.send_error_downloading(
             telegram_id=self._telegram_id,
+            resolution_url=self._resolution.url,
         )
 
     async def delete_processing_message(self) -> None:
