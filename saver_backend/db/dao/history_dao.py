@@ -51,7 +51,7 @@ class HistoryDAO(BaseDAO):
         :param limit: The maximum number of items to return.
         :return: A list of CacheModel instances.
         """
-        query = (
+        cte = (
             select(HistoryModel)
             .options(joinedload(HistoryModel.cache))
             .where(
@@ -59,9 +59,15 @@ class HistoryDAO(BaseDAO):
                 HistoryModel.cache_id.isnot(None),
                 HistoryModel.source.in_(sources),
             )
-            .order_by(HistoryModel.cache_id, HistoryModel.created_at.desc())
             .distinct(HistoryModel.cache_id)
-            .limit(limit)
+            .cte()
+        )
+
+        query = (
+            select(HistoryModel)
+            .options(joinedload(HistoryModel.cache))
+            .where(HistoryModel.id == cte.c.id)
+            .order_by(HistoryModel.created_at.desc())
         )
 
         result = await self.session.execute(query)
