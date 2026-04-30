@@ -23,7 +23,12 @@ from playwright.async_api import (
 )
 from yt_dlp import DownloadError
 
-from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
+from saver_backend.entities.enums import (
+    ContentTypeEnum,
+    FsmKeysEnum,
+    ProxyType,
+    SourceEnum,
+)
 from saver_backend.services.downloaders.exceptions import (
     Kinovod404Error,
     KinovodAlertError,
@@ -88,7 +93,8 @@ class KinovodYdlController(YtDlpController):
         self._perevod_from_html: str = ""
         self._thumbnail_url: Optional[str] = None
         self._mirror_url: Optional[str] = None
-        self._used_mirrors: list[str] = []
+        self._bad_mirrors: list[str] = []
+        self._mirror_host: Optional[str] = None
 
     async def close(self) -> None:
         """Close browser and page resources."""
@@ -376,15 +382,39 @@ class KinovodYdlController(YtDlpController):
                     return False
         return False
 
-    def _get_mirror(self) -> Optional[str]:
+    async def _get_mirror(self) -> Optional[str]:
         """Generate mirror url."""
+        if not self._bad_mirrors:
+            fsm_data = (
+                await self._telegram_bot_controller.get_fsm_data(
+                    user_id=int(FsmKeysEnum.KINOVOD),
+                    chat_id=int(FsmKeysEnum.KINOVOD),
+                )
+                or {}
+            )
+            self._bad_mirrors = fsm_data.get("bad_mirrors", [])
+            if len(self._bad_mirrors) > 5:
+                del self._bad_mirrors[0]
+
         today = datetime.now()
         for d in range(5, -1, -1):
             mirror_date = (today - timedelta(days=d)).strftime("%d%m%y")
             mirror_host = f"kinovod{mirror_date}.pro"
 
-            if mirror_host not in self._used_mirrors:
-                self._used_mirrors.append(mirror_host)
+            if mirror_host in self._bad_mirrors:
+                continue
+            if not await self._check_url(
+                proxy=self._proxy or "",
+                url=f"https://{mirror_host}",
+                timeout=3,
+            ):
+                self._bad_mirrors.append(mirror_host)
+                await self._telegram_bot_controller.set_fsm_data(
+                    user_id=int(FsmKeysEnum.KINOVOD),
+                    chat_id=int(FsmKeysEnum.KINOVOD),
+                    data={"bad_mirrors": self._bad_mirrors},
+                )
+            else:
                 logging.info(f"[kinovod] Found mirror: {mirror_host}")
                 self._mirror_url = self._resolution.url.replace(
                     "/kinovod.pro",
@@ -394,7 +424,7 @@ class KinovodYdlController(YtDlpController):
 
         raise KinovodMirrorError("[kinovod] Could not find mirror")
 
-    async def _prepare_proxy(self, timeout: int = 5) -> bool:
+    async def _prepare_mirror(self, timeout: int = 3) -> bool:
         """
         Search working proxy.
 
@@ -402,6 +432,7 @@ class KinovodYdlController(YtDlpController):
         :param timeout: Timeout in seconds.
         :return: True if proxy works, False otherwise.
         """
+
         if not self._proxy:
             return False
 
@@ -417,11 +448,11 @@ class KinovodYdlController(YtDlpController):
                     return response.status_code < 500
             except Exception:
                 logging.warning(f"Bad mirror: {url}")
-                url = self._get_mirror() or ""
-                continue
+                await self._get_mirror() or ""
+                return True
         return False
 
-    async def _check_proxy(
+    async def _check_url(
         self,
         proxy: str,
         url: str = settings.chrome_cdp_url,
@@ -486,7 +517,7 @@ class KinovodYdlController(YtDlpController):
         """
         if not self._proxy:
             return
-        await self._prepare_proxy()
+        await self._prepare_mirror()
         upstream_proxy_url = self._proxy
 
         logging.info("Starting slippers proxy on :%d -> %s", port, upstream_proxy_url)

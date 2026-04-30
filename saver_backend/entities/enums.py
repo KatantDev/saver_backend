@@ -74,3 +74,9 @@ class KeyboardBacksEnum(str, Enum):
     TO_SEASONS = "to_seasons"
     TO_EPISODES = "to_episodes"
     TO_FORMATS = "to_format"
+
+
+class FsmKeysEnum(str, Enum):
+    """Enum for Fsm keys data storage."""
+
+    KINOVOD = -100
