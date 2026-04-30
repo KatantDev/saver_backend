@@ -48,7 +48,9 @@ msgstr "🌀 Photo downloading is not supported for TikTok right now, but we are
 msgid "error downloading"
 msgstr ""
 "⚠️<b>Error.</b>\n"
-"We’ve already reported it to our developers."
+"We’ve already reported it to our developers.\n"
+"\n"
+"{url}"
 
 msgid "failed to get video info"
 msgstr ""

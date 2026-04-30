@@ -45,5 +45,5 @@ class KinovodQualityParseError(KinovodParseError):
     """Exception for Kinovod QualityParse error."""
 
 
-class KinovodTranslationParseError(KinovodParseError):
+class KinovodMirrorError(KinovodParseError):
     """Exception for Kinovod translation parse error."""

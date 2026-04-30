@@ -998,17 +998,22 @@ class TelegramBotController:
     async def send_error_downloading(
         self,
         telegram_id: int,
+        resolution_url: str,
         language: str | None = None,
     ) -> None:
         """
         Send error downloading message.
 
         :param telegram_id: Telegram ID of the user.
+        :param resolution_url: Resolution URL.
         :param language: Language for message.
         """
         coro = self._bot.send_message(
             chat_id=telegram_id,
-            text=_("error downloading", locale=language or self.language),
+            text=_(
+                "error downloading",
+                locale=language or self.language,
+            ).format(url=resolution_url),
         )
         await self._send(coro)
 
