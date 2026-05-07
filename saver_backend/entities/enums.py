@@ -44,6 +44,7 @@ class SourceEnum(str, Enum):
     M3U8_YDL = "m3u8_ydl"
     KINOVOD_YDL = "kinovod_ydl"
     YMDANTIC = "ymdantic"
+    REDDIT_YDL = "reddit_ydl"
 
 
 class InstagramContentTypeEnum(str, Enum):
@@ -56,7 +57,7 @@ class InstagramContentTypeEnum(str, Enum):
 
 
 class YandexMusicContentTypeEnum(str, Enum):
-    """Enum for content type of Instagram."""
+    """Enum for content type of Yandex Music."""
 
     TRACK = "track"
     ALBUM = "album"

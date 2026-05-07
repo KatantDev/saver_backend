@@ -609,6 +609,7 @@ async def on_translations_select(
             SourceEnum.FACEBOOK_YDL,
             SourceEnum.VK_API_YDL,
             SourceEnum.YMDANTIC,
+            SourceEnum.REDDIT_YDL,
         ],
     ),
 )

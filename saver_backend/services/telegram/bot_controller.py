@@ -720,6 +720,44 @@ class TelegramBotController:
 
         return messages
 
+    async def send_finish_downloading_gif(
+        self,
+        animation: PhotoDTO,
+        telegram_id: int,
+        message_id: int | None = None,
+        language: str | None = None,
+    ) -> None:
+        """
+        Send finish downloading message.
+
+        :param animation: PhotoDTO.
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID.
+        :param language: Language of the animation.
+        """
+        photo_input = animation.media_url or (
+            FSInputFile(path=animation.path) if animation.path else None
+        )
+        if not photo_input:
+            logging.error("Cannot send photo: No media_url or path provided.")
+            return
+
+        coro = self._bot.send_animation(
+            chat_id=telegram_id,
+            animation=photo_input,
+            caption=_(
+                "result direct message",
+                locale=language or self.language,
+            ).format(url=animation.url, title=""),
+        )
+        await self._send(coro)
+        if message_id is not None:
+            coro2 = self._bot.delete_message(
+                message_id=message_id,
+                chat_id=telegram_id,
+            )
+            await self._send(coro2)
+
     def _build_audio_media_group(
         self,
         chunk: Sequence[AudioDTO],

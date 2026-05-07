@@ -37,6 +37,7 @@ from saver_backend.services.downloaders.ok_ydl_source import (
 from saver_backend.services.downloaders.pinterest_ydl_source import (
     PinterestYdlController,
 )
+from saver_backend.services.downloaders.reddit_ydl_source import RedditYdlController
 from saver_backend.services.downloaders.rutube_ydl_source import (
     RutubeYdlController,
 )
@@ -676,6 +677,27 @@ class YmDanticDetector(Detector):
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Yandex album/track url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class RedditDetector(Detector):
+    """Detector for Reddit urls."""
+
+    SOURCE = SourceEnum.REDDIT_YDL
+    CONTROLLER = RedditYdlController
+    HOSTS = (
+        "reddit.com",
+        "www.reddit.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "comments": re.compile(r".*/comments/(?P<code>[^/]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Reddit comment url."""
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)

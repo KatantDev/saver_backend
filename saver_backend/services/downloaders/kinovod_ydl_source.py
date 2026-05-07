@@ -624,7 +624,7 @@ class KinovodYdlController(YtDlpController):
         Returns:
             List of formats in yt-dlp style
         """
-        # Resolution mapping for common qualities todo del
+        # Resolution mapping for common qualities
         resolution_map = {
             "144p": {"width": 256, "height": 144},
             "240p": {"width": 426, "height": 240},

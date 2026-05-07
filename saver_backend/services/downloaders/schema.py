@@ -549,6 +549,21 @@ class PhotoDTO(BaseContentDTO):
             media_url=media_url,
         )
 
+    @classmethod
+    def from_url(
+        cls,
+        image_url: str,
+        source_id: str,
+        resolution_url: str,
+    ) -> "PhotoDTO":
+        """Create a PhotoDTO instance from url."""
+        return cls(
+            media_url=image_url,
+            url=resolution_url,
+            title="",
+            source_id=source_id,
+        )
+
 
 class AudioDTO(BaseContentDTO):
     """Data Transfer Object for Audio."""
