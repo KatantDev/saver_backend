@@ -52,7 +52,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build api image (cached)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
         with:
           context: .
           file: ./Dockerfile
