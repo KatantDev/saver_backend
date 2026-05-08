@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y \
   && rm -rf /var/lib/apt/lists/*
 
 # Deno is used by the bgutil-ytdlp-pot-provider plugin (YouTube PO-token)
-COPY --from=denoland/deno:bin-2.7.1 /deno /usr/local/bin/deno
+COPY --from=denoland/deno:bin-2.7.1@sha256:61d9e9c5284d87b0efd2509905b130c77ba0d5224f30df10ab70c03e9174c208 /deno /usr/local/bin/deno
 
 ENV VIRTUAL_ENV="/opt/.venv" \
     PATH="/opt/.venv/bin:$PATH"
@@ -68,7 +68,7 @@ RUN apt-get update && apt-get install -y \
   aria2 \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=denoland/deno:bin-2.7.1 /deno /usr/local/bin/deno
+COPY --from=denoland/deno:bin-2.7.1@sha256:61d9e9c5284d87b0efd2509905b130c77ba0d5224f30df10ab70c03e9174c208 /deno /usr/local/bin/deno
 
 ENV UV_NO_DEV=0
 
