@@ -85,7 +85,7 @@ services:
       - default
 
   db:
-    image: postgres:16.3-bullseye
+    image: postgres:16.9-bullseye@sha256:32dc7997967900b97fe974553384423d5e01fe6227947ff05630831b3f2e36c8
     hostname: saver_backend-db
     environment:
       POSTGRES_PASSWORD: "saver_backend"
@@ -165,7 +165,7 @@ services:
       - default
 
   bgutil:
-    image: brainicism/bgutil-ytdlp-pot-provider:1.3.0
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.1@sha256:1aaa43a0ca72dfca6a6d2129a0fb4a23465c25adb1b043f8aff829a20825646b
     hostname: saver_backend-bgutil
     restart: always
     extra_hosts:
