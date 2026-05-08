@@ -121,7 +121,7 @@ services:
       - default
 
   redis:
-    image: bitnami/redis:latest
+    image: bitnami/redis:latest@sha256:b90e0708affe88f438e0577f5fcbc8036b97382c97bbb656726756f0b8d89480
     hostname: "saver_backend-redis"
     restart: always
     environment:
@@ -136,7 +136,7 @@ services:
       - default
 
   nginx:
-    image: nginx:latest
+    image: nginx:latest@sha256:6e23479198b998e5e25921dff8455837c7636a67111a04a635cf1bb363d199dc
     restart: always
     ports:
       - "${NGINX_PORT:-80}:80"
@@ -151,7 +151,7 @@ services:
       - default
 
   telegram-bot-api:
-    image: aiogram/telegram-bot-api:latest
+    image: aiogram/telegram-bot-api:latest@sha256:1f15c4b4f5f48a9b2847f28ce088b03a3d00f2fbfeb19501dfe75253a2840aa0
     hostname: bot-api
     environment:
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
@@ -174,7 +174,7 @@ services:
       - default
 
   chrome:
-    image: chromedp/headless-shell:latest
+    image: chromedp/headless-shell:latest@sha256:313ed7255ae1e155fb157631a6d4c0eb8b65bbe06de9e704ed834399bdf678ff
     hostname: saver_backend-chrome
     healthcheck:
       disable: true
