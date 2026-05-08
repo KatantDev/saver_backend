@@ -71,7 +71,7 @@
     {
       "description": "Same cooldown for Docker Hub images (other registries lack timestamps; `minimumReleaseAgeBehaviour: timestamp-required` handles those gracefully).",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["docker.io/**", "postgres", "redis", "nginx", "python", "denoland/deno"],
+      "matchPackageNames": ["docker.io/**", "postgres", "valkey/valkey", "redis", "nginx", "python", "denoland/deno", "chromedp/headless-shell", "aiogram/telegram-bot-api"],
       "minimumReleaseAge": "3 days"
     },
     {
@@ -150,7 +150,7 @@
       "groupName": "instagram"
     },
     {
-      "description": "Playwright bumps need a matching browser revision in the headless-Chrome container. Always route through the Dependency Dashboard so the docker-compose `chrome` image (currently `chromedp/headless-shell:latest`) can be updated in lockstep — Renovate cannot infer this dependency.",
+      "description": "Playwright bumps need a matching browser revision in the headless-Chrome container. Always route through the Dependency Dashboard so the docker-compose `chrome` image (`chromedp/headless-shell:<chrome-version>`) can be updated in lockstep — Renovate cannot infer this dependency.",
       "matchManagers": ["pep621"],
       "matchPackageNames": ["playwright"],
       "matchUpdateTypes": ["major", "minor"],

@@ -74,11 +74,11 @@
 | `taskiq-scheduler` | тот же образ | cron-планировщик (cleanup) |
 | `migrator` | тот же образ | разовый запуск `alembic upgrade head` |
 | `db` | `postgres:16.3-bullseye` | основная БД |
-| `redis` | `bitnami/redis:latest` | брокер Taskiq (DB 1) + FSM-стор aiogram |
-| `nginx` | `nginx:latest` | TLS-терминация, обратный прокси к `api` |
-| `telegram-bot-api` | `aiogram/telegram-bot-api:latest` | self-hosted Bot API (для отдачи файлов до 2 ГБ) |
+| `redis` | `valkey/valkey:8-alpine` | брокер Taskiq (DB 1) + FSM-стор aiogram. Valkey — BSD-3 OSS-форк Redis под Linux Foundation, drop-in совместимый |
+| `nginx` | `nginx:1.28-trixie` | TLS-терминация, обратный прокси к `api` |
+| `telegram-bot-api` | `aiogram/telegram-bot-api:9.6` | self-hosted Bot API (для отдачи файлов до 2 ГБ) |
 | `bgutil` | `brainicism/bgutil-ytdlp-pot-provider:1.3.0` | провайдер PO-токенов для yt-dlp/YouTube |
-| `chrome` | `chromedp/headless-shell:latest` | headless Chrome через CDP для источника Kinovod (Playwright) |
+| `chrome` | `chromedp/headless-shell:148.0.7778.97` | headless Chrome через CDP для источника Kinovod (Playwright) |
 
 Поток данных:
 
