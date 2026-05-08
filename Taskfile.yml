@@ -1,0 +1,65 @@
+version: '3'
+
+vars:
+  DEBUG: "0"
+  DOCKER_COMPOSE:
+    sh: |
+      if command -v "docker-compose" >/dev/null 2>&1; then
+        echo "docker-compose"
+      else
+        echo "docker compose"
+      fi
+
+tasks:
+  deploy:
+    desc: "Build and deploy to production"
+    cmds:
+      - "{{.DOCKER_COMPOSE}} build"
+      - |
+        # Check if api and taskiq-worker already started
+        API_RUNNING=$({{.DOCKER_COMPOSE}} ps -q --status running api)
+        WORKER_RUNNING=$({{.DOCKER_COMPOSE}} ps -q --status running taskiq-worker)
+        if [ -n "$API_RUNNING" ] && [ -n "$WORKER_RUNNING" ]; then
+          echo "✅ Containers running, performing rollout..."
+          docker rollout api
+          {{.DOCKER_COMPOSE}} up migrator -d
+          {{.DOCKER_COMPOSE}} exec nginx nginx -s reload
+          docker rollout taskiq-worker
+        else
+          echo "⚙️ Containers not running, starting with docker compose up..."
+          {{.DOCKER_COMPOSE}} up --build -d
+        fi
+
+  migrate:
+    desc: "Run migrations manually"
+    cmds:
+      - "{{.DOCKER_COMPOSE}} build"
+      - "{{.DOCKER_COMPOSE}} up migrator"
+
+  build-local:
+    desc: "Build local environment, run only first time or if Dockerfile changed"
+    cmds:
+      - >
+        {{.DOCKER_COMPOSE}} -f docker-compose.yml -f deploy/docker-compose.dev.yml
+        --project-directory . build
+
+  deploy-local:
+    desc: "Run local environment"
+    cmds:
+      - >
+        {{.DOCKER_COMPOSE}} -f docker-compose.yml -f deploy/docker-compose.dev.yml
+        --project-directory . up --build -d
+
+  locales:
+    desc: "Extract and compile locales"
+    vars:
+      NOLOC: '{{if eq .DEBUG "0"}}--no-location{{end}}'
+    cmds:
+      - echo "Extracting locales (DEBUG={{.DEBUG}})..."
+      - >
+        pybabel extract --input-dirs=. -o locales/messages.pot
+        --project=Saver --version=0.0.1 -k __ --omit-header {{.NOLOC}}
+      - >
+        pybabel update -d locales -D messages -i locales/messages.pot
+        --no-wrap -N --ignore-pot-creation-date
+      - pybabel compile -d locales -D messages

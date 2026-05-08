@@ -1,0 +1,153 @@
+
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2025-11-06 19:05+1000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+
+msgid "inline mode blocked error"
+msgstr "⚡️ To use inline mode, please start or unblock the bot."
+
+msgid "tiktok photo unsupported in inline query"
+msgstr "🌀 Photo downloading is not supported in inline mode"
+
+msgid "welcome message"
+msgstr ""
+"<b>🎬 This bot is created to download videos from:</b> YouTube | TikTok | Instagram | VKontakte\n"
+"\n"
+"<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>This bot is completely free.</b>.\n"
+"To use it - just subscribe to two of our channels:"
+
+msgid "result direct message"
+msgstr ""
+"{url}\n"
+"{title}\n"
+"<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> @saver"
+
+msgid "error downloading inline query"
+msgstr "We’ve reported it to the developers."
+
+msgid "error inline query"
+msgstr "⚠️ Failed to download the video."
+
+msgid "content private or not found"
+msgstr "⚠️ Sorry, this video/photo is private or has been deleted."
+
+msgid "tiktok photo unsupported"
+msgstr "🌀 Photo downloading is not supported for TikTok right now, but we are already working on it."
+
+msgid "error downloading"
+msgstr ""
+"⚠️<b>Error.</b>\n"
+"We’ve already reported it to our developers.\n"
+"\n"
+"{url}"
+
+msgid "failed to get video info"
+msgstr ""
+"⚠️<b>Error.</b>\n"
+"Failed to get video information. We’ve already reported it to our developers."
+
+msgid "video info without formats"
+msgstr "⚠️ No formats available for download. Please try again later."
+
+msgid "choose quality"
+msgstr ""
+"<b>{title}</b>\n"
+"<tg-emoji emoji-id=\"5785193215384623157\">🎥</tg-emoji> Quality:"
+
+msgid "stats_report_template"
+msgstr ""
+"<b>{date}</b>\n"
+"<b>New users [24h]:</b> {new_users_24h}\n"
+"<b>Active users [24h]:</b> {active_users_24h}\n"
+"<b>Downloads [24h]:</b> {downloads_24h}\n"
+"\n"
+"<b>Total users:</b> {total_users}\n"
+"<b>Total downloads:</b> {total_downloads}\n"
+"\n"
+"{source_stats}"
+
+msgid "unknown url"
+msgstr ""
+"🌀 This URL is not supported for downloading.\n"
+"But we are already working on its support."
+
+msgid "get video info"
+msgstr "☁️ Getting video details."
+
+msgid "format selection expired"
+msgstr "⏳ Time expired. Please resend your link."
+
+msgid "choose language for download"
+msgstr ""
+"<b>{title}</b>\n"
+"\n"
+"<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Select language:"
+
+msgid "choose season"
+msgstr ""
+"<b>{title}</b>"
+"\n"
+"<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Season:"
+
+msgid "choose translations"
+msgstr ""
+"<b>{title}</b>"
+"\n"
+"<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Translations:"
+
+msgid "choose series"
+msgstr ""
+"<b>{title}</b>"
+"\n"
+"<tg-emoji emoji-id=\"5785193215384623157\">🔗</tg-emoji> Episode:"
+
+msgid "Back"
+msgstr ""
+"Back ⬅️"
+
+msgid "format not found"
+msgstr ""
+"⚠️<b>Error.</b>\n"
+"Something went wrong. Please try again."
+
+msgid "unsupported inline query"
+msgstr "⚠️ Please enter a valid link."
+
+msgid "supported inline query urls"
+msgstr "💫 Supported services: TikTok, Instagram Reels."
+
+msgid "information message"
+msgstr ""
+"<b>🎬 This bot is created to download videos from:</b> YouTube | TikTok | Instagram | VKontakte\n"
+"\n"
+"<tg-emoji emoji-id=\"5906762234633130643\">🔗</tg-emoji> Simply send a link to the video - and the bot will immediately send a file for download.\n"
+"\n"
+"<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>Also works in inline mode:</b> open any chat, enter @saver and insert the link."
+
+msgid "not subscribed to channels"
+msgstr "⚠️ You are not subscribed to channels"
+
+msgid "left from channels"
+msgstr ""
+"🎬 We found out that you are <b>not subscribed</b> to our channels\n"
+"\n"
+"<tg-emoji emoji-id=\"5848394616922969249\">⚡️</tg-emoji> <b>This bot is completely free.</b>.\n"
+"To use it - just subscribe to two of our channels:"
+
+msgid "subscribe to channel"
+msgstr "➕ Subscribe to @{channel}"
+
+msgid "check subscriptions"
+msgstr "✅ Check subscriptions"
+

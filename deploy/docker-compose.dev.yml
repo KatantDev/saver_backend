@@ -1,0 +1,54 @@
+services:
+  api:
+    ports:
+      # Exposes application port.
+    - "8000:8000"
+    build:
+      context: .
+    volumes:
+      # Adds current directory as volume.
+    - .:/app/src/
+    environment:
+      # Enables autoreload.
+      SAVER_BACKEND_RELOAD: "True"
+
+  taskiq-worker:
+    volumes:
+      # Adds current directory as volume.
+      - .:/app/src/
+    command:
+      - scripts/start_taskiq_worker.sh
+      - --with-reload
+
+  taskiq-scheduler:
+    volumes:
+      # Adds current directory as volume.
+      - .:/app/src/
+    command:
+      - scripts/start_taskiq_scheduler.sh
+      - --with-reload
+
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  telegram-bot-api:
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_LOCAL: "true"
+      TELEGRAM_STAT: "1"
+      TELEGRAM_VERBOSITY: "3"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  bgutil:
+    ports:
+      - "4416:4416"

@@ -1,0 +1,83 @@
+from enum import Enum
+
+
+class ProxyType(str, Enum):
+    """Enum for proxy type to use for a source."""
+
+    LOCAL = "local"
+    RU = "ru"
+    ALL = "all"
+    KINOVOD = "kinovod"
+
+
+class ContentTypeEnum(str, Enum):
+    """Enum for content type of cached item."""
+
+    VIDEO = "video"
+    PHOTO = "photo"
+    AUDIO = "audio"
+    PHOTO_LIST = "photo_list"
+    FILM_DICT = "film_dict"
+
+
+class SourceEnum(str, Enum):
+    """Enum for source to download."""
+
+    TIKTOK = "tiktok"
+    INSTAGRAM_YDL = "instagram_ydl"
+    INSTAGRAM_API = "instagram_api"
+    INSTAGRAM_INDOWN = "instagram_indown"
+    INSTAGRAM_INSTALOADER = "instagram_instaloader"
+    YOUTUBE_SHORTS_YDL = "youtube_shorts_ydl"
+    YOUTUBE_VIDEO_YDL = "youtube_video_ydl"
+    VK_CLIPS_YDL = "vk_clips_ydl"
+    VK_VIDEO_YDL = "vk_video_ydl"
+    VK_API_YDL = "vk_api_ydl"
+    OK_YDL = "ok_ydl"
+    PINTEREST_YDL = "pinterest_ydl"
+    RUTUBE_YDL = "rutube_ydl"
+    X_YDL = "x_ydl"
+    DZEN_YDL = "dzen_ydl"
+    ADULT_YDL = "adult_ydl"
+    FACEBOOK_YDL = "facebook_ydl"
+    UNSUPPORTED = "unsupported"
+    M3U8_YDL = "m3u8_ydl"
+    KINOVOD_YDL = "kinovod_ydl"
+    YMDANTIC = "ymdantic"
+    REDDIT_YDL = "reddit_ydl"
+
+
+class InstagramContentTypeEnum(str, Enum):
+    """Enum for content type of Instagram."""
+
+    POST = "post"
+    IGTV = "igtv"
+    STORIES = "stories"
+    REELS = "reels"
+
+
+class YandexMusicContentTypeEnum(str, Enum):
+    """Enum for content type of Yandex Music."""
+
+    TRACK = "track"
+    ALBUM = "album"
+
+
+class VideoTheatreEnum(str, Enum):
+    """Enum for Video Theatre."""
+
+    FILM = "film"
+
+
+class KeyboardBacksEnum(str, Enum):
+    """Enum for keyboard backs type."""
+
+    TO_SEASONS = "to_seasons"
+    TO_EPISODES = "to_episodes"
+    TO_FORMATS = "to_format"
+
+
+class FsmKeysEnum(str, Enum):
+    """Enum for Fsm keys data storage."""
+
+    KINOVOD = -100

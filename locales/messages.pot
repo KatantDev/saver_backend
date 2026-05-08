@@ -1,0 +1,75 @@
+msgid "inline mode blocked error"
+msgstr ""
+
+msgid "tiktok photo unsupported in inline query"
+msgstr ""
+
+msgid "welcome message"
+msgstr ""
+
+msgid "result direct message"
+msgstr ""
+
+msgid "error downloading inline query"
+msgstr ""
+
+msgid "error inline query"
+msgstr ""
+
+msgid "content private or not found"
+msgstr ""
+
+msgid "tiktok photo unsupported"
+msgstr ""
+
+msgid "error downloading"
+msgstr ""
+
+msgid "failed to get video info"
+msgstr ""
+
+msgid "video info without formats"
+msgstr ""
+
+msgid "choose quality"
+msgstr ""
+
+msgid "stats_report_template"
+msgstr ""
+
+msgid "unknown url"
+msgstr ""
+
+msgid "get video info"
+msgstr ""
+
+msgid "format selection expired"
+msgstr ""
+
+msgid "choose language for download"
+msgstr ""
+
+msgid "format not found"
+msgstr ""
+
+msgid "unsupported inline query"
+msgstr ""
+
+msgid "supported inline query urls"
+msgstr ""
+
+msgid "information message"
+msgstr ""
+
+msgid "not subscribed to channels"
+msgstr ""
+
+msgid "left from channels"
+msgstr ""
+
+msgid "subscribe to channel"
+msgstr ""
+
+msgid "check subscriptions"
+msgstr ""
+
