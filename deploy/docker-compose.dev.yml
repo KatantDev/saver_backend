@@ -1,20 +1,24 @@
+# Local-development overrides. ALL host port bindings are bound to 127.0.0.1
+# rather than the default 0.0.0.0 so a developer laptop on a public Wi-Fi
+# does not expose Postgres, Redis, the self-hosted Telegram Bot API server
+# (which holds your TELEGRAM_API_ID/HASH), or bgutil to the local subnet.
 services:
   api:
     ports:
-      # Exposes application port.
-    - "8000:8000"
+    - "127.0.0.1:8000:8000"
     build:
       context: .
+      # Bind-mounting the host repo over /app/src is incompatible with the
+      # prod stage's non-root user — use the dev stage which keeps root
+      # and includes pytest/mypy/ruff for CI's `target: dev` build path.
+      target: dev
     volumes:
-      # Adds current directory as volume.
     - .:/app/src/
     environment:
-      # Enables autoreload.
       SAVER_BACKEND_RELOAD: "True"
 
   taskiq-worker:
     volumes:
-      # Adds current directory as volume.
       - .:/app/src/
     command:
       - scripts/start_taskiq_worker.sh
@@ -22,7 +26,6 @@ services:
 
   taskiq-scheduler:
     volumes:
-      # Adds current directory as volume.
       - .:/app/src/
     command:
       - scripts/start_taskiq_scheduler.sh
@@ -30,16 +33,16 @@ services:
 
   db:
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
   redis:
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
   telegram-bot-api:
     ports:
-      - "8081:8081"
-      - "8082:8082"
+      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:8082:8082"
     environment:
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
@@ -51,4 +54,4 @@ services:
 
   bgutil:
     ports:
-      - "4416:4416"
+      - "127.0.0.1:4416:4416"

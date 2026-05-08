@@ -4,6 +4,24 @@ deploy/
 .idea/
 .vscode/
 .git/
+
+### Secrets that MUST never enter the build context
+# Per-source authentication cookies + Instaloader sessions live here.
+# Without these excludes, `COPY . /app/src/` in the Dockerfile bakes them
+# into every published image — recovery requires session/credential rotation.
+cookies/
+
+# Cloudflare Origin TLS private key + certificate + CA bundle. The compose
+# `nginx` service reads these at runtime via the bind-mounted volume; they
+# must NOT be copied into images that are ever built / cached / pushed.
+nginx-configs/cf-origin.key
+nginx-configs/cf-origin.crt
+nginx-configs/cf-origin-ca.pem
+
+# macOS resource forks
+.DS_Store
+**/.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
