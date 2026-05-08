@@ -144,9 +144,9 @@
       "schedule": ["at any time"]
     },
     {
-      "description": "Group the Instagram-related libraries — `instagrapi` and `instaloader` cover overlapping concerns (web scraping vs login session) and tend to break together when Instagram tightens auth.",
+      "description": "Group Instagram-related libraries together so a tightening on Instagram's side surfaces as one PR rather than several uncorrelated bumps. Currently only Instaloader is wired (the Instaloader controller covers `/stories/`); the `indown.io` source is a custom HTTP scraper, not a packaged library, so nothing else lands in this group today.",
       "matchManagers": ["pep621"],
-      "matchPackageNames": ["instagrapi", "instaloader"],
+      "matchPackageNames": ["instaloader"],
       "groupName": "instagram"
     },
     {
