@@ -74,11 +74,11 @@ The deployment is fully containerised. A single `docker-compose.yml` boots ten s
 | `taskiq-scheduler` | same image | cron-like scheduler (cleanup task) |
 | `migrator` | same image | one-shot `alembic upgrade head` |
 | `db` | `postgres:16.3-bullseye` | application database |
-| `redis` | `bitnami/redis:latest` | Taskiq broker (DB 1) + aiogram FSM storage |
-| `nginx` | `nginx:latest` | TLS termination, reverse proxy in front of `api` |
-| `telegram-bot-api` | `aiogram/telegram-bot-api:latest` | self-hosted Bot API (so the bot can send files up to 2 GB) |
+| `redis` | `valkey/valkey:8-alpine` | Taskiq broker (DB 1) + aiogram FSM storage. Valkey is the BSD-3 OSS fork of Redis (Linux Foundation), drop-in compatible |
+| `nginx` | `nginx:1.28-trixie` | TLS termination, reverse proxy in front of `api` |
+| `telegram-bot-api` | `aiogram/telegram-bot-api:9.6` | self-hosted Bot API (so the bot can send files up to 2 GB) |
 | `bgutil` | `brainicism/bgutil-ytdlp-pot-provider:1.3.0` | yt-dlp PO-token provider for YouTube |
-| `chrome` | `chromedp/headless-shell:latest` | headless Chrome over CDP, used by Kinovod source via Playwright |
+| `chrome` | `chromedp/headless-shell:148.0.7778.97` | headless Chrome over CDP, used by Kinovod source via Playwright |
 
 High-level data flow:
 
