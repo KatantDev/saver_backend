@@ -127,7 +127,7 @@ services:
     # work unchanged. The image binary is `valkey-server`; legacy `redis-cli`
     # is shipped as a symlink, but the healthcheck uses `valkey-cli` to stay
     # forward-compatible.
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:8-alpine@sha256:b027235326507cfdade9b6684056ec1d0b0c0757412e628245129b5d7b788618
     hostname: "saver_backend-redis"
     restart: always
     healthcheck:
@@ -155,7 +155,7 @@ services:
       - default
 
   telegram-bot-api:
-    image: aiogram/telegram-bot-api:9.6
+    image: aiogram/telegram-bot-api:9.6@sha256:1f15c4b4f5f48a9b2847f28ce088b03a3d00f2fbfeb19501dfe75253a2840aa0
     hostname: bot-api
     environment:
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
@@ -178,7 +178,7 @@ services:
       - default
 
   chrome:
-    image: chromedp/headless-shell:148.0.7778.97
+    image: chromedp/headless-shell:148.0.7778.97@sha256:313ed7255ae1e155fb157631a6d4c0eb8b65bbe06de9e704ed834399bdf678ff
     hostname: saver_backend-chrome
     healthcheck:
       disable: true
