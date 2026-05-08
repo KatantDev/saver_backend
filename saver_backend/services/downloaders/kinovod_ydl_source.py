@@ -253,7 +253,7 @@ class KinovodYdlController(YtDlpController):
                 await self._check_alert()
                 await self._check_captcha()
                 await self._check_page_not_found()
-            except (KinovodAlertError, KinovodCaptchaError, Kinovod404Error):
+            except KinovodAlertError, KinovodCaptchaError, Kinovod404Error:
                 raise
             except Exception as e:
                 # Log unexpected errors but continue checking

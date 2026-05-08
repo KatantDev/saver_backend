@@ -178,8 +178,11 @@ services:
     hostname: saver_backend-chrome
     healthcheck:
       disable: true
-    ports:
-      - "9223:9223"
+    # No `ports:` mapping — Chrome's DevTools Protocol gives full RCE on the
+    # host (file:// reads, arbitrary process launch). Reachable only from
+    # inside the docker network via hostname `saver_backend-chrome:9223`.
+    # If you need to attach `chrome://inspect` from the host during local
+    # debugging, add `ports: ["9223:9223"]` in deploy/docker-compose.dev.yml.
     shm_size: 1gb
     command:
       - --no-sandbox

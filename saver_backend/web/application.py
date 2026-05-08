@@ -2,7 +2,6 @@ import logging
 
 import sentry_sdk
 from fastapi import FastAPI
-from fastapi.responses import UJSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
@@ -47,6 +46,9 @@ def get_app() -> FastAPI:
             profile_session_sample_rate=1.0,
             profile_lifecycle="trace",
         )
+    # FastAPI now serializes data directly via Pydantic to JSON bytes when a
+    # return type or response_model is set, which is faster than UJSONResponse
+    # and doesn't need a custom default_response_class.
     app = FastAPI(
         title="saver_backend",
         version="0.0.1",
@@ -54,7 +56,6 @@ def get_app() -> FastAPI:
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
-        default_response_class=UJSONResponse,
     )
 
     # Main router for the API.

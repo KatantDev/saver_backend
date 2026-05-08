@@ -1,0 +1,219 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    "security:openssf-scorecard",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":automergeDigest",
+    ":prHourlyLimit4",
+    ":prConcurrentLimit10",
+    "group:recommended"
+  ],
+  "osvVulnerabilityAlerts": true,
+  "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
+  "branchConcurrentLimit": 5,
+  "internalChecksFilter": "strict",
+  "minimumReleaseAgeBehaviour": "timestamp-required",
+  "timezone": "Europe/Moscow",
+  "rangeStrategy": "replace",
+  "prCreation": "not-pending",
+  "rebaseWhen": "conflicted",
+  "semanticCommitType": "chore",
+  "constraintsFiltering": "strict",
+  "configMigration": true,
+  "labels": ["dependencies"],
+  "abandonmentThreshold": "2 years",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "`pip install poetry==X.Y.Z` style pins inside the Dockerfile (and any other shell context). Annotated with a `# renovate: datasource=pypi depName=<pkg>` comment directly above the install line. Renovate's dockerfile manager does not parse `pip install`, so without this customManager pinned versions of bootstrap CLIs (poetry, uv when invoked via pip, etc.) would silently drift.",
+      "managerFilePatterns": ["/(^|/)Dockerfile$/", "/\\.sh$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+RUN\\s+pip install\\s+\\S+==(?<currentValue>[^\\s\"']+)"
+      ],
+      "versioningTemplate": "pep440"
+    },
+    {
+      "customType": "regex",
+      "description": "Pinned `[*-]version: vX.Y.Z` inputs in GitHub Actions workflows (annotated with `# renovate: datasource=... depName=... [packageName=...] [versioning=...]`). Matches bare `version:` (e.g. setup-uv's uv CLI version) and toolchain-style `python-version:` / `node-version:` etc., but only when an annotation comment is attached on the preceding line — so unannotated matrix values stay invisible to Renovate.",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: packageName=(?<packageName>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s+[a-zA-Z-]*version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "extractVersionTemplate": "^v?(?<version>.+)$"
+    }
+  ],
+  "pre-commit": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"],
+    "commitMessageAction": "refresh lock files",
+    "commitMessageTopic": "",
+    "semanticCommitScope": "deps"
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["dependencies", "security"],
+    "schedule": ["at any time"]
+  },
+  "packageRules": [
+    {
+      "description": "Supply-chain cooldown: wait 3 days before raising updates from public registries with reliable timestamps (pypi, github-tags, github-releases). Protects against short-lived malicious releases (e.g. ua-parser-js, event-stream). Security updates bypass this via `vulnerabilityAlerts`/OSV.",
+      "matchDatasources": ["pypi", "github-tags", "github-releases", "git-tags"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Same cooldown for Docker Hub images (other registries lack timestamps; `minimumReleaseAgeBehaviour: timestamp-required` handles those gracefully).",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["docker.io/**", "postgres", "redis", "nginx", "python", "denoland/deno"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Auto-merge patch and minor bumps on stable (1.0+) packages. Majors and 0.x always go through manual review.",
+      "matchUpdateTypes": ["patch", "minor"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Weekly patch/minor group — Python deps (PEP 621, managed by uv).",
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "weekly updates — python",
+      "groupSlug": "weekly-updates-python",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Weekly patch/minor group — Docker images.",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "weekly updates — docker",
+      "groupSlug": "weekly-updates-docker",
+      "semanticCommitScope": "docker"
+    },
+    {
+      "description": "Weekly patch/minor group — CI (actions + pre-commit).",
+      "matchManagers": ["github-actions", "pre-commit"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "weekly updates — ci",
+      "groupSlug": "weekly-updates-ci",
+      "semanticCommitScope": "ci"
+    },
+    {
+      "description": "Group SQLAlchemy + Alembic + asyncpg together — Alembic pins a SQLAlchemy range, asyncpg ABI is exercised through SQLAlchemy's asyncio dialect, and partial bumps produce migration-env breakage and version-resolution noise.",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["SQLAlchemy", "sqlalchemy", "alembic", "asyncpg"],
+      "groupName": "sqlalchemy + alembic + asyncpg"
+    },
+    {
+      "description": "Group the FastAPI server stack (FastAPI + uvicorn + gunicorn + httptools + ujson + starlette internals). FastAPI's Starlette/Pydantic compatibility window is narrow, gunicorn's UvicornWorker compatibility tracks uvicorn internals, and httptools is exercised through both — half-bumped stacks routinely surface as obscure ASGI lifecycle bugs.",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["fastapi", "uvicorn", "gunicorn", "httptools", "ujson", "starlette"],
+      "groupName": "fastapi server stack"
+    },
+    {
+      "description": "Group Taskiq + plugins. Taskiq core defines the broker/scheduler/middleware contracts; `taskiq-redis` and `taskiq-fastapi` track those contracts and break at startup if the core jumps a minor without them.",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["taskiq", "taskiq-redis", "taskiq-fastapi"],
+      "groupName": "taskiq stack"
+    },
+    {
+      "description": "Group Pydantic + pydantic-settings — pydantic-settings pins a pydantic range, and partial bumps produce import-time validator errors.",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["pydantic", "pydantic-settings"],
+      "groupName": "pydantic"
+    },
+    {
+      "description": "Group the pytest stack (pytest + pytest-* plugins + anyio + fakeredis + pytest-env). Plugin ABIs track pytest internals, and a half-bumped stack typically breaks collection (seen historically with pytest-asyncio / anyio).",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["pytest", "/^pytest-/", "anyio", "fakeredis"],
+      "groupName": "pytest stack"
+    },
+    {
+      "description": "Group yt-dlp ecosystem. `bgutil-ytdlp-pot-provider` is a yt-dlp plugin and tracks yt-dlp's plugin API; bumping yt-dlp without it can disable YouTube PO-token flow on the next release. yt-dlp itself releases very frequently (~weekly), so it skips the weekly-updates grouping and lands as its own PR.",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["yt-dlp", "bgutil-ytdlp-pot-provider"],
+      "groupName": "yt-dlp",
+      "schedule": ["at any time"]
+    },
+    {
+      "description": "Group the Instagram-related libraries — `instagrapi` and `instaloader` cover overlapping concerns (web scraping vs login session) and tend to break together when Instagram tightens auth.",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["instagrapi", "instaloader"],
+      "groupName": "instagram"
+    },
+    {
+      "description": "Playwright bumps need a matching browser revision in the headless-Chrome container. Always route through the Dependency Dashboard so the docker-compose `chrome` image (currently `chromedp/headless-shell:latest`) can be updated in lockstep — Renovate cannot infer this dependency.",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["playwright"],
+      "matchUpdateTypes": ["major", "minor"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Python project commits land under the `deps` scope.",
+      "matchManagers": ["pep621"],
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Docker scope (SHA pinning comes from `docker:pinDigests` in `config:best-practices`).",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "semanticCommitScope": "docker"
+    },
+    {
+      "description": "GitHub Actions scope (SHA pinning comes from `helpers:pinGitHubActionDigests` in `config:best-practices`).",
+      "matchManagers": ["github-actions"],
+      "semanticCommitScope": "ci"
+    },
+    {
+      "description": "pre-commit hooks — low-stakes chore bumps.",
+      "matchManagers": ["pre-commit"],
+      "semanticCommitScope": "pre-commit"
+    },
+    {
+      "description": "Do not touch the `requires-python` constraint — runtime interpreter choice is an environment decision (ties into the Dockerfile base image, CI matrix, and binary wheel availability), not a routine dep bump.",
+      "matchManagers": ["pep621"],
+      "matchDepNames": ["python"],
+      "enabled": false
+    },
+    {
+      "description": "Do not auto-merge GitHub Actions updates. The Mend Renovate app has `workflows:write`; a compromised action (tj-actions/changed-files-style supply-chain hit) combined with auto-merge could exfiltrate secrets before review. PRs still open automatically so they show up in review queues — we just require a human to hit Merge. Placed AFTER the global auto-merge rule so this override wins by rule-order.",
+      "matchManagers": ["github-actions"],
+      "matchFileNames": [".github/workflows/**"],
+      "automerge": false
+    },
+    {
+      "description": "Major bumps on Docker images (Debian codename rollover, Postgres major, Python major, etc.) land via Dependency Dashboard approval rather than flooding PRs weekly.",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Toolchain *runtime* bumps captured by the workflow `*-version:` customManager route through the Dependency Dashboard — matches depName `python` only (we have no Go/Node/Bun in this repo). These are environment decisions that need to stay in sync with `requires-python`, the Dockerfile base image, and the uv image tag; a silent weekly PR to python 3.15 would desync CI from prod. The `astral-sh/uv` CLI version (also caught by the same customManager, but with depName `uv`) is unaffected and keeps flowing through normal cadence.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["python"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Use pep440 versioning for the `python` image and `ghcr.io/astral-sh/uv` (which ships `python3.X-...` tags). Default `docker` versioning mis-orders pre-release/rc tags.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["python", "ghcr.io/astral-sh/uv"],
+      "versioning": "pep440"
+    },
+    {
+      "description": "Dashboard category + extra labels — Python deps.",
+      "matchManagers": ["pep621"],
+      "dependencyDashboardCategory": "🐍 Python",
+      "addLabels": ["python"]
+    },
+    {
+      "description": "Dashboard category + extra labels — CI/infra.",
+      "matchManagers": ["dockerfile", "docker-compose", "github-actions", "pre-commit"],
+      "dependencyDashboardCategory": "🔧 CI / Infra",
+      "addLabels": ["ci"]
+    }
+  ]
+}

@@ -86,7 +86,7 @@ class Detector(ABC):
     def _idna_encode(host: str) -> str:
         try:
             return host.encode("idna").decode("ascii")
-        except (UnicodeEncodeError, TypeError, ValueError):
+        except UnicodeEncodeError, TypeError, ValueError:
             return host
 
     def _host_in(self, url: str, *candidates: str) -> bool:

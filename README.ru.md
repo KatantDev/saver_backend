@@ -101,8 +101,8 @@ taskiq-scheduler ── cron */10 * * * * ── cleanup_old_files_task → ./do
 
 ## 📦 Требования
 
-- **Python 3.12 или 3.13** (`pyproject.toml` требует `>=3.12,<3.15`)
-- [Poetry](https://python-poetry.org/) `2.x`
+- **Python 3.14** (`pyproject.toml` требует `>=3.14,<4.0`)
+- [`uv`](https://github.com/astral-sh/uv) `0.11+` для управления зависимостями
 - [Task](https://taskfile.dev/) для shortcut-команд
 - Docker Engine + Docker Compose v2
 - Для zero-downtime прод-деплоя: плагин [`docker rollout`](https://github.com/Wowu/docker-rollout) на сервере
@@ -119,8 +119,8 @@ git clone https://github.com/<your-account>/saver_backend.git
 cd saver_backend
 
 # 2. Зависимости и pre-commit хуки
-poetry install
-poetry run pre-commit install
+uv sync --all-groups
+uv run pre-commit install
 
 # 3. Конфигурация
 cp .env.example .env
@@ -161,13 +161,13 @@ task deploy-local
 
 1. Задайте `SAVER_BACKEND_INSTAGRAM_ACCOUNT="login:password"` в `.env`.
 2. Положите Netscape-экспорт cookies того же аккаунта в `cookies/instagram_instaloader/<login>.txt`.
-3. Запустите `poetry run python scripts/create_instagram_session.py` — скрипт проверит cookies, вызовет `loader.test_login()` и запишет `cookies/instagram_instaloader/<login>.session`.
+3. Запустите `uv run python scripts/create_instagram_session.py` — скрипт проверит cookies, вызовет `loader.test_login()` и запишет `cookies/instagram_instaloader/<login>.session`.
 
 ### Миграции БД
 
 ```bash
-task migrate                        # через docker compose
-poetry run alembic upgrade head     # вручную
+task migrate                    # через docker compose
+uv run alembic upgrade head     # вручную
 ```
 
 В `saver_backend/db/migrations/versions/` лежат 5 миграций. Compose-сервис `migrator` один раз выполняет `alembic upgrade head` и завершается.
@@ -199,12 +199,12 @@ task locales
 ### Тесты
 
 ```bash
-poetry run pytest -vv
+uv run pytest -vv
 # или внутри docker-стека:
 docker compose run --rm api pytest -vv
 ```
 
-CI запускает `pytest` внутри собранного образа (`.github/workflows/tests.yml`).
+CI запускает `pytest` внутри собранного `dev`-таргета Dockerfile (`.github/workflows/tests.yml`).
 
 ## 🚢 Деплой
 
@@ -292,10 +292,11 @@ saver_backend/
 ├── nginx-configs/                 # конфиги nginx + Cloudflare origin TLS
 ├── scripts/                       # entrypoints, компиляция локалей, утилиты
 ├── docker-compose.yml             # прод-база
-├── Dockerfile                     # python:3.13.12-slim-trixie + ffmpeg + aria2 + Deno
+├── Dockerfile                     # multi-stage (uv builder → python:3.14 prod + ffmpeg/aria2/Deno → dev)
 ├── Taskfile.yml                   # task-оркестрация
 ├── alembic.ini                    # конфиг миграций
-└── pyproject.toml                 # зависимости Poetry + конфиг тулзов
+├── pyproject.toml                 # PEP 621 проект + uv конфиг + конфиг тулзов
+└── uv.lock                        # залоченный граф зависимостей
 ```
 
 ### Вспомогательные скрипты
@@ -394,7 +395,7 @@ saver_backend/
 |---|---|---|---|
 | `SAVER_BACKEND_TASKIQ_WORKER_HOST` | str | `saver_backend-taskiq-worker` | |
 | `SAVER_BACKEND_CHROME_HOST` | str | `saver_backend-chrome` | Используется источником Kinovod через Playwright CDP |
-| `SAVER_BACKEND_CHROME_PORT` | int | `9222` | Внимание: compose пробрасывает порт `9223`; если меняете маппинг, синхронизируйте значение |
+| `SAVER_BACKEND_CHROME_PORT` | int | `9223` | Должен совпадать с флагом `--remote-debugging-port=` в compose-сервисе `chrome` |
 
 ### Compose-only (Python settings их не читает)
 
@@ -410,24 +411,23 @@ saver_backend/
 
 В проекте используются:
 
-- **Black** — форматтер
-- **Ruff** — линтер (конфиг в `pyproject.toml`)
+- **Ruff** — линтер и форматтер (конфиг в `pyproject.toml`)
 - **MyPy** — статическая типизация
-- **Pre-commit** — запускает все три перед каждым коммитом (`.pre-commit-config.yaml`)
+- **Pre-commit** — запускает всё перед каждым коммитом + хук `uv-lock` для синхронизации `uv.lock` (`.pre-commit-config.yaml`)
 
 ```bash
-poetry run black saver_backend tests
-poetry run ruff check saver_backend tests --fix
-poetry run mypy saver_backend
+uv run ruff format saver_backend tests
+uv run ruff check saver_backend tests --fix
+uv run mypy saver_backend
 ```
 
-CI прогоняет те же хуки через `pre-commit run -a` на каждый push.
+CI прогоняет Ruff format / Ruff check / MyPy матрицей на каждый push.
 
 ## 🤝 Вклад
 
 1. Форк + ветка от `dev`.
 2. Изменения, тесты по необходимости.
-3. Pre-commit хуки должны проходить (`poetry run pre-commit run -a`).
+3. Pre-commit хуки должны проходить (`uv run pre-commit run -a`).
 4. PR в ветку `dev`.
 
 ## 📄 Лицензия

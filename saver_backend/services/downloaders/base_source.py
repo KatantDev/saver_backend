@@ -246,13 +246,11 @@ class BaseSourceController(ABC):
         audio_dto: AudioDTO,
     ) -> None:
         """Sends the audio to the user and then caches the result."""
-        telegram_audio = (
-            await (
-                self._telegram_bot_controller.send_finish_downloading_audio(
-                    audio=audio_dto,
-                    telegram_id=self._telegram_id,
-                    message_id=self._message_id,
-                )
+        telegram_audio = await (
+            self._telegram_bot_controller.send_finish_downloading_audio(
+                audio=audio_dto,
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
             )
         )
 
@@ -273,19 +271,19 @@ class BaseSourceController(ABC):
         if not audios:
             return
 
-        tg_messages: list[Message] | None = (
-            await self._telegram_bot_controller.send_finish_downloading_audio_group(
-                files=audios,
-                telegram_id=self._telegram_id,
-                message_id=self._message_id,
-                language=self._telegram_bot_controller.language,
-            )
+        tg_messages: (
+            list[Message] | None
+        ) = await self._telegram_bot_controller.send_finish_downloading_audio_group(
+            files=audios,
+            telegram_id=self._telegram_id,
+            message_id=self._message_id,
+            language=self._telegram_bot_controller.language,
         )
 
         if not tg_messages:
             return
 
-        for audio_dto, message in zip(audios, tg_messages):
+        for audio_dto, message in zip(audios, tg_messages, strict=False):
             if not message.audio:
                 continue
             audio_dto.media_url = None

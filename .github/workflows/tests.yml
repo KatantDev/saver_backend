@@ -6,36 +6,30 @@ jobs:
   lint:
     strategy:
       matrix:
-        cmd:
-          - black
-          - ruff
-          - mypy
+        include:
+          - name: Ruff format
+            cmd: ruff format --diff saver_backend tests
+          - name: Ruff check
+            cmd: ruff check saver_backend tests
+          - name: Mypy
+            cmd: mypy saver_backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Poetry
-        run: |
-          pipx install poetry
-
-      - name: Set up Python (with Poetry cache)
-        uses: actions/setup-python@v6
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v8
         with:
-          python-version: '3.13'
-          cache: 'poetry'
-          cache-dependency-path: |
-            poetry.lock
-            pyproject.toml
-
-      - name: Set Poetry environment
-        run: |
-          poetry env use 3.13
+          version: "0.11.11"
+          # renovate: datasource=github-releases depName=python packageName=python/cpython versioning=pep440
+          python-version: "3.14"
+          enable-cache: "auto"
 
       - name: Install deps
-        run: poetry install --no-interaction --no-ansi
+        run: uv sync --locked --all-groups
 
-      - name: Run lint check
-        run: poetry run pre-commit run -a ${{ matrix.cmd }}
+      - name: ${{ matrix.name }}
+        run: uv run ${{ matrix.cmd }}
 
   pytest:
     runs-on: ubuntu-latest
@@ -53,15 +47,13 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          target: dev
           tags: saver_backend:ci
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Show compose version (debug)
-        run: docker compose version
-
-      - name: run tests
+      - name: Run tests
         env:
           SAVER_BACKEND_VERSION: ci
         run: docker compose run --rm api pytest -vv

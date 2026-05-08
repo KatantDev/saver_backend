@@ -101,8 +101,8 @@ The bot is **webhook-only** — there is no polling fallback. Telegram must be a
 
 ## 📦 Prerequisites
 
-- **Python 3.12 or 3.13** (`pyproject.toml` requires `>=3.12,<3.15`)
-- [Poetry](https://python-poetry.org/) `2.x` for dependency management
+- **Python 3.14** (`pyproject.toml` requires `>=3.14,<4.0`)
+- [`uv`](https://github.com/astral-sh/uv) `0.11+` for dependency management
 - [Task](https://taskfile.dev/) for the deployment / dev shortcuts
 - Docker Engine + Docker Compose v2
 - For zero-downtime production deploys: [`docker rollout`](https://github.com/Wowu/docker-rollout) plugin on the deploy host
@@ -119,8 +119,8 @@ git clone https://github.com/<your-account>/saver_backend.git
 cd saver_backend
 
 # 2. Install deps and pre-commit hooks
-poetry install
-poetry run pre-commit install
+uv sync --all-groups
+uv run pre-commit install
 
 # 3. Configure
 cp .env.example .env
@@ -161,13 +161,13 @@ For Instagram stories, the `instaloader` source needs a saved session file:
 
 1. Set `SAVER_BACKEND_INSTAGRAM_ACCOUNT="login:password"` in `.env`.
 2. Place a Netscape cookies export of the same Instagram account at `cookies/instagram_instaloader/<login>.txt`.
-3. Run `poetry run python scripts/create_instagram_session.py` — this validates the cookies, calls `loader.test_login()` and writes `cookies/instagram_instaloader/<login>.session`.
+3. Run `uv run python scripts/create_instagram_session.py` — this validates the cookies, calls `loader.test_login()` and writes `cookies/instagram_instaloader/<login>.session`.
 
 ### Database migrations
 
 ```bash
-task migrate                        # via docker compose
-poetry run alembic upgrade head     # manually
+task migrate                    # via docker compose
+uv run alembic upgrade head     # manually
 ```
 
 There are 5 migrations under `saver_backend/db/migrations/versions/`. The `migrator` compose service runs `alembic upgrade head` once and exits.
@@ -199,12 +199,12 @@ This calls `pybabel extract` → `pybabel update` → `pybabel compile`. The pro
 ### Tests
 
 ```bash
-poetry run pytest -vv
+uv run pytest -vv
 # or, against the dockerised stack:
 docker compose run --rm api pytest -vv
 ```
 
-CI runs `pytest` inside the built image (`.github/workflows/tests.yml`).
+CI runs `pytest` inside the built `dev` Docker target (`.github/workflows/tests.yml`).
 
 ## 🚢 Deployment
 
@@ -292,10 +292,11 @@ saver_backend/
 ├── nginx-configs/                 # nginx + Cloudflare origin TLS configs
 ├── scripts/                       # entrypoints, locale compilers, helpers
 ├── docker-compose.yml             # production base
-├── Dockerfile                     # python:3.13.12-slim-trixie + ffmpeg + aria2 + Deno
+├── Dockerfile                     # multi-stage (uv builder → python:3.14 prod + ffmpeg/aria2/Deno → dev)
 ├── Taskfile.yml                   # task orchestration
 ├── alembic.ini                    # migration config
-└── pyproject.toml                 # Poetry deps + tool config
+├── pyproject.toml                 # PEP 621 project + uv config + tool config
+└── uv.lock                        # locked dependency graph
 ```
 
 ### Helper scripts
@@ -394,7 +395,7 @@ All application variables are prefixed with `SAVER_BACKEND_`. Compose-only varia
 |---|---|---|---|
 | `SAVER_BACKEND_TASKIQ_WORKER_HOST` | str | `saver_backend-taskiq-worker` | |
 | `SAVER_BACKEND_CHROME_HOST` | str | `saver_backend-chrome` | Used by the Kinovod source via Playwright CDP |
-| `SAVER_BACKEND_CHROME_PORT` | int | `9222` | Note: the compose service exposes port `9223`; pin the value if you change the compose mapping |
+| `SAVER_BACKEND_CHROME_PORT` | int | `9223` | Must match the `--remote-debugging-port=` flag in the compose `chrome` service |
 
 ### Compose-only (not read by the Python settings)
 
@@ -410,24 +411,23 @@ All application variables are prefixed with `SAVER_BACKEND_`. Compose-only varia
 
 The project uses:
 
-- **Black** — opinionated formatter
-- **Ruff** — linter (configured in `pyproject.toml`)
+- **Ruff** — linter and formatter (configured in `pyproject.toml`)
 - **MyPy** — static type checking
-- **Pre-commit** — runs all three before each commit (`.pre-commit-config.yaml`)
+- **Pre-commit** — runs everything before each commit, plus `uv-lock` to keep `uv.lock` in sync (`.pre-commit-config.yaml`)
 
 ```bash
-poetry run black saver_backend tests
-poetry run ruff check saver_backend tests --fix
-poetry run mypy saver_backend
+uv run ruff format saver_backend tests
+uv run ruff check saver_backend tests --fix
+uv run mypy saver_backend
 ```
 
-CI runs the same hooks via `pre-commit run -a` on every push.
+CI runs Ruff format / Ruff check / MyPy as a matrix on every push.
 
 ## 🤝 Contributing
 
 1. Fork the repo and create a feature branch.
 2. Make your changes; add tests where reasonable.
-3. Make sure pre-commit hooks pass (`poetry run pre-commit run -a`).
+3. Make sure pre-commit hooks pass (`uv run pre-commit run -a`).
 4. Open a pull request against `dev`.
 
 ## 📄 License

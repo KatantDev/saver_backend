@@ -55,7 +55,7 @@ class FormatDTO(BaseModel):
             if len(parts) == 2:
                 height = int(parts[1])
                 return f"{height}p"
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             pass
         return self.resolution
 
@@ -69,7 +69,7 @@ class FormatDTO(BaseModel):
         try:
             # Extracts '1080' from '1920x1080'
             return int(self.resolution.split("x")[1])
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             # Return 0 for non-standard resolutions like "audio only"
             return 0
 
@@ -218,26 +218,26 @@ class VideoDTO(BaseContentDTO):
                 for fmt in formats:
                     qualities[fmt.format_id] = key
             if qualities:
-                quality = f"[{qualities.get(self.quality,'')}]".replace("p", "")
+                quality = f"[{qualities.get(self.quality, '')}]".replace("p", "")
             else:
                 quality = f"[{self.quality}]".replace("p", "")
         else:
             quality = ""
         if self.channel and self.channel_url:
             title_html = (
-                f'<b>{self.title}\u00A0<a href="{self.url}">{quality or '→'}</a></b>'
+                f'<b>{self.title}\u00a0<a href="{self.url}">{quality or "→"}</a></b>'
                 f"\n\n"
-                f"#{self.channel.replace(' ','_')}"
-                f'<a href="{self.channel_url}">\u00A0→</a>'
+                f"#{self.channel.replace(' ', '_')}"
+                f'<a href="{self.channel_url}">\u00a0→</a>'
                 f"\n"
             )
         elif self.title:
             if quality:
                 title_html = (
-                    f'<b>{self.title}\u00A0<a href="{self.url}">{quality}\n</a></b>'
+                    f'<b>{self.title}\u00a0<a href="{self.url}">{quality}\n</a></b>'
                 )
             else:
-                title_html = f'<b>{self.title}\u00A0<a href="{self.url}">→\n</a></b>'
+                title_html = f'<b>{self.title}\u00a0<a href="{self.url}">→\n</a></b>'
 
             title_html += f"› {self.season}\n" if self.season else ""  # noqa RUF001
             title_html += f"› {self.episode}\n" if self.episode else ""  # noqa RUF001
@@ -711,7 +711,7 @@ class AudioDTO(BaseContentDTO):
             )
 
         if "/track/" in resolution_url:
-            album_url = resolution_url.split("/track/")[0]
+            album_url = resolution_url.split("/track/", maxsplit=1)[0]
         else:
             album_url = resolution_url
         return cls(
@@ -893,7 +893,7 @@ class VideoTheatreDTO(BaseContentDTO):
         Returns:
             VideoTheatreDTO: Populated DTO instance with source_id derived from URL
         """
-        source_id = resolution_url.split("/")[-1]
+        source_id = resolution_url.rsplit("/", maxsplit=1)[-1]
         return cls(
             title=title,
             url=resolution_url,

@@ -62,6 +62,9 @@ class GunicornApplication(BaseApplication):
         gunicorn can handle. If you pass unknown
         parameter to it, it crash with error.
         """
+        # `BaseApplication.cfg` is typed as `Config | None` but is always
+        # initialised by `super().__init__()` before `load_config` runs.
+        assert self.cfg is not None  # noqa: S101
         for key, value in self.options.items():
             if key in self.cfg.settings and value is not None:
                 self.cfg.set(key.lower(), value)

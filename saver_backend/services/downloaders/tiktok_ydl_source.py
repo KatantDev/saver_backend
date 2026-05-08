@@ -23,17 +23,17 @@ class TikTokYdlController(YtDlpController):
             raise TikTokYtDlpDownloaderError
         return info
 
-    async def _execute_download(self, info: dict[str, Any]) -> None:
+    async def _execute_download(self, info_dict: dict[str, Any]) -> None:
         """
         Execute the download with specific error handling for TikTok.
 
         Catches TikTokYtDlpDownloaderError which is often caused by slideshows
         and informs the user gracefully.
 
-        :param info: The pre-fetched video information dictionary.
+        :param info_dict: The pre-fetched video information dictionary.
         """
         try:
-            await super()._execute_download(info)
+            await super()._execute_download(info_dict)
         except TikTokYtDlpDownloaderError:
             logging.warning(
                 "Could not get info for TikTok URL %s. It might be a slideshow.",

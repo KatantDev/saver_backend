@@ -544,7 +544,7 @@ class TelegramBotController:
         :param language: Language code.
         :return: Sent Audio object or None.
         """
-        caption = "\u200B\n" + _(
+        caption = "\u200b\n" + _(
             "result direct message",
             locale=language or self.language,
         ).format(
@@ -822,9 +822,9 @@ class TelegramBotController:
                 continue
 
             if ind < len(chunk) - 1:
-                caption = "\u200B"
+                caption = "\u200b"
             else:
-                caption = "\u200B\n" + _(
+                caption = "\u200b\n" + _(
                     "result direct message",
                     locale=language or self.language,
                 ).format(url=url, title="")
@@ -911,7 +911,7 @@ class TelegramBotController:
                 cover=thumbnail_input,
                 supports_streaming=supports_streaming,
             )
-        except (TelegramForbiddenError, TelegramBadRequest):
+        except TelegramForbiddenError, TelegramBadRequest:
             return None
         except TelegramNetworkError:
             return None
