@@ -34,7 +34,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Deploy over SSH (make deploy)
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         env:
           GH_APP_TOKEN: ${{ steps.app-token.outputs.token }}
         with:
