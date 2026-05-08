@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -541,20 +542,80 @@ class AdultDetector(Detector):
         return Resolution(source=self.SOURCE, url=url)
 
 
+_INTERNAL_HOST_SUFFIXES = (".internal", ".local", ".localdomain")
+_INTERNAL_HOST_NAMES = frozenset(
+    {"localhost", "host.docker.internal", "metadata.google.internal"},
+)
+
+
+def _is_safe_public_host(host: str) -> bool:
+    """Reject hosts that point at internal infra or metadata services.
+
+    Used by the M3U8 detector to keep arbitrary user-supplied URLs from
+    becoming an SSRF primitive against internal services on the docker
+    bridge (Postgres, Redis, Chrome CDP, telegram-bot-api, bgutil) or
+    against cloud-provider metadata endpoints. Other detectors carry
+    their own host allow-list and don't need this check.
+
+    :param host: parsed `urlparse(...).hostname` value (lowercased by
+        urlparse for ASCII; we lowercase defensively).
+    :return: True if the host is a syntactically valid public hostname /
+        IP that is not loopback / private / link-local / reserved /
+        multicast and not a known internal alias.
+    """
+
+    if not host:
+        return False
+    host = host.lower().strip(".")
+    if host in _INTERNAL_HOST_NAMES:
+        return False
+    if any(host.endswith(suffix) for suffix in _INTERNAL_HOST_SUFFIXES):
+        return False
+    if host.startswith("saver_backend-"):  # docker-compose service hostnames
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True  # plain hostname, can't classify here
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
 @register_detector()
 class M3U8Detector(Detector):
-    """Detector for Rutube videos."""
+    """Detector for raw HLS / M3U8 stream URLs."""
 
     SOURCE = SourceEnum.M3U8_YDL
     CONTROLLER = M3U8YdlController
 
     def match(self, url: str) -> Optional[Resolution]:
         """
-        Check if the url is a valid Rutube video url.
+        Check if the URL is a public HLS / M3U8 stream.
+
+        Unlike every other detector, M3U8 has no host allow-list — any
+        site can serve `.m3u8` playlists. To prevent the resolver from
+        becoming an SSRF primitive (the matched URL is fed straight into
+        yt-dlp + aria2c, which run inside the docker bridge alongside
+        Postgres/Redis/Chrome-CDP/internal services), we reject loopback,
+        private, link-local, multicast and reserved IPs as well as the
+        well-known docker-internal hostnames.
 
         :param url: URL to check.
         """
-        if not url.endswith(".m3u8"):
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return None
+        # `.m3u8` must be the path extension, not a query/fragment substring,
+        # otherwise `https://evil.com/?fake=.m3u8` would slip through.
+        if not parsed.path.lower().endswith(".m3u8"):
+            return None
+        if not _is_safe_public_host(parsed.hostname or ""):
             return None
         return Resolution(source=self.SOURCE, url=self._clean_url(url))
 

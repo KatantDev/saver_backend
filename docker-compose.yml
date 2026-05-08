@@ -10,6 +10,10 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
+      # Pin to the `prod` stage explicitly. Otherwise BuildKit picks the
+      # last stage in the Dockerfile (currently `dev`) and ships pytest,
+      # mypy, ruff, reload tooling into production.
+      target: prod
     image: saver_backend:${SAVER_BACKEND_VERSION:-latest}
     hostname: saver_backend-api
     restart: always
