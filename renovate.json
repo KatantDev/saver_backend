@@ -10,7 +10,9 @@
     ":prConcurrentLimit10",
     "group:recommended"
   ],
-  "baseBranches": ["dev"],
+  "baseBranchPatterns": [
+    "dev"
+  ],
   "osvVulnerabilityAlerts": true,
   "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
   "branchConcurrentLimit": 5,
