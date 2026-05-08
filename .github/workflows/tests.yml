@@ -2,6 +2,9 @@ name: tests
 
 on: push
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     strategy:
@@ -18,7 +21,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v8.1.0
         with:
           version: "0.11.11"
           # renovate: datasource=github-releases depName=python packageName=python/cpython versioning=pep440

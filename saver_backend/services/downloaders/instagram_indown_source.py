@@ -188,7 +188,18 @@ class InstagramInDownController(BaseSourceController):
     ) -> VideoDTO | PhotoDTO:
         """Factory method to create DTO based on file extension or url pattern."""
         is_video = False
-        if ".mp4" in clean_url or "googlevideo.com" in clean_url:
+        parsed_url = urlparse(clean_url)
+        host = (parsed_url.hostname or "").lower()
+        # Check the host as a structured suffix (host == googlevideo.com or
+        # *.googlevideo.com) instead of an unanchored substring search,
+        # otherwise URLs like https://evil.com/?fake=googlevideo.com would
+        # incorrectly be treated as videos. The .mp4 check is also anchored
+        # on the URL path to ignore query/fragment occurrences.
+        if (
+            parsed_url.path.endswith(".mp4")
+            or host == "googlevideo.com"
+            or host.endswith(".googlevideo.com")
+        ):
             is_video = True
         elif (
             ".jpg" not in clean_url
