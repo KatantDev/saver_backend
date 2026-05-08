@@ -7,6 +7,12 @@ permissions:
 
 jobs:
   lint:
+    # Override the default matrix-derived job name (which would otherwise
+    # include both `name` and `cmd` and produce display names like
+    # `lint (Ruff format, ruff format --diff saver_backend tests)`).
+    # Branch-protection required-status-check contexts must match the
+    # display name verbatim, so we keep them short and stable.
+    name: lint (${{ matrix.name }})
     strategy:
       matrix:
         include:
