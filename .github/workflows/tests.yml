@@ -2,8 +2,17 @@ name: tests
 
 on: push
 
+permissions:
+  contents: read
+
 jobs:
   lint:
+    # Override the default matrix-derived job name (which would otherwise
+    # include both `name` and `cmd` and produce display names like
+    # `lint (Ruff format, ruff format --diff saver_backend tests)`).
+    # Branch-protection required-status-check contexts must match the
+    # display name verbatim, so we keep them short and stable.
+    name: lint (${{ matrix.name }})
     strategy:
       matrix:
         include:
@@ -18,7 +27,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v8.1.0
         with:
           version: "0.11.11"
           # renovate: datasource=github-releases depName=python packageName=python/cpython versioning=pep440
