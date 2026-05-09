@@ -196,6 +196,19 @@ class TelegramBotController:
         """
         return settings.telegram_secret_token == secret_token
 
+    # TelegramBadRequest substrings that indicate the target message
+    # already disappeared / cannot be touched by us. These are benign races
+    # (user deleted the message, message expired, edit window closed) and
+    # must NOT be reported to Sentry — otherwise they spam the dashboard
+    # without any actionable signal. See SAVER-BACKEND-7T.
+    _BENIGN_BAD_REQUEST_FRAGMENTS = (
+        "message to delete not found",
+        "message to edit not found",
+        "message can't be deleted",
+        "message can't be edited",
+        "message is not modified",
+    )
+
     async def _send(self, coro: Awaitable[Any]) -> None:
         """
         Wrapper for request to telegram bot.
@@ -207,6 +220,17 @@ class TelegramBotController:
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after)
             await self._send(coro=coro)
+        except TelegramBadRequest as e:
+            message = (e.message or "").lower()
+            if any(
+                fragment in message for fragment in self._BENIGN_BAD_REQUEST_FRAGMENTS
+            ):
+                if settings.environment == "local":
+                    logging.debug("Ignoring benign TelegramBadRequest: %s", e)
+                return
+            if settings.environment == "local":
+                logging.exception(e)
+            capture_exception(e)
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
