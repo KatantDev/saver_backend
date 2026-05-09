@@ -141,6 +141,17 @@ To register the Telegram webhook, the bot needs to be reachable from Telegram's 
 
 All application settings are loaded from `.env` via `pydantic-settings` and prefixed with `SAVER_BACKEND_`. See [Environment Variables](#-environment-variables) for the full reference. The Telegram Bot API container also reads two un-prefixed variables, `TELEGRAM_API_ID` and `TELEGRAM_API_HASH`.
 
+### Host UID matching
+
+The prod Docker stage runs as a non-root user with UID/GID `1000` by default. For bind-mounted `./cookies` and `./downloads` to be writable from inside the container without host-side `chown`, the host owner of those directories must match. If your deploy user has a different UID/GID, set `APP_UID` / `APP_GID` in `.env`:
+
+```bash
+echo "APP_UID=$(id -u)" >> .env
+echo "APP_GID=$(id -g)" >> .env
+```
+
+The next `task deploy` will rebuild the image with those IDs baked into the `app` user. For freshly created hosts where the directories don't exist yet, just `mkdir -p downloads cookies` as the deploy user.
+
 ### Cookies
 
 Several sources need cookies for unauthenticated platforms or to bypass anti-bot checks. Drop Netscape-format `cookies*.txt` files into the matching subfolder of `cookies/`:

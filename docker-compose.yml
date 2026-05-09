@@ -14,6 +14,12 @@ services:
       # last stage in the Dockerfile (currently `dev`) and ships pytest,
       # mypy, ruff, reload tooling into production.
       target: prod
+      # Match the in-container `app` user to the host UID/GID that owns
+      # ./cookies and ./downloads. Defaults to 1000; on hosts where the
+      # deploy user has a different UID, set APP_UID / APP_GID in .env.
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
     image: saver_backend:${SAVER_BACKEND_VERSION:-latest}
     hostname: saver_backend-api
     restart: always
