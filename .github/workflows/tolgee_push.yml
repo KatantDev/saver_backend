@@ -40,7 +40,11 @@ jobs:
 
           # Use only the part after the first colon (or the whole first line if no colon)
           FIRST_LINE="$(printf '%s' "$RAW_MSG" | head -n1)"
-          DESC_PART="$(printf '%s' "$FIRST_LINE" | awk -F':' '{ if (NF>1) {print $2} else {print $1} }' | xargs)"
+          # Trim leading/trailing whitespace via sed — `xargs` (without -0) breaks
+          # on any unbalanced quote in the commit message ("container's", "won't"…).
+          DESC_PART="$(printf '%s' "$FIRST_LINE" \
+            | awk -F':' '{ if (NF>1) {print $2} else {print $1} }' \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
           # Sanitize -> keep alnum/space/_- ; spaces -> underscores ; limit to 40 chars
           CLEAN_MSG="$(printf '%s' "$DESC_PART" \
