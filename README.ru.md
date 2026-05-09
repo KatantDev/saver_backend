@@ -141,6 +141,17 @@ task deploy-local
 
 Все настройки приложения грузятся из `.env` через `pydantic-settings` с префиксом `SAVER_BACKEND_`. Полный список см. в [Переменных окружения](#-переменные-окружения). Контейнер Telegram Bot API дополнительно читает две переменные **без префикса** — `TELEGRAM_API_ID` и `TELEGRAM_API_HASH`.
 
+### Host UID matching
+
+Прод-стадия Docker запускается под non-root пользователем с UID/GID `1000` по умолчанию. Чтобы bind-mount `./cookies` и `./downloads` был writable из контейнера без хостового `chown`, host-owner этих папок должен совпадать. Если у твоего deploy-юзера другой UID/GID, задай `APP_UID` / `APP_GID` в `.env`:
+
+```bash
+echo "APP_UID=$(id -u)" >> .env
+echo "APP_GID=$(id -g)" >> .env
+```
+
+Следующий `task deploy` пересоберёт образ с этими ID, запеченными в `app`-пользователе. На свежих хостах, где папок ещё нет, просто `mkdir -p downloads cookies` под deploy-юзером.
+
 ### Cookies
 
 Часть источников требует cookies для обхода анти-бот-проверок. Кладите Netscape-файлы `cookies*.txt` в подпапки `cookies/`:
