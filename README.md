@@ -279,7 +279,7 @@ saver_backend/
 │   │   │   └── web_app.py         # Telegram Web App initData validators
 │   │   ├── i18n/                  # gettext + custom Starlette / Taskiq middlewares
 │   │   ├── redis/                 # connection pool dependency
-│   │   └── сleanup/clear_old.py   # CleanupService (Cyrillic 'с' folder name)
+│   │   └── cleanup/clear_old.py   # CleanupService
 │   ├── task_manager/
 │   │   ├── tasks.py               # save_video, get_video_info, process_inline_query, cleanup_old_files_task
 │   │   ├── events.py              # Taskiq worker startup/shutdown hooks (separate Bot instance)

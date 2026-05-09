@@ -9,7 +9,7 @@ from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
 )
 from saver_backend.services.downloaders.schema import VideoDTO
-from saver_backend.services.сleanup.clear_old import CleanupService
+from saver_backend.services.cleanup.clear_old import CleanupService
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
 
