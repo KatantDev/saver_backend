@@ -41,9 +41,13 @@ async def on_empty_inline_query(
         SourceEnum.VK_CLIPS_YDL,
         SourceEnum.YOUTUBE_SHORTS_YDL,
     ]
+    # Telegram caps inline_query results at 50, so the DAO must not
+    # return more than that. Since some rows are filtered out below
+    # (non-VideoDTO meta_data), the answer may end up shorter — that's
+    # fine, Telegram allows < 50.
     cached_items = await history_dao.get_user_history_with_cache(
         user_id=user.id,
-        limit=20,
+        limit=50,
         sources=sources_for_inline,
     )
 
