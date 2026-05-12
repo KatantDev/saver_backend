@@ -140,7 +140,8 @@ class VKAPIController(YtDlpController):
 
             file_id = info_dict.get("id")
             predicted_path = (
-                self._download_directory / f"{file_id}.{info_dict.get('ext', 'mp4')}"
+                self._download_directory
+                / f"{file_id}.{self._download_token}.{info_dict.get('ext', 'mp4')}"
             )
             video_dto = VideoDTO.from_yt_dlp(
                 info=info_dict,
