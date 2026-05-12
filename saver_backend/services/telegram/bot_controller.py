@@ -18,6 +18,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.methods.send_media_group import MediaUnion
 from aiogram.types import (
     Audio,
     FSInputFile,
@@ -493,7 +494,7 @@ class TelegramBotController:
         if media_group.build():
             coro = self._bot.send_media_group(
                 chat_id=chat_id,
-                media=media_group.build(),
+                media=cast(list[MediaUnion], media_group.build()),
             )
             await self._send(coro)
 
@@ -731,7 +732,7 @@ class TelegramBotController:
             if media_group.build():
                 tg_messages = await self._bot.send_media_group(
                     chat_id=telegram_id,
-                    media=media_group.build(),
+                    media=cast(list[MediaUnion], media_group.build()),
                 )
                 messages.extend(tg_messages)
 
