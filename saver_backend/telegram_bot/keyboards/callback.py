@@ -34,3 +34,9 @@ class VideoEpisodesCallback(CallbackData, prefix="series"):
     """Callback for selecting series within a season."""
 
     label: str
+
+
+class YmdanticFlacCallback(CallbackData, prefix="flac"):
+    """Callback for selecting flac format."""
+
+    label: str

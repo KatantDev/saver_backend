@@ -577,6 +577,8 @@ class AudioDTO(BaseContentDTO):
     album_url: str | None = None
     thumbnail_url: str | None = None
     thumbnail: str | Path | None = None
+    flac: bool = False
+    codec: str = "mp3"
 
     direct_download_url: str | None = None
 
@@ -686,6 +688,8 @@ class AudioDTO(BaseContentDTO):
         audio_url: str,
         resolution_url: str,
         album_id: Optional[str] = None,
+        quality: str = "mp3",
+        codec: str = "mp3",
     ) -> Optional["AudioDTO"]:
         """Create AudioDTO from yndmatic audio object."""
         if track.id is None:
@@ -714,6 +718,7 @@ class AudioDTO(BaseContentDTO):
             album_url = resolution_url.split("/track/", maxsplit=1)[0]
         else:
             album_url = resolution_url
+        isflac = quality == "flac"
         return cls(
             media_url=audio_url,
             url=resolution_url,
@@ -721,10 +726,14 @@ class AudioDTO(BaseContentDTO):
             duration=int(track.duration_ms / 1000) if track.duration_ms else None,
             source_id=str(track.id),
             artist=track.artists_names,
-            track=track.title,
+            track=(track.title or "")
+            + (" [FLAC]" if isflac else f" [{quality.upper()}]"),
             track_url=resolution_url,
             album_url=album_url,
             thumbnail_url=thumbnail_url,
+            quality=quality,
+            flac=isflac,
+            codec=codec,
         )
 
     @property

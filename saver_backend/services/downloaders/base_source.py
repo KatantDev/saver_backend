@@ -241,10 +241,7 @@ class BaseSourceController(ABC):
                 telegram_video=telegram_video,
             )
 
-    async def _send_audio(
-        self,
-        audio_dto: AudioDTO,
-    ) -> None:
+    async def _send_audio(self, audio_dto: AudioDTO, history: bool = True) -> None:
         """Sends the audio to the user and then caches the result."""
         telegram_audio = await (
             self._telegram_bot_controller.send_finish_downloading_audio(
@@ -257,7 +254,8 @@ class BaseSourceController(ABC):
         if telegram_audio:
             audio_dto.media_url = None
             cache_model = await self._save_content_to_cache(audio_dto, telegram_audio)
-            await self._create_history_entry(cache_model)
+            if history:
+                await self._create_history_entry(cache_model)
 
     async def _send_audio_group(
         self,

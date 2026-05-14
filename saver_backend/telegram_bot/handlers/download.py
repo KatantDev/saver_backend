@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import re
 from contextlib import suppress
@@ -33,6 +34,7 @@ from saver_backend.telegram_bot.keyboards.callback import (
     VideoLanguageCallback,
     VideoSeasonCallback,
     VideoTranslationCallback,
+    YmdanticFlacCallback,
 )
 from saver_backend.telegram_bot.keyboards.inline import (
     edit_telegram_message_keyboard,
@@ -595,6 +597,56 @@ async def on_translations_select(
     await query.answer()
 
 
+@download_router.callback_query(YmdanticFlacCallback.filter())
+async def on_flac_select(
+    query: CallbackQuery,
+    callback_data: YmdanticFlacCallback,
+    state: FSMContext,
+) -> None:
+    """
+    Handle user request to download FLAC (lossless) version of a track.
+
+    The actual download logic in YmdanticController will detect this flag
+    and proceed with FLAC download instead of standard quality.
+
+    :param query: Callback query object containing button click data
+    :param callback_data: Callback data with track label/ID
+    :param state: FSM context for storing user session data
+    """
+    if not isinstance(query.message, Message) or not query.from_user:
+        await query.answer()
+        return
+
+    fsm_data = await state.get_data()
+    resolution_data = fsm_data.get("resolution")
+    flac_info = fsm_data.get("flac_info", {})
+
+    if not resolution_data:
+        await query.message.edit_text(_("selection expired"), reply_markup=None)
+        await state.clear()
+        return
+
+    if not flac_info or not isinstance(flac_info, dict):
+        await query.message.edit_text(_("selection expired"), reply_markup=None)
+        await state.clear()
+        return
+
+    resolution: Resolution = Resolution.model_validate(resolution_data)
+    with contextlib.suppress(TelegramBadRequest):
+        await query.message.edit_reply_markup(
+            reply_markup=None,
+        )
+
+    updated_flac_info = {**flac_info, "download": True}
+    await state.update_data(flac_info=updated_flac_info)
+
+    await save_video.kiq(
+        resolution=resolution,
+        telegram_id=query.from_user.id,
+        format_id=None,
+    )
+
+
 @download_router.message(
     SourceFilter(
         sources=[
@@ -613,7 +665,12 @@ async def on_translations_select(
         ],
     ),
 )
-async def download_video(message: Message, resolution: Resolution) -> None:
+async def download_video(
+    message: Message,
+    resolution: Resolution,
+    state: FSMContext,
+    bot: Bot,
+) -> None:
     """
     Download video from TikTok, Instagram, Instagram API.
 
@@ -622,5 +679,20 @@ async def download_video(message: Message, resolution: Resolution) -> None:
     """
     if message.from_user is None:
         return
+
+    data = await state.get_data()
+    previous_message_id = data.get("quality_selection_message_id")
+
+    if previous_message_id:
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=message.from_user.id,
+                message_id=previous_message_id,
+                reply_markup=None,
+            )
+        except TelegramBadRequest:
+            pass
+        finally:
+            await state.clear()
 
     await save_video.kiq(resolution=resolution, telegram_id=message.from_user.id)

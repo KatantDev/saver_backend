@@ -92,6 +92,7 @@ class TelegramBotController:
             main_bot=self._bot,
             storage=storage,
         )
+        self.last_message_id: int | None = None
 
     @property
     def bot(self) -> Bot:
@@ -264,6 +265,60 @@ class TelegramBotController:
             return
 
         await context.set_data(data)
+
+    async def update_fsm_data(
+        self,
+        user_id: int,
+        chat_id: int,
+        data: dict[str, Any],
+    ) -> None:
+        """
+        Update data in FSM context for a specific user and chat.
+
+        :param user_id: The user's Telegram ID.
+        :param chat_id: The chat's Telegram ID.
+        :param data: The data to update in FSM (merged with existing data).
+        """
+        context = self._dispatcher.fsm.resolve_context(
+            bot=self.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        if not context:
+            logging.warning(
+                "Failed to resolve FSM context for user_id=%s, chat_id=%s",
+                user_id,
+                chat_id,
+            )
+            return
+
+        await context.update_data(data)
+
+    async def clear_fsm_data(
+        self,
+        user_id: int,
+        chat_id: int,
+    ) -> None:
+        """
+        Clears FSM context for a specific user and chat.
+
+        :param user_id: The user's Telegram ID.
+        :param chat_id: The chat's Telegram ID.
+        """
+        context = self._dispatcher.fsm.resolve_context(
+            bot=self.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        if not context:
+            logging.warning(
+                "Failed to resolve FSM context for user_id=%s, chat_id=%s",
+                user_id,
+                chat_id,
+            )
+            return
+
+        await context.clear()
 
     async def get_fsm_data(
         self,
@@ -583,9 +638,11 @@ class TelegramBotController:
                 caption=caption,
                 title=audio.track,
                 duration=int(audio.duration or 0),
-                performer=audio.artist,
+                performer=(audio.artist or "Unknown")
+                + settings.telegram_filename_sufix,
                 thumbnail=thumbnail_input,
             )
+            self.last_message_id = message.message_id
             return message.audio
         except (TelegramForbiddenError, TelegramBadRequest) as e:
             logging.warning(
@@ -628,6 +685,13 @@ class TelegramBotController:
         """
         audio_input: str | URLInputFile | FSInputFile | None = None
         thumbnail_input = self._get_thumbnail(audio)
+        ext = (
+            ".flac"
+            if audio.flac
+            else ".mp3"
+            if audio.quality in ["best", "mp3"]
+            else ".m4a"
+        )
 
         if audio.direct_download_url is not None:
             audio_input = audio.direct_download_url
@@ -635,12 +699,16 @@ class TelegramBotController:
         elif audio.media_url is not None:
             audio_input = URLInputFile(
                 url=audio.media_url,
-                filename=(audio.title or "audio") + settings.telegram_filename_sufix,
+                filename=(audio.title or "audio")
+                + settings.telegram_filename_sufix
+                + ext,
             )
         elif audio.path is not None:
             audio_input = FSInputFile(
                 path=audio.path,
-                filename=(audio.title or "audio") + settings.telegram_filename_sufix,
+                filename=(audio.title or "audio")
+                + settings.telegram_filename_sufix
+                + ext,
             )
 
         if not audio_input:
@@ -742,7 +810,6 @@ class TelegramBotController:
                 chat_id=telegram_id,
             )
             await self._send(coro)
-
         return messages
 
     async def send_finish_downloading_gif(
@@ -800,8 +867,14 @@ class TelegramBotController:
         for ind, audio in enumerate(chunk):
             audio_input: str | URLInputFile | InputFile | None = None
 
+            ext = (
+                ".flac"
+                if audio.flac
+                else ".mp3"
+                if audio.quality in ["best", "mp3"]
+                else ".m4a"
+            )
             # Prepare audio data based on type
-
             if isinstance(audio, CacheModel) and isinstance(
                 audio.meta_data_dto,
                 AudioDTO,
@@ -830,13 +903,15 @@ class TelegramBotController:
                     audio_input = URLInputFile(
                         url=audio.media_url,
                         filename=(audio.title or "audio")
-                        + settings.telegram_filename_sufix,
+                        + settings.telegram_filename_sufix
+                        + ext,
                     )
                 elif audio.path:
                     audio_input = FSInputFile(
                         path=audio.path,
                         filename=(audio.title or "audio")
-                        + settings.telegram_filename_sufix,
+                        + settings.telegram_filename_sufix
+                        + ext,
                     )
 
             if not audio_input:
@@ -1200,3 +1275,37 @@ class TelegramBotController:
                 return None
 
         return message
+
+    async def send_hq_button(
+        self,
+        telegram_id: int,
+        message_id: int,
+        audio_dto: AudioDTO,
+    ) -> None:
+        """
+        Send flac button.
+
+        :param telegram_id: Telegram ID of the user.
+        :param message_id:
+        :param audio_dto:
+        """
+        reply_markup = inline.get_hq_keyboard(
+            item_id=audio_dto.source_id or "",
+        )
+
+        try:
+            await self._bot.edit_message_reply_markup(
+                chat_id=telegram_id,
+                message_id=message_id,
+                reply_markup=reply_markup,
+            )
+        except (TelegramBadRequest, AiogramError) as e:
+            logging.warning(
+                "Failed to send flac button for user %s: %s. ",
+                telegram_id,
+                e,
+            )
+            with new_scope() as scope:
+                scope.set_tag("url", audio_dto.url)
+                capture_exception(e)
+            return

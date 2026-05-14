@@ -15,6 +15,7 @@ from saver_backend.telegram_bot.keyboards.callback import (
     VideoLanguageCallback,
     VideoSeasonCallback,
     VideoTranslationCallback,
+    YmdanticFlacCallback,
 )
 
 
@@ -260,3 +261,27 @@ async def edit_telegram_message_keyboard(
         await query.message.edit_caption(caption=caption, reply_markup=reply_markup)
     else:
         await query.message.edit_text(caption, reply_markup=reply_markup)
+
+
+def get_hq_keyboard(item_id: str) -> InlineKeyboardMarkup:
+    """
+    Create an inline keyboard with a single button for HQ download.
+
+    The callback data contains the track ID for identification.
+
+    :param item_id: Yandex.Music track identifier used as callback label
+    :return: Inline keyboard markup with a single FLAC download button
+    """
+    builder = InlineKeyboardBuilder()
+
+    button_text = "High Quality [Lossless]"
+
+    builder.button(
+        text=button_text,
+        callback_data=YmdanticFlacCallback(
+            label=item_id,
+        ).pack(),
+    )
+    builder.adjust(1)
+
+    return builder.as_markup()
