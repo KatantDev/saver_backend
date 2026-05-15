@@ -9,7 +9,7 @@ import httpx
 from ymdantic import YMClient
 from ymdantic.exceptions import YMError
 
-from saver_backend.entities.enums import ProxyType, SourceEnum, YandexMusicEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import AudioDTO
@@ -27,6 +27,7 @@ class YmdanticController(BaseSourceController):
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YMDANTIC
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.ALL
+    CODECSEPARATOR: ClassVar[str] = "-"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -120,7 +121,7 @@ class YmdanticController(BaseSourceController):
                 logging.warning("No download info found for track %s", track_id)
                 return None
 
-            if YandexMusicEnum.CODECSEPARATOR in download_infos.codec:
+            if self.CODECSEPARATOR in download_infos.codec:
                 direct_url = str(download_infos.url)
 
                 # Get track metadata
@@ -132,7 +133,7 @@ class YmdanticController(BaseSourceController):
                     resolution_url=self._resolution.url,
                     album_id=album_id,
                     quality=download_infos.codec.split(
-                        YandexMusicEnum.CODECSEPARATOR,
+                        self.CODECSEPARATOR,
                     )[0],
                     codec=download_infos.codec,
                 )
@@ -242,7 +243,7 @@ class YmdanticController(BaseSourceController):
         safe_title = "".join(
             c for c in (audio_dto.title or "track") if c.isalnum() or c in "._- "
         )[:50]
-        if YandexMusicEnum.CODECSEPARATOR in codec:
+        if self.CODECSEPARATOR in codec:
             ext = "mp4"
             if "flac" in codec:
                 audio_dto.flac = True
@@ -499,7 +500,7 @@ class YmdanticController(BaseSourceController):
                 logging.warning("No download info found for track %s", track_id)
                 continue
 
-            if YandexMusicEnum.CODECSEPARATOR in download_infos.codec:
+            if self.CODECSEPARATOR in download_infos.codec:
                 if check:
                     flac_dtos.append(audio_dto)
                     break
@@ -508,7 +509,7 @@ class YmdanticController(BaseSourceController):
                 continue
 
             audio_dto.media_url = direct_url
-            quality = download_infos.codec.split(YandexMusicEnum.CODECSEPARATOR)[0]
+            quality = download_infos.codec.split(self.CODECSEPARATOR)[0]
             audio_dto.track = (audio_dto.track or "").replace(
                 " [MP3]", f" [{quality.upper()}]"
             )
