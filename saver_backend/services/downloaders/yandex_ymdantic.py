@@ -9,7 +9,7 @@ import httpx
 from ymdantic import YMClient
 from ymdantic.exceptions import YMError
 
-from saver_backend.entities.enums import ProxyType, SourceEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum, YandexMusicEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import AudioDTO
@@ -120,7 +120,7 @@ class YmdanticController(BaseSourceController):
                 logging.warning("No download info found for track %s", track_id)
                 return None
 
-            if "-" in download_infos.codec:
+            if YandexMusicEnum.CODECSEPARATOR in download_infos.codec:
                 direct_url = str(download_infos.url)
 
                 # Get track metadata
@@ -131,7 +131,9 @@ class YmdanticController(BaseSourceController):
                     track=track,
                     resolution_url=self._resolution.url,
                     album_id=album_id,
-                    quality=download_infos.codec.split("-")[0],
+                    quality=download_infos.codec.split(
+                        YandexMusicEnum.CODECSEPARATOR,
+                    )[0],
                     codec=download_infos.codec,
                 )
             return None
@@ -205,9 +207,13 @@ class YmdanticController(BaseSourceController):
                         f.write(chunk)
             if audio_dto.flac:
                 flac_file_path = file_path.with_suffix(".flac")
-                ffmpeg.input(str(file_path)).output(
-                    str(flac_file_path), acodec="flac"
-                ).run()
+                await asyncio.to_thread(
+                    lambda: (
+                        ffmpeg.input(str(file_path))
+                        .output(str(flac_file_path), acodec="flac")
+                        .run()
+                    )
+                )
                 file_path = flac_file_path
             return file_path
 
@@ -236,7 +242,7 @@ class YmdanticController(BaseSourceController):
         safe_title = "".join(
             c for c in (audio_dto.title or "track") if c.isalnum() or c in "._- "
         )[:50]
-        if "-" in codec:
+        if YandexMusicEnum.CODECSEPARATOR in codec:
             ext = "mp4"
             if "flac" in codec:
                 audio_dto.flac = True
@@ -493,7 +499,7 @@ class YmdanticController(BaseSourceController):
                 logging.warning("No download info found for track %s", track_id)
                 continue
 
-            if "-" in download_infos.codec:
+            if YandexMusicEnum.CODECSEPARATOR in download_infos.codec:
                 if check:
                     flac_dtos.append(audio_dto)
                     break
@@ -502,7 +508,7 @@ class YmdanticController(BaseSourceController):
                 continue
 
             audio_dto.media_url = direct_url
-            quality = download_infos.codec.split("-")[0]
+            quality = download_infos.codec.split(YandexMusicEnum.CODECSEPARATOR)[0]
             audio_dto.track = (audio_dto.track or "").replace(
                 " [MP3]", f" [{quality.upper()}]"
             )
@@ -563,6 +569,7 @@ class YmdanticController(BaseSourceController):
         flac_info = await self._get_audio_info_from_fsm() or {}
         fsm_dto = flac_info.get("dto", "{}")
         if isinstance(fsm_dto, list):
+            # sends the last dto as a separate message to create a keyboard
             fsm_dto = fsm_dto[-1]
             flac_dto = AudioDTO.model_validate(json.loads(fsm_dto))
             if not await self.send_audio_from_cache(
@@ -571,8 +578,8 @@ class YmdanticController(BaseSourceController):
                 history=False,
             ):
                 await self._send_audio_track(flac_dto, history=False)
-
-        flac_dto = AudioDTO.model_validate(json.loads(fsm_dto))
+        else:
+            flac_dto = AudioDTO.model_validate(json.loads(fsm_dto))
 
         await self._telegram_bot_controller.send_hq_button(
             telegram_id=self._telegram_id,
