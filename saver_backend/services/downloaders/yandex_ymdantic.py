@@ -9,7 +9,7 @@ import httpx
 from ymdantic import YMClient
 from ymdantic.exceptions import YMError
 
-from saver_backend.entities.enums import ProxyType, SourceEnum, YandexMusicEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import AudioDTO
