@@ -274,7 +274,7 @@ def get_hq_keyboard(item_id: str) -> InlineKeyboardMarkup:
     """
     builder = InlineKeyboardBuilder()
 
-    button_text = "High Quality [Lossless]"
+    button_text = _("High Quality [Lossless]")
 
     builder.button(
         text=button_text,

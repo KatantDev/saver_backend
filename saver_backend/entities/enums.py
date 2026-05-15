@@ -63,6 +63,12 @@ class YandexMusicContentTypeEnum(str, Enum):
     ALBUM = "album"
 
 
+class YandexMusicEnum(str, Enum):
+    """Enum for Yandex Music."""
+
+    CODECSEPARATOR = "-"
+
+
 class VideoTheatreEnum(str, Enum):
     """Enum for Video Theatre."""
 
