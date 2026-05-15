@@ -36,10 +36,18 @@ class YtDlpController(BaseSourceController, ABC):
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._download_directory.mkdir(parents=True, exist_ok=True)
 
+        # Per-instance suffix to avoid filename collisions when multiple
+        # workers download the same source_id concurrently (e.g. same video
+        # in different qualities). Without it, yt-dlp's HLS fragments from
+        # parallel downloads can overwrite each other and produce empty files.
+        self._download_token = secrets.token_hex(4)
+
         self._base_options: dict[str, Any] = {
             "proxy": self._proxy,
             "format": "best",
-            "outtmpl": str(self._download_directory / "%(id)s.%(ext)s"),
+            "outtmpl": str(
+                self._download_directory / f"%(id)s.{self._download_token}.%(ext)s",
+            ),
             "noplaylist": True,
             "writethumbnail": True,
             "quiet": True,
@@ -245,7 +253,10 @@ class YtDlpController(BaseSourceController, ABC):
             video_id = info_dict.get("id")
             video_ext = info_dict.get("ext")
 
-            predicted_path = self._download_directory / f"{video_id}.{video_ext}"
+            predicted_path = (
+                self._download_directory
+                / f"{video_id}.{self._download_token}.{video_ext}"
+            )
 
             self._video = VideoDTO.from_yt_dlp(
                 info=info_dict,
@@ -294,7 +305,9 @@ class YtDlpController(BaseSourceController, ABC):
 
         possible_extensions = (".webp", ".png", ".jpg", ".jpeg", ".image")
         for ext in possible_extensions:
-            thumb_path = self._download_directory / f"{source_id}{ext}"
+            thumb_path = (
+                self._download_directory / f"{source_id}.{self._download_token}{ext}"
+            )
             if not thumb_path.exists():
                 continue
             return thumb_path
