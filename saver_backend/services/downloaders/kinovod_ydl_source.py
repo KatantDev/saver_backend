@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import re
 import secrets
@@ -848,11 +847,6 @@ class KinovodYdlController(YtDlpController):
 
             return self._video_info_from_dto(videotheatre_dto, playlist_str)
 
-        except KinovodCookieError:
-            logging.warning("kinovod cookies error")
-            await self._telegram_bot_controller.edit_failed_video_info(
-                telegram_id=self._telegram_id,
-            )
         except Kinovod404Error:
             await self.delete_processing_message()
             self._message_id = None
