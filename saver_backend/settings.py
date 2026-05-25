@@ -86,7 +86,6 @@ class Settings(BaseSettings):
     # chrome headless settings
     taskiq_worker_host: str = "saver_backend-taskiq-worker"
     chrome_host: str = "saver_backend-chrome"
-    # chrome container make port forwarding from 9222 to 9223
     chrome_port: int = 9222
     _chrome_cdp_url: Optional[str] = None
 
