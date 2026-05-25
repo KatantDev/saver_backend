@@ -513,48 +513,25 @@ class KinovodYdlController(YtDlpController):
         raise RuntimeError(f"No free port found in range {start_port}-{end_port}")
 
     def _load_cookies(self) -> list[dict[str, Any]]:
-        """Load cookies from JSON file."""
-        cookies = []
-        if self._cookie_file and self._cookie_file.strip():
-            try:
-                cookie_path = Path(self._cookie_file)
-                if cookie_path.exists() and cookie_path.stat().st_size > 0:
-                    with cookie_path.open("r", encoding="utf-8") as f:
-                        cookie_content = f.read()
-                        if cookie_content.strip():
-                            cookies = json.loads(cookie_content)
-                            if isinstance(cookies, list):
-                                logging.info(
-                                    f"Loaded {len(cookies)} cookies"
-                                    f" from {self._cookie_file}"
-                                )
-                            else:
-                                logging.warning(
-                                    f"Cookies file does not contain a list,"
-                                    f" got {type(cookies)}"
-                                )
-                                raise KinovodCookieError
-                        else:
-                            logging.warning(
-                                f"Cookie file is empty: {self._cookie_file}"
-                            )
-                            raise KinovodCookieError
-                else:
-                    logging.warning(
-                        f"Cookie file not found or empty: {self._cookie_file}"
-                    )
-            except json.JSONDecodeError as e:
-                logging.warning(
-                    f"Failed to parse cookies JSON from {self._cookie_file}: {e}"
+        if (
+            not self._cookie_file
+            or not self._cookie_file.strip()
+            or not Path(self._cookie_file).exists()
+            or Path(self._cookie_file).stat().st_size < 10
+        ):
+            raise KinovodCookieError
+        try:
+            with Path(self._cookie_file).open("r", encoding="utf-8") as f:
+                cookies = json.load(f)
+            if isinstance(cookies, list):
+                self._cookies = cookies
+                logging.info(
+                    "Loaded %s cookies from %s", len(cookies), self._cookie_file
                 )
-                raise KinovodCookieError from e
-            except Exception as e:
-                logging.warning(
-                    f"Unexpected error loading cookies from {self._cookie_file}: {e}"
-                )
-                raise KinovodCookieError from e
-        self._cookies = cookies
-        return cookies
+                return cookies
+        except Exception as e:
+            logging.exception("Kinovod Cookie errror: %s.", e)
+        raise KinovodCookieError
 
     def _get_mirror_from_cookie(self) -> None:
         """Extract mirror domain from cookie file and set mirror URL."""
@@ -563,7 +540,7 @@ class KinovodYdlController(YtDlpController):
         cookie_files = list(cookie_dir.glob("cookies*.txt"))
         if not cookie_files:
             logging.error("[kinovod] Cookie file not found.")
-            raise KinovodMirrorError
+            raise KinovodCookieError
         self._cookie_file = str(cookie_files[0])
 
         cookies = self._load_cookies()
@@ -576,6 +553,8 @@ class KinovodYdlController(YtDlpController):
         self._mirror_url = self._resolution.url.replace(
             f"/{kinovod_domain}/", f"/{kinovod_mirror_domain}/"
         )
+        if not self._check_url(self._mirror_url):
+            raise KinovodMirrorError
 
     async def _raise_proxy(self, port: int) -> None:
         """
@@ -640,7 +619,7 @@ class KinovodYdlController(YtDlpController):
         )
         # Add cookies to context
         if self._cookies:
-            await self._context.add_cookies(json.loads(json.dumps(self._cookies)))
+            await self._context.add_cookies(self._cookies)  # type: ignore
             logging.info(f"Added {len(self._cookies)} cookies to context")
 
         self._page = await self._context.new_page()
@@ -869,6 +848,11 @@ class KinovodYdlController(YtDlpController):
 
             return self._video_info_from_dto(videotheatre_dto, playlist_str)
 
+        except KinovodCookieError:
+            logging.warning("kinovod cookies error")
+            await self._telegram_bot_controller.edit_failed_video_info(
+                telegram_id=self._telegram_id,
+            )
         except Kinovod404Error:
             await self.delete_processing_message()
             self._message_id = None

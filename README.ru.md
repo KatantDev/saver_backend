@@ -163,6 +163,7 @@ echo "APP_GID=$(id -g)" >> .env
 | `cookies/vk_api_ydl/` | VK API (стена + фото) | опционально |
 | `cookies/adult_ydl/` | Adult-источник | опционально |
 | `cookies/instagram_instaloader/` | Instagram stories (файл `<login>.session`) | да |
+| `cookies/kinovod_ydl/`           | Kinovod                                    | yes |
 
 Дерево `cookies/*` целиком в `.gitignore`. yt-dlp-загрузчик случайно выбирает один файл из доступных на каждый запрос — можно ротировать cookies, добавляя файлы в папку.
 
@@ -402,12 +403,11 @@ saver_backend/
 
 ### Headless Chrome / межсервисные имена
 
-| Переменная | Тип | Дефолт | Описание |
-|---|---|---|---|
+| Переменная | Тип | Дефолт                        | Описание |
+|---|---|-------------------------------|---|
 | `SAVER_BACKEND_TASKIQ_WORKER_HOST` | str | `saver_backend-taskiq-worker` | |
-| `SAVER_BACKEND_CHROME_HOST` | str | `saver_backend-chrome` | Используется источником Kinovod через Playwright CDP |
-| `SAVER_BACKEND_CHROME_PORT` | int | `9223` | Должен совпадать с флагом `--remote-debugging-port=` в compose-сервисе `chrome` |
-
+| `SAVER_BACKEND_CHROME_HOST` | str | `saver_backend-chrome`        | Используется источником Kinovod через Playwright CDP |
+| `SAVER_BACKEND_CHROME_PORT` | int | `9222`
 ### Compose-only (Python settings их не читает)
 
 | Переменная | Дефолт | Описание |
