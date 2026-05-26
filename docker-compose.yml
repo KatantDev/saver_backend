@@ -150,7 +150,7 @@ services:
       - default
 
   nginx:
-    image: nginx:1.30-trixie@sha256:1a9ab83e2892b75773978e8d91f42a7a2a0d8bb704959a51ff17c0377481973d
+    image: nginx:1.31-trixie@sha256:06aa3d7be10bc6307990c81bdca075793132e9163391abc370c015e344e23128
     restart: always
     ports:
       - "${NGINX_PORT:-80}:80"
@@ -194,16 +194,15 @@ services:
       disable: true
     # No `ports:` mapping — Chrome's DevTools Protocol gives full RCE on the
     # host (file:// reads, arbitrary process launch). Reachable only from
-    # inside the docker network via hostname `saver_backend-chrome:9223`.
+    # inside the docker network via hostname `saver_backend-chrome:9222`.
     # If you need to attach `chrome://inspect` from the host during local
-    # debugging, add `ports: ["9223:9223"]` in deploy/docker-compose.dev.yml.
+    # debugging, add `ports: ["9222:9222"]` in deploy/docker-compose.dev.yml.
     shm_size: 1gb
     command:
       - --no-sandbox
       - --disable-gpu
       - --disable-dev-shm-usage
       - --remote-debugging-address=0.0.0.0
-      - --remote-debugging-port=9223
       - --remote-allow-origins=*
       - --proxy-server="socks5://localhost:1080"
     networks:

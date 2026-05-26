@@ -156,13 +156,14 @@ The next `task deploy` will rebuild the image with those IDs baked into the `app
 
 Several sources need cookies for unauthenticated platforms or to bypass anti-bot checks. Drop Netscape-format `cookies*.txt` files into the matching subfolder of `cookies/`:
 
-| Folder | Used by | Required? |
-|---|---|---|
-| `cookies/youtube_video_ydl/` | YouTube videos | yes |
-| `cookies/youtube_shorts_ydl/` | YouTube Shorts | yes |
-| `cookies/vk_api_ydl/` | VK API source (wall + photos) | optional |
-| `cookies/adult_ydl/` | Adult source | optional |
+| Folder                           | Used by                                    | Required? |
+|----------------------------------|--------------------------------------------|---|
+| `cookies/youtube_video_ydl/`     | YouTube videos                             | yes |
+| `cookies/youtube_shorts_ydl/`    | YouTube Shorts                             | yes |
+| `cookies/vk_api_ydl/`            | VK API source (wall + photos)              | optional |
+| `cookies/adult_ydl/`             | Adult source                               | optional |
 | `cookies/instagram_instaloader/` | Instagram stories (`<login>.session` file) | yes |
+| `cookies/kinovod_ydl/`           | Kinovod                                    | yes |
 
 The whole `cookies/*` tree is gitignored. The yt-dlp loader picks one file at random per request when several are present, so you can rotate cookies by adding more files to the folder.
 
@@ -402,12 +403,11 @@ All application variables are prefixed with `SAVER_BACKEND_`. Compose-only varia
 
 ### Headless Chrome / inter-service hostnames
 
-| Variable | Type | Default | Description |
-|---|---|---|---|
+| Variable | Type | Default                       | Description |
+|---|---|-------------------------------|---|
 | `SAVER_BACKEND_TASKIQ_WORKER_HOST` | str | `saver_backend-taskiq-worker` | |
-| `SAVER_BACKEND_CHROME_HOST` | str | `saver_backend-chrome` | Used by the Kinovod source via Playwright CDP |
-| `SAVER_BACKEND_CHROME_PORT` | int | `9223` | Must match the `--remote-debugging-port=` flag in the compose `chrome` service |
-
+| `SAVER_BACKEND_CHROME_HOST` | str | `saver_backend-chrome`        | Used by the Kinovod source via Playwright CDP |
+| `SAVER_BACKEND_CHROME_PORT` | int | `9222`
 ### Compose-only (not read by the Python settings)
 
 | Variable | Default | Description |

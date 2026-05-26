@@ -47,3 +47,7 @@ class KinovodQualityParseError(KinovodParseError):
 
 class KinovodMirrorError(KinovodParseError):
     """Exception for Kinovod translation parse error."""
+
+
+class KinovodCookieError(Exception):
+    """Exception for Kinovod cookie error."""
