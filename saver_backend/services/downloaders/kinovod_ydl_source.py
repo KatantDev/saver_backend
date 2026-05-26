@@ -1,11 +1,14 @@
 import asyncio
+import json
 import logging
 import re
 import secrets
 import socket
 from collections import deque
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, ClassVar, Optional
+from urllib.parse import urlparse
 
 import httpx
 import slippers
@@ -33,6 +36,7 @@ from saver_backend.services.downloaders.exceptions import (
     Kinovod404Error,
     KinovodAlertError,
     KinovodCaptchaError,
+    KinovodCookieError,
     KinovodMirrorError,
 )
 from saver_backend.services.downloaders.schema import (
@@ -95,6 +99,8 @@ class KinovodYdlController(YtDlpController):
         self._mirror_url: Optional[str] = None
         self._bad_mirrors: list[str] = []
         self._mirror_host: Optional[str] = None
+        self._cookie_file: Optional[str] = None
+        self._cookies: Optional[list[dict[str, Any]]] = None
 
     async def close(self) -> None:
         """Close browser and page resources."""
@@ -328,6 +334,7 @@ class KinovodYdlController(YtDlpController):
         for video_url in video_urls:
             ext = video_url.split(".")[-1]
             logging.info("Downloading video: %s", video_url)
+
             try:
                 info_dict = await asyncio.to_thread(
                     self._yt_dlp.extract_info,
@@ -336,7 +343,10 @@ class KinovodYdlController(YtDlpController):
                 )
 
                 # downloaded video path
-                predicted_path = self._download_directory / f"{info_dict['id']}.{ext}"
+                predicted_path = (
+                    self._download_directory
+                    / f"{info_dict['id']}.{self._download_token}.{ext}"
+                )
 
                 return VideoDTO.from_yt_dlp(
                     info=info_dict,
@@ -502,6 +512,50 @@ class KinovodYdlController(YtDlpController):
                 return port
         raise RuntimeError(f"No free port found in range {start_port}-{end_port}")
 
+    def _load_cookies(self) -> list[dict[str, Any]]:
+        if (
+            not self._cookie_file
+            or not self._cookie_file.strip()
+            or not Path(self._cookie_file).exists()
+            or Path(self._cookie_file).stat().st_size < 10
+        ):
+            raise KinovodCookieError
+        try:
+            with Path(self._cookie_file).open("r", encoding="utf-8") as f:
+                cookies = json.load(f)
+            if isinstance(cookies, list):
+                self._cookies = cookies
+                logging.info(
+                    "Loaded %s cookies from %s", len(cookies), self._cookie_file
+                )
+                return cookies
+        except Exception as e:
+            logging.exception("Kinovod Cookie errror: %s.", e)
+        raise KinovodCookieError
+
+    def _get_mirror_from_cookie(self) -> None:
+        """Extract mirror domain from cookie file and set mirror URL."""
+        base_dir = Path(__file__).resolve().parent.parent.parent.parent
+        cookie_dir = base_dir / "cookies" / self.SOURCE.value
+        cookie_files = list(cookie_dir.glob("cookies*.txt"))
+        if not cookie_files:
+            logging.error("[kinovod] Cookie file not found.")
+            raise KinovodCookieError
+        self._cookie_file = str(cookie_files[0])
+
+        cookies = self._load_cookies()
+        kinovod_mirror_domain: str = ""
+        for cookie in cookies:
+            if cookie.get("name") == "kv_auth":
+                kinovod_mirror_domain = str(cookie.get("domain", ""))
+                break
+        kinovod_domain = urlparse(self._resolution.url).netloc
+        self._mirror_url = self._resolution.url.replace(
+            f"/{kinovod_domain}/", f"/{kinovod_mirror_domain}/"
+        )
+        if not self._check_url(self._mirror_url):
+            raise KinovodMirrorError
+
     async def _raise_proxy(self, port: int) -> None:
         """
         Create and start a local SOCKS5 proxy passthrough for authenticated upstream.
@@ -517,7 +571,7 @@ class KinovodYdlController(YtDlpController):
         """
         if not self._proxy:
             return
-        await self._prepare_mirror()
+        self._get_mirror_from_cookie()
         upstream_proxy_url = self._proxy
 
         logging.info("Starting slippers proxy on :%d -> %s", port, upstream_proxy_url)
@@ -558,10 +612,15 @@ class KinovodYdlController(YtDlpController):
         proxy_settings = ProxySettings(
             server=f"socks5://{settings.taskiq_worker_host}:{local_proxy_port}",
         )
+
         self._context = await browser.new_context(
             ignore_https_errors=True,
             proxy=proxy_settings,
         )
+        # Add cookies to context
+        if self._cookies:
+            await self._context.add_cookies(self._cookies)  # type: ignore
+            logging.info(f"Added {len(self._cookies)} cookies to context")
 
         self._page = await self._context.new_page()
 
@@ -789,6 +848,11 @@ class KinovodYdlController(YtDlpController):
 
             return self._video_info_from_dto(videotheatre_dto, playlist_str)
 
+        except KinovodCookieError:
+            logging.warning("kinovod cookies error")
+            await self._telegram_bot_controller.edit_failed_video_info(
+                telegram_id=self._telegram_id,
+            )
         except Kinovod404Error:
             await self.delete_processing_message()
             self._message_id = None

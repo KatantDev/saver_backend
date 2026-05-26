@@ -74,7 +74,10 @@ class RedditYdlController(YtDlpController):
             video_id = info_dict.get("id")
             video_ext = info_dict.get("ext")
 
-            predicted_path = self._download_directory / f"{video_id}.{video_ext}"
+            predicted_path = (
+                self._download_directory
+                / f"{video_id}.{self._download_token}.{video_ext}"
+            )
 
             self._video = VideoDTO.from_yt_dlp(
                 info=info_dict,
