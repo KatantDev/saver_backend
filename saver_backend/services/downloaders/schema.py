@@ -470,6 +470,25 @@ class VideoDTO(BaseContentDTO):
             episode=episode_label or "",
         )
 
+    @classmethod
+    def from_savetik(
+        cls,
+        savetikfh: "SaveTikFromHtml",
+        source_id: str,
+        resolution_url: str,
+    ) -> "VideoDTO":
+        """Creates a VideoDTO from SaveTik object."""
+        return cls(
+            direct_download_url=savetikfh.mp4_hd,
+            source_id=source_id,
+            url=resolution_url,
+            ext="mp4",
+            title=savetikfh.title or "",
+            filename=savetikfh.title or "",
+            quality="best",
+            thumbnail_url=savetikfh.cover,
+        )
+
 
 class PhotoDTO(BaseContentDTO):
     """Data Transfer Object for Photo."""
@@ -1199,3 +1218,23 @@ class TikWMResponse(BaseModel):
     code: int
     msg: str
     data: TikWMData | None = None
+
+
+class SaveTikResponse(BaseModel):
+    """Pydantic model for the full savetik API response."""
+
+    status: str
+    status_code: int | None = None
+    msg: str | None = None
+    data: str | None = None
+
+
+class SaveTikFromHtml(BaseModel):
+    """Pydantic model for the field data from SaveTikResponse."""
+
+    title: str | None = None
+    id: str | None = None
+    cover: str | None = None
+    mp4: str | None = None
+    mp4_hd: str | None = None
+    mp3: str | None = None

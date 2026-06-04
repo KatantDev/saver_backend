@@ -13,6 +13,7 @@ from saver_backend.entities.enums import (
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.adult_ydl_source import AdultYdlController
 from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.douyin_source import DouyinController
 from saver_backend.services.downloaders.dzen_ydl import (
     DzenYdlController,
 )
@@ -762,6 +763,36 @@ class RedditDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)
+
+
+@register_detector()
+class DouyinDetector(Detector):
+    """Detector for Douyin urls."""
+
+    SOURCE = SourceEnum.DOUYIN
+    CONTROLLER = DouyinController
+    HOSTS = (
+        "douyin.com",
+        "www.douyin.com",
+        "v.douyin.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"^/video/(?P<code>[^/]+)"),
+        "modal_id": re.compile(r".*[?&]modal_id=(?P<code>[^&]+)"),
+        "video1": re.compile(r"^/(?P<code>[^/]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid Reddit comment url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        modal_id = self.REGEX["modal_id"].match(url)
+        resolution = self._match_regex(url)
+        if modal_id and resolution is not None:
+            resolution.metadata = modal_id.groupdict()
+            resolution.metadata["type"] = "modal_id"
+            resolution.url = url
+        return resolution
 
 
 class SourceResolver:
