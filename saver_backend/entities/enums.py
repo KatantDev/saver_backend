@@ -82,3 +82,4 @@ class FsmKeysEnum(str, Enum):
     """Enum for Fsm keys data storage."""
 
     KINOVOD = -100
+    DOUYIN = -101
