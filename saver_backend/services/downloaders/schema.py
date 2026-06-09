@@ -471,22 +471,22 @@ class VideoDTO(BaseContentDTO):
         )
 
     @classmethod
-    def from_savetik(
+    def from_seekinai(
         cls,
-        savetikfh: "SaveTikFromHtml",
+        seekinaifj: "SeekinAiFromJson",
         source_id: str,
         resolution_url: str,
     ) -> "VideoDTO":
-        """Creates a VideoDTO from SaveTik object."""
+        """Creates a VideoDTO from SeekinAi object."""
         return cls(
-            direct_download_url=savetikfh.mp4_hd,
+            direct_download_url=seekinaifj.medias[0].url,
             source_id=source_id,
             url=resolution_url,
             ext="mp4",
-            title=savetikfh.title or "",
-            filename=savetikfh.title or "",
+            title=seekinaifj.title or "",
+            filename=seekinaifj.title or "",
             quality="best",
-            thumbnail_url=savetikfh.cover,
+            thumbnail_url=seekinaifj.image_url,
         )
 
 
@@ -1220,21 +1220,25 @@ class TikWMResponse(BaseModel):
     data: TikWMData | None = None
 
 
-class SaveTikResponse(BaseModel):
-    """Pydantic model for the full savetik API response."""
+class SeekinAiResponse(BaseModel):
+    """Pydantic model for the full SeekinAi API response."""
 
-    status: str
-    status_code: int | None = None
+    code: str
     msg: str | None = None
-    data: str | None = None
+    data: dict[str, Any] | None = None
 
 
-class SaveTikFromHtml(BaseModel):
-    """Pydantic model for the field data from SaveTikResponse."""
+class SeekinAiFromJson(BaseModel):
+    """Pydantic model for the field data from SeekinAiResponse."""
 
     title: str | None = None
-    id: str | None = None
-    cover: str | None = None
-    mp4: str | None = None
-    mp4_hd: str | None = None
-    mp3: str | None = None
+    image_url: str | None = Field(alias="imageUrl")
+    medias: list[SeekinAiMedias] = []
+
+
+class SeekinAiMedias(BaseModel):
+    """Pydantic model for the medias data from SeekinAiResponse."""
+
+    format: str | None = None
+    url: str
+    file_size: int | None = Field(alias="fileSize")
