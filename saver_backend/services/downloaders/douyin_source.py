@@ -19,7 +19,7 @@ class DouyinController(BaseSourceController):
     """Controller for downloading videos from TikTok via tikwm.com API."""
 
     SOURCE = SourceEnum.DOUYIN
-    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.ALL
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.LOCAL
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
