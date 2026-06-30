@@ -783,7 +783,7 @@ class DouyinDetector(Detector):
     }
 
     def match(self, url: str) -> Optional[Resolution]:
-        """Check if the url is a valid Reddit comment url."""
+        """Check if the url is a valid douyin url."""
         if not self._host_in(url, *self.HOSTS):
             return None
         modal_id = self.REGEX["modal_id"].match(url)

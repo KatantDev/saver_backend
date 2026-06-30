@@ -41,7 +41,7 @@ class InstagramInDownController(BaseSourceController):
 
         self._client: AsyncClient | None = None
 
-    async def _init_httpx(self, proxy: str) -> None:
+    async def _init_httpx(self, proxy: str | None) -> None:
         if self._client:
             await self._client.aclose()
         self._client = httpx.AsyncClient(
@@ -151,28 +151,28 @@ class InstagramInDownController(BaseSourceController):
         referer_url = f"{self.BASE_URL}{referer_path}"
 
         # 3. Update headers with Referer for the POST request
-        await self._init_httpx(self._proxy or "")
+        await self._init_httpx(self._proxy)
         if self._client is None:
             return
         self._client.headers.update({"Referer": referer_url})
 
-        # 2. Get Token
-        token = await self._get_csrf_token(referer_url)
-        if not token:
-            logging.error("Could not fetch CSRF token from indown.io")
-            await self._send_error_message()
-            return
-
-        # 4. Post Data
-        payload = {
-            "link": normalized_url,
-            "referer": referer_url,
-            "locale": "en",
-            "_token": token,
-        }
-
         self._process_percent(10)
         for _ in range(1, 3):
+            # 2. Get Token
+            token = await self._get_csrf_token(referer_url)
+            if not token:
+                logging.error("Could not fetch CSRF token from indown.io")
+                await self._send_error_message()
+                return
+
+            # 4. Post Data
+            payload = {
+                "link": normalized_url,
+                "referer": referer_url,
+                "locale": "en",
+                "_token": token,
+            }
+
             try:
                 response = await self._client.post(
                     f"{self.BASE_URL}/download",

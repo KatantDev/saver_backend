@@ -1232,8 +1232,8 @@ class SeekinAiFromJson(BaseModel):
     """Pydantic model for the field data from SeekinAiResponse."""
 
     title: str | None = None
-    image_url: str | None = Field(alias="imageUrl")
-    medias: list[SeekinAiMedias] = []
+    image_url: str | None = Field(alias="imageUrl", default=None)
+    medias: list[SeekinAiMedias] = Field(default_factory=list)
 
 
 class SeekinAiMedias(BaseModel):
@@ -1241,4 +1241,4 @@ class SeekinAiMedias(BaseModel):
 
     format: str | None = None
     url: str
-    file_size: int | None = Field(alias="fileSize")
+    file_size: int | None = Field(alias="fileSize", default=None)
