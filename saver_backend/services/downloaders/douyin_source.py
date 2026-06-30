@@ -1,9 +1,11 @@
 import hashlib
 import logging
+import re
 import time
 from typing import Any, ClassVar
 
 from httpx import AsyncClient, RequestError
+from lxml.html import fromstring
 
 from saver_backend.entities.enums import FsmKeysEnum, ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
@@ -16,7 +18,7 @@ from saver_backend.services.downloaders.schema import (
 
 
 class DouyinController(BaseSourceController):
-    """Controller for downloading videos from TikTok via tikwm.com API."""
+    """Controller for downloading videos from douyin.com via seekin.ai."""
 
     SOURCE = SourceEnum.DOUYIN
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.LOCAL
@@ -51,10 +53,6 @@ class DouyinController(BaseSourceController):
         return "".join(f"{b:02x}" for b in signed_bytes)
 
     async def _parse_secret_key(self) -> str | None:
-        import re
-
-        from lxml.html import fromstring
-
         headers: dict[str, str] = {
             "Sec-ch-ua": self._headers.get("Sec-ch-ua", ""),
             "User-Agent": self._headers.get("User-Agent", ""),
@@ -109,27 +107,29 @@ class DouyinController(BaseSourceController):
 
         try:
             secret_key = await self._get_secret_key()
-            timestamp = str(int(time.time() * 1000))
-            sign = self._get_signature(
-                timestamp, self._resolution.url, secret_key or ""
-            )
-            self._headers.update({"Sign": sign, "Timestamp": timestamp})
-            response = await self._client.post(
-                url=self._api_url + "/ikool/media/download",
-                headers=self._headers,
-                json={"url": self._resolution.url},
-            )
-            info_json = response.json()
-            if not info_json:
-                return None
-            if info_json.get("code") == "0000" and info_json.get("data"):
-                return info_json
+            for _ in range(1, 3):
+                timestamp = str(int(time.time() * 1000))
+                sign = self._get_signature(
+                    timestamp, self._resolution.url, secret_key or ""
+                )
+                self._headers.update({"Sign": sign, "Timestamp": timestamp})
+                response = await self._client.post(
+                    url=self._api_url + "/ikool/media/download",
+                    headers=self._headers,
+                    json={"url": self._resolution.url},
+                )
+                info_json = response.json()
+                if not info_json:
+                    return None
+                if info_json.get("code") == "0000" and info_json.get("data"):
+                    return info_json
 
-            logging.error(
-                "seekin.ai returned an error: %s (URL: %s)",
-                info_json.get("msg"),
-                self._resolution.url,
-            )
+                logging.warning(
+                    "seekin.ai returned an error: %s (URL: %s); retry: %s",
+                    info_json.get("msg"),
+                    self._resolution.url,
+                    _,
+                )
             return None
         except RequestError as e:
             logging.exception(e)
@@ -172,10 +172,10 @@ class DouyinController(BaseSourceController):
         self._process_percent(16)
         try:
             info_dict = await self.get_video_info(url=self._resolution.url)
-            info = SeekinAiResponse.model_validate(info_dict)
-            if not info:
+            if not info_dict:
                 await self._send_error_message()
                 return
+            info = SeekinAiResponse.model_validate(info_dict)
 
             data = SeekinAiFromJson.model_validate(info.data)
             if data is None:
