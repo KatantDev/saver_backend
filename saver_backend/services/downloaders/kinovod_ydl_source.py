@@ -642,7 +642,7 @@ class KinovodYdlController(YtDlpController):
         """
         if not self._proxy:
             return
-        self._get_mirror_from_cookie()
+        await self._get_mirror_from_cookie()
         upstream_proxy_url = self._proxy
 
         logging.info("Starting slippers proxy on :%d -> %s", port, upstream_proxy_url)
