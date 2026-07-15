@@ -147,7 +147,7 @@ class InstagramInDownController(BaseSourceController):
             return
 
         normalized_url = self._normalize_url(original_url)
-        referer_path = "/en1"
+        referer_path = "/reels"
         referer_url = f"{self.BASE_URL}{referer_path}"
 
         # 3. Update headers with Referer for the POST request
@@ -171,6 +171,7 @@ class InstagramInDownController(BaseSourceController):
                 "referer": referer_url,
                 "locale": "en",
                 "_token": token,
+                "a": "a",
             }
 
             try:
