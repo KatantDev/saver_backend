@@ -473,13 +473,16 @@ class VideoDTO(BaseContentDTO):
     @classmethod
     def from_seekinai(
         cls,
+        video_dto: "VideoDTO",
         seekinaifj: "SeekinAiFromJson",
         source_id: str,
         resolution_url: str,
     ) -> "VideoDTO":
         """Creates a VideoDTO from SeekinAi object."""
         return cls(
-            direct_download_url=seekinaifj.medias[0].url,
+            path=video_dto.path,
+            width=video_dto.width,
+            height=video_dto.height,
             source_id=source_id,
             url=resolution_url,
             ext="mp4",
