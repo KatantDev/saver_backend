@@ -47,6 +47,23 @@ class DouyinController(YtDlpController):
             "Host": "api.seekin.ai",
             "Accept-Encoding": "gzip",
         }
+        douyin_params = {
+            "downloader": "aria2c",
+            "external_downloader_args": {
+                "aria2c": [
+                    "-x",
+                    "16",
+                    "-s",
+                    "16",
+                    "-k",
+                    "1M",
+                    "--timeout=60",  # Таймаут для соединения
+                    "--max-tries=10",  # Максимальное количество попыток
+                    "--retry-wait=5",  # Ждать между попытками
+                ],
+            },
+        }
+        self._yt_dlp.params.update(douyin_params)
 
     def _get_signature(self, timestamp: str, url: str, secret_key: str) -> str:
         str_for_sign = f"en{timestamp}{secret_key}url={url}"
@@ -170,7 +187,14 @@ class DouyinController(YtDlpController):
 
         ext = "mp4"
         logging.info("Downloading video: %s", video_url)
-
+        self._yt_dlp.params["outtmpl"].update(
+            {
+                "default": str(
+                    self._download_directory / f"{self._resolution.metadata['code']}"
+                    f".{self._download_token}.%(ext)s",
+                ),
+            }
+        )
         try:
             info_dict = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
@@ -180,8 +204,8 @@ class DouyinController(YtDlpController):
 
             # downloaded video path
             predicted_path = (
-                self._download_directory
-                / f"{info_dict['id']}.{self._download_token}.{info_dict['ext']}"
+                self._download_directory / f"{self._resolution.metadata['code']}"
+                f".{self._download_token}.{info_dict['ext']}"
             )
 
             return VideoDTO.from_yt_dlp(
