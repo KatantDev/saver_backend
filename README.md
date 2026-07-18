@@ -62,6 +62,7 @@ The resolver auto-detects the source by URL host and path. Each platform has its
 | Yandex Music | [`ymdantic`](https://pypi.org/project/ymdantic/) | YM token | tracks and full albums (audio) |
 | M3U8 streams | yt-dlp | none | any URL ending in `.m3u8` |
 | Adult sites | yt-dlp | optional cookies | hosts wired in `adult_ydl_source.py` |
+| Douyin | seekin.ai | none | videos |
 
 ## 🏗️ Architecture
 

@@ -470,6 +470,25 @@ class VideoDTO(BaseContentDTO):
             episode=episode_label or "",
         )
 
+    @classmethod
+    def from_seekinai(
+        cls,
+        seekinaifj: "SeekinAiFromJson",
+        source_id: str,
+        resolution_url: str,
+    ) -> "VideoDTO":
+        """Creates a VideoDTO from SeekinAi object."""
+        return cls(
+            direct_download_url=seekinaifj.medias[0].url,
+            source_id=source_id,
+            url=resolution_url,
+            ext="mp4",
+            title=seekinaifj.title or "",
+            filename=seekinaifj.title or "",
+            quality="best",
+            thumbnail_url=seekinaifj.image_url,
+        )
+
 
 class PhotoDTO(BaseContentDTO):
     """Data Transfer Object for Photo."""
@@ -1199,3 +1218,27 @@ class TikWMResponse(BaseModel):
     code: int
     msg: str
     data: TikWMData | None = None
+
+
+class SeekinAiResponse(BaseModel):
+    """Pydantic model for the full SeekinAi API response."""
+
+    code: str
+    msg: str | None = None
+    data: dict[str, Any] | None = None
+
+
+class SeekinAiFromJson(BaseModel):
+    """Pydantic model for the field data from SeekinAiResponse."""
+
+    title: str | None = None
+    image_url: str | None = Field(alias="imageUrl", default=None)
+    medias: list[SeekinAiMedias] = Field(default_factory=list)
+
+
+class SeekinAiMedias(BaseModel):
+    """Pydantic model for the medias data from SeekinAiResponse."""
+
+    format: str | None = None
+    url: str
+    file_size: int | None = Field(alias="fileSize", default=None)

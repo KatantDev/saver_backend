@@ -1,12 +1,14 @@
 import asyncio
 import logging
 import re
+import secrets
 import uuid
 from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
 import ffmpeg
 import httpx
+from httpx import AsyncClient
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
@@ -37,6 +39,11 @@ class InstagramInDownController(BaseSourceController):
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._download_directory.mkdir(parents=True, exist_ok=True)
 
+        self._client: AsyncClient | None = None
+
+    async def _init_httpx(self, proxy: str | None) -> None:
+        if self._client:
+            await self._client.aclose()
         self._client = httpx.AsyncClient(
             headers={
                 "User-Agent": self.USER_AGENT,
@@ -47,12 +54,13 @@ class InstagramInDownController(BaseSourceController):
             },
             timeout=30,
             follow_redirects=True,
-            proxy=self._proxy,
+            proxy=proxy,
         )
 
     async def close(self) -> None:
         """Close the HTTP client."""
-        await self._client.aclose()
+        if self._client:
+            await self._client.aclose()
 
     def _normalize_url(self, url: str) -> str:
         """
@@ -66,6 +74,8 @@ class InstagramInDownController(BaseSourceController):
 
     async def _get_csrf_token(self, referer: str) -> str | None:
         """Fetch the page to get the valid CSRF token."""
+        if self._client is None:
+            return None
         try:
             response = await self._client.get(referer)
             response.raise_for_status()
@@ -110,6 +120,8 @@ class InstagramInDownController(BaseSourceController):
         :param filename: Target filename.
         """
         file_path = self._download_directory / filename
+        if self._client is None:
+            return
         try:
             async with self._client.stream("GET", url) as response:
                 response.raise_for_status()
@@ -135,50 +147,66 @@ class InstagramInDownController(BaseSourceController):
             return
 
         normalized_url = self._normalize_url(original_url)
-        referer_path = "/en1"
+        referer_path = "/reels"
         referer_url = f"{self.BASE_URL}{referer_path}"
 
-        # 2. Get Token
-        token = await self._get_csrf_token(referer_url)
-        if not token:
-            logging.error("Could not fetch CSRF token from indown.io")
-            await self._send_error_message()
-            return
-
         # 3. Update headers with Referer for the POST request
+        await self._init_httpx(self._proxy)
+        if self._client is None:
+            return
         self._client.headers.update({"Referer": referer_url})
 
-        # 4. Post Data
-        payload = {
-            "link": normalized_url,
-            "referer": referer_url,
-            "locale": "en",
-            "_token": token,
-        }
+        self._process_percent(10)
+        for _ in range(1, 3):
+            # 2. Get Token
+            token = await self._get_csrf_token(referer_url)
+            if not token:
+                logging.error("Could not fetch CSRF token from indown.io")
+                await self._send_error_message()
+                return
 
-        try:
-            self._process_percent(10)
-            response = await self._client.post(
-                f"{self.BASE_URL}/download",
-                data=payload,
-            )
-            response.raise_for_status()
-            html = response.text
+            # 4. Post Data
+            payload = {
+                "link": normalized_url,
+                "referer": referer_url,
+                "locale": "en",
+                "_token": token,
+                "a": "a",
+            }
+
+            try:
+                response = await self._client.post(
+                    f"{self.BASE_URL}/download",
+                    data=payload,
+                )
+                response.raise_for_status()
+                html = response.text
+            except Exception as e:
+                logging.exception(f"Failed to fetch data from indown.io: {e}")
+                await self._send_error_message()
+                return
+
             self._process_percent(40)
-        except Exception as e:
-            logging.exception(f"Failed to fetch data from indown.io: {e}")
-            await self._send_error_message()
+
+            if "Not Found" in html or "Private Video" in html:
+                await self._telegram_bot_controller.send_content_not_found_error(
+                    self._telegram_id,
+                )
+                return
+
+            # 5. Parse and Send
+            media_items = self._extract_media_dtos(html, original_url, source_id)
+            if not media_items:
+                logging.warning("indown.io failed to parse media")
+                self._proxy = secrets.choice(self._proxies)
+                await self._init_httpx(self._proxy)
+                self._client.headers.update({"Referer": referer_url})
+                continue
+            await self._send_media_result(media_items)
             return
 
-        if "Not Found" in html or "Private Video" in html:
-            await self._telegram_bot_controller.send_content_not_found_error(
-                self._telegram_id,
-            )
-            return
-
-        # 5. Parse and Send
-        media_items = self._extract_media_dtos(html, original_url, source_id)
-        await self._send_media_result(media_items)
+        logging.warning("No media found in indown.io response.")
+        await self._send_error_message()
 
     def _create_dto(
         self,
