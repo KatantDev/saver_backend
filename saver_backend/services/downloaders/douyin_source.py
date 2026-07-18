@@ -1,23 +1,25 @@
+import asyncio
 import hashlib
 import logging
 import re
 import time
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Optional
 
 from httpx import AsyncClient, RequestError
 from lxml.html import fromstring
+from yt_dlp import DownloadError
 
-from saver_backend.entities.enums import FsmKeysEnum, ProxyType, SourceEnum
+from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
-from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
     SeekinAiFromJson,
     SeekinAiResponse,
     VideoDTO,
 )
+from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 
-class DouyinController(BaseSourceController):
+class DouyinController(YtDlpController):
     """Controller for downloading videos from douyin.com via seekin.ai."""
 
     SOURCE = SourceEnum.DOUYIN
@@ -58,7 +60,7 @@ class DouyinController(BaseSourceController):
             "User-Agent": self._headers.get("User-Agent", ""),
             "Cookie": "linkstarry_i18n=en",
         }
-        html = await self._client.get(url=self._web_url, headers=headers)
+        html = await self._client.get(url=self._web_url, headers=headers, timeout=30)
         tree = fromstring(html.text)
         js_elements = tree.xpath("//link[starts-with(@href,'/_nuxt')]/@href")
         trg_js_url = self._web_url + js_elements[2]
@@ -73,22 +75,7 @@ class DouyinController(BaseSourceController):
         return match.group(1) if match else None
 
     async def _get_secret_key(self) -> str | None:
-        saved_secret = await self._telegram_bot_controller.get_fsm_data(
-            chat_id=int(FsmKeysEnum.DOUYIN), user_id=int(FsmKeysEnum.DOUYIN)
-        )
-        if not saved_secret:
-            return None
-        secret_key = saved_secret.get("secret_key")
-
-        if not secret_key:
-            secret_key = await self._parse_secret_key()
-            await self._telegram_bot_controller.set_fsm_data(
-                chat_id=int(FsmKeysEnum.DOUYIN),
-                user_id=int(FsmKeysEnum.DOUYIN),
-                data={"secret_key": secret_key},
-            )
-
-        return secret_key
+        return await self._parse_secret_key()
 
     async def close(self) -> None:
         """Close the HTTP client."""
@@ -117,6 +104,7 @@ class DouyinController(BaseSourceController):
                     url=self._api_url + "/ikool/media/download",
                     headers=self._headers,
                     json={"url": self._resolution.url},
+                    timeout=30,
                 )
                 info_json = response.json()
                 if not info_json:
@@ -153,13 +141,64 @@ class DouyinController(BaseSourceController):
         )
         if is_sent_from_cache:
             return
-
+        video_dto = await self._download_video_by_url(data.medias[0].url)
+        if video_dto is None:
+            return
         video_dto = VideoDTO.from_seekinai(
+            video_dto=video_dto,
             seekinaifj=data,
             source_id=source_id,
             resolution_url=self._resolution.url,
         )
         await self._send_video(video_dto)
+
+    async def _download_video_by_url(
+        self,
+        video_url: str,
+    ) -> Optional[VideoDTO]:
+        """
+        Download video using yt-dlp.
+
+        Args:
+            video_url: Direct video URL from the video tracks
+
+        Returns:
+            VideoDTO if successful, None otherwise
+        """
+
+        # Download via yt-dlp
+
+        ext = "mp4"
+        logging.info("Downloading video: %s", video_url)
+
+        try:
+            info_dict = await asyncio.to_thread(
+                self._yt_dlp.extract_info,
+                url=video_url.strip(),
+                download=True,
+            )
+
+            # downloaded video path
+            predicted_path = (
+                self._download_directory
+                / f"{info_dict['id']}.{self._download_token}.{info_dict['ext']}"
+            )
+
+            return VideoDTO.from_yt_dlp(
+                info=info_dict,
+                file_path=predicted_path,
+                quality=ext,
+            )
+
+        except DownloadError as e:
+            logging.error("[douyin] Failed to download video %s: %s", video_url, e)
+        except Exception as e:
+            logging.exception(
+                "[douyin] Unexpected error downloading video %s: %s",
+                video_url,
+                e,
+            )
+        return None
 
     async def download_video(self) -> None:
         """Download video from Douyin using seekin.ai API."""
