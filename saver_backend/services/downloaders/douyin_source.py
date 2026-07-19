@@ -94,6 +94,48 @@ class DouyinController(YtDlpController):
     async def _get_secret_key(self) -> str | None:
         return await self._parse_secret_key()
 
+    def _process_media_sizes(self, info_dict: dict[str, Any]) -> dict[str, Any]:
+        """
+        Processes the medias list by adding a 'size' field.
+
+        Removes elements with size in GB.
+
+        :param info_dict: dictionary with data
+        :return: modified info_dict
+        """
+
+        if "data" not in info_dict or "medias" not in info_dict["data"]:
+            return info_dict
+
+        medias = info_dict["data"]["medias"]
+        filtered_medias = []
+
+        for media in medias:
+            if media.get("format") is None:
+                continue
+
+            try:
+                # Extract size from parentheses
+                size_str = media["format"].split("(")[1].split(")")[0]
+
+                # Check if size contains GB
+                if "GB" in size_str:
+                    continue  # Skip elements with GB
+
+                # Add size field
+                media["size"] = size_str
+                filtered_medias.append(media)
+
+            except IndexError, AttributeError:
+                # If size extraction fails, skip the element
+                continue
+
+        # Update the medias list
+        if filtered_medias:
+            info_dict["data"]["medias"] = filtered_medias
+
+        return info_dict
+
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()
@@ -127,7 +169,7 @@ class DouyinController(YtDlpController):
                 if not info_json:
                     return None
                 if info_json.get("code") == "0000" and info_json.get("data"):
-                    return info_json
+                    return self._process_media_sizes(info_json)
 
                 logging.warning(
                     "seekin.ai returned an error: %s (URL: %s); retry: %s",
