@@ -72,16 +72,20 @@ class InstagramInDownController(BaseSourceController):
             return url.replace("/reels/", "/reel/")
         return url
 
-    async def _get_csrf_token(self, referer: str) -> str | None:
+    async def _get_csrf_token_referrer(self, referer: str) -> list[str] | None:
         """Fetch the page to get the valid CSRF token."""
         if self._client is None:
             return None
         try:
             response = await self._client.get(referer)
             response.raise_for_status()
+            match = re.search(r'name="referer" value="([^"]+)"', response.text)
+            referer = ""
+            if match:
+                referer = match.group(1)
             match = re.search(r'name="_token" value="([^"]+)"', response.text)
             if match:
-                return match.group(1)
+                return [match.group(1), referer]
         except Exception as e:
             logging.error(f"Failed to get CSRF token from {referer}: {e}")
         return None
@@ -147,28 +151,30 @@ class InstagramInDownController(BaseSourceController):
             return
 
         normalized_url = self._normalize_url(original_url)
-        referer_path = "/reels"
+        referer_path = "/reels/"
         referer_url = f"{self.BASE_URL}{referer_path}"
 
         # 3. Update headers with Referer for the POST request
         await self._init_httpx(self._proxy)
         if self._client is None:
             return
-        self._client.headers.update({"Referer": referer_url})
 
         self._process_percent(10)
         for _ in range(1, 3):
-            # 2. Get Token
-            token = await self._get_csrf_token(referer_url)
-            if not token:
+            # 2. Get Token and referer
+            form_fields = await self._get_csrf_token_referrer(referer_url)
+            if not form_fields:
                 logging.error("Could not fetch CSRF token from indown.io")
                 await self._send_error_message()
                 return
+            token = form_fields[0]
+            referer = form_fields[1]
+            self._client.headers.update({"Referer": referer})
 
             # 4. Post Data
             payload = {
                 "link": normalized_url,
-                "referer": referer_url,
+                "referer": referer,
                 "locale": "en",
                 "_token": token,
                 "a": "a",
