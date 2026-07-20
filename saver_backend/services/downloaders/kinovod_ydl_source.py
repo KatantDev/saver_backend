@@ -533,7 +533,7 @@ class KinovodYdlController(YtDlpController):
             logging.exception("Kinovod Cookie errror: %s.", e)
         raise KinovodCookieError
 
-    def _get_mirror_from_cookie(self) -> None:
+    async def _get_mirror_from_cookie(self) -> None:
         """Extract mirror domain from cookie file and set mirror URL."""
         base_dir = Path(__file__).resolve().parent.parent.parent.parent
         cookie_dir = base_dir / "cookies" / self.SOURCE.value
@@ -553,7 +553,7 @@ class KinovodYdlController(YtDlpController):
         self._mirror_url = self._resolution.url.replace(
             f"/{kinovod_domain}/", f"/{kinovod_mirror_domain}/"
         )
-        if not self._check_url(self._mirror_url):
+        if not await self._check_url(self._mirror_url):
             raise KinovodMirrorError
 
     async def _raise_proxy(self, port: int) -> None:
@@ -571,7 +571,7 @@ class KinovodYdlController(YtDlpController):
         """
         if not self._proxy:
             return
-        self._get_mirror_from_cookie()
+        await self._get_mirror_from_cookie()
         upstream_proxy_url = self._proxy
 
         logging.info("Starting slippers proxy on :%d -> %s", port, upstream_proxy_url)

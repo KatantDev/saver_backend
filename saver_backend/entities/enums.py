@@ -45,6 +45,7 @@ class SourceEnum(str, Enum):
     KINOVOD_YDL = "kinovod_ydl"
     YMDANTIC = "ymdantic"
     REDDIT_YDL = "reddit_ydl"
+    DOUYIN = "douyin"
 
 
 class InstagramContentTypeEnum(str, Enum):
@@ -81,3 +82,4 @@ class FsmKeysEnum(str, Enum):
     """Enum for Fsm keys data storage."""
 
     KINOVOD = -100
+    DOUYIN = -101
