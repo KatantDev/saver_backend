@@ -10,7 +10,7 @@ import ffmpeg
 import httpx
 from httpx import AsyncClient
 
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.entities.enums import FsmKeysEnum, ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
@@ -31,7 +31,7 @@ class InstagramInDownController(BaseSourceController):
     USER_AGENT = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
+        "Chrome/147.0.0.0 Safari/537.36"
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -39,6 +39,7 @@ class InstagramInDownController(BaseSourceController):
         self._download_directory = BASE_DOWNLOAD_PATH / self.SOURCE.value
         self._download_directory.mkdir(parents=True, exist_ok=True)
 
+        self._proxy_type = self.PROXY_TYPE
         self._client: AsyncClient | None = None
 
     async def _init_httpx(self, proxy: str | None) -> None:
@@ -141,8 +142,33 @@ class InstagramInDownController(BaseSourceController):
                 file_path.unlink()
             raise
 
+    async def _set_proxy_type_from_fsm(self) -> None:
+        fsm_data = await self._telegram_bot_controller.get_fsm_data(
+            user_id=int(FsmKeysEnum.INSTAGRAM_INDOWN),
+            chat_id=int(FsmKeysEnum.INSTAGRAM_INDOWN),
+        )
+        if fsm_data and fsm_data.get("proxy_type", "") == "ru":
+            self._proxy_type = ProxyType.RU
+            self._select_proxies(self._proxy_type)
+
+    async def _change_proxy_type(self) -> None:
+        if self._proxy_type == ProxyType.RU:
+            self._proxy_type = ProxyType.LOCAL
+        elif self._proxy_type == ProxyType.LOCAL:
+            self._proxy_type = ProxyType.RU
+
+        self._select_proxies(self._proxy_type)
+
+        await self._telegram_bot_controller.set_fsm_data(
+            user_id=int(FsmKeysEnum.INSTAGRAM_INDOWN),
+            chat_id=int(FsmKeysEnum.INSTAGRAM_INDOWN),
+            data={"proxy_type": self.PROXY_TYPE.value},
+        )
+
     async def download_video(self) -> None:
         """Main execution flow."""
+        await self._set_proxy_type_from_fsm()
+
         original_url = self._resolution.url
         source_id = self._extract_source_id(original_url)
 
@@ -203,8 +229,10 @@ class InstagramInDownController(BaseSourceController):
             # 5. Parse and Send
             media_items = self._extract_media_dtos(html, original_url, source_id)
             if not media_items:
+                await self._change_proxy_type()
                 logging.warning("indown.io failed to parse media")
-                self._proxy = secrets.choice(self._proxies)
+                if self._proxies:
+                    self._proxy = secrets.choice(self._proxies)
                 await self._init_httpx(self._proxy)
                 self._client.headers.update({"Referer": referer_url})
                 continue
