@@ -14,7 +14,7 @@ from vkbottle_types.objects import (
 )
 from yt_dlp.utils import DownloadError
 
-from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
+from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
 from saver_backend.services.downloaders.schema import AudioDTO, PhotoDTO, VideoDTO
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 from saver_backend.settings import settings
@@ -30,7 +30,8 @@ class VKAPIController(YtDlpController):
     """
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.VK_API_YDL
-    COOKIES: ClassVar[bool] = True
+    COOKIES: ClassVar[bool] = False
+    PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -101,6 +102,27 @@ class VKAPIController(YtDlpController):
             logging.exception("Failed to fetch VK API (photos.getById): %s", e)
             return []
 
+    async def _update_yt_dlp_format(self, video_url: str) -> None:
+        info_dict = await super().get_video_info(video_url)
+        if not info_dict:
+            return
+
+        video_dto = VideoDTO.from_yt_dlp(info_dict)
+        if not video_dto.unique_labels:
+            raise ValueError("No format labels available")
+
+        first_label = video_dto.unique_labels[0]
+        formats_for_label = video_dto.unique_formats.get(first_label, [])
+
+        if not formats_for_label:
+            raise ValueError(f"No formats for label: {first_label}")
+
+        self._selected_format_id = formats_for_label[0].format_id
+        self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
+            format_spec=self._selected_format_id,
+        )
+        return
+
     async def _process_video_attachment(
         self,
         video: VideoVideo,
@@ -110,7 +132,7 @@ class VKAPIController(YtDlpController):
             return None
 
         source_id = f"{video.owner_id}_{video.id}"
-        video_url = f"https://vk.com/video{source_id}"
+        video_url = f"https://vk.ru/video{source_id}"
         if video.access_key:
             video_url += f"?list={video.access_key}"
 
@@ -132,6 +154,8 @@ class VKAPIController(YtDlpController):
         # 2. Download Info via yt-dlp
         logging.info("Downloading video attachment info: %s", video_url)
         try:
+            await self._update_yt_dlp_format(video_url)
+
             info_dict = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
                 url=video_url,
