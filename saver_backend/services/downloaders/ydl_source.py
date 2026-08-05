@@ -187,7 +187,10 @@ class YtDlpController(BaseSourceController, ABC):
         except DownloadError as e:
             error_message = str(e)
             if "HTTP Error 403: Forbidden" in error_message:
-                logging.error("YouTube download failed due to expired cookies (403).")
+                logging.error(
+                    f"[{self.SOURCE.value}]"
+                    f"  download failed due to expired cookies (403)."
+                )
             raise e
         except Exception as e:
             await self._send_error_message()
