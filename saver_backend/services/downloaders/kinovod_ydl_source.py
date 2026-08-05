@@ -35,6 +35,7 @@ from saver_backend.entities.enums import (
 from saver_backend.services.downloaders.exceptions import (
     Kinovod404Error,
     KinovodAlertError,
+    KinovodAuthError,
     KinovodCaptchaError,
     KinovodCookieError,
     KinovodMirrorError,
@@ -101,6 +102,7 @@ class KinovodYdlController(YtDlpController):
         self._mirror_host: Optional[str] = None
         self._cookie_file: Optional[str] = None
         self._cookies: Optional[list[dict[str, Any]]] = None
+        self._password: str = ""
 
     async def close(self) -> None:
         """Close browser and page resources."""
@@ -222,6 +224,66 @@ class KinovodYdlController(YtDlpController):
             error_message="Captcha found on page",
         )
 
+    async def _login(self) -> None:
+        try:
+            if self._page is None:
+                logging.error("Page is not initialized")
+                return
+
+            password_input = await self._page.wait_for_selector(
+                '//*[@id="kv-site-pass"]',
+                timeout=5000,  # 5 seconds timeout
+            )
+
+            if not password_input:
+                logging.warning("Password input field not found")
+                return
+
+            await password_input.fill(self._password)
+            logging.info("[kinovod] Password entered successfully")
+
+            submit_button = await self._page.wait_for_selector(
+                'button[type="submit"]',
+                timeout=5000,
+            )
+
+            if submit_button:
+                await submit_button.click()
+                logging.info("Submit button clicked")
+
+                # Wait 5 seconds after login
+                await asyncio.sleep(5)
+                logging.info("Waited 5 seconds after login")
+            else:
+                logging.warning("Submit button not found")
+
+        except PlaywrightTimeoutError:
+            logging.error("Timeout waiting for password input or submit button")
+            raise KinovodAuthError("Login elements not found on page") from None
+        except Exception as e:
+            logging.exception(f"Error during login: {e}")
+            raise KinovodAuthError(f"Login failed: {e}") from e
+
+    async def _check_auth(self) -> None:
+        try:
+            if self._page is None:
+                return
+
+            password_input = await self._page.wait_for_selector(
+                '//*[@id="kv-site-pass"]',
+                timeout=2000,
+            )
+
+            if password_input:
+                logging.info("Authentication required, performing login...")
+                await self._login()
+
+        except PlaywrightTimeoutError:
+            logging.debug("No authentication required")
+        except Exception as e:
+            logging.error(f"Error checking auth: {e}")
+            raise KinovodAuthError(f"Authentication check failed: {e}") from e
+
     async def _check_page_not_found(self) -> None:
         """Check if 404 error div exists on the page."""
         await self._check_element_exists(
@@ -259,6 +321,7 @@ class KinovodYdlController(YtDlpController):
                 await self._check_alert()
                 await self._check_captcha()
                 await self._check_page_not_found()
+                await self._check_auth()
             except KinovodAlertError, KinovodCaptchaError, Kinovod404Error:
                 raise
             except Exception as e:
@@ -438,7 +501,6 @@ class KinovodYdlController(YtDlpController):
         """
         Search working proxy.
 
-        :param url: URL to test the proxy against.
         :param timeout: Timeout in seconds.
         :return: True if proxy works, False otherwise.
         """
@@ -460,7 +522,6 @@ class KinovodYdlController(YtDlpController):
                 logging.warning(f"Bad mirror: {url}")
                 await self._get_mirror() or ""
                 return True
-        return False
 
     async def _check_url(
         self,
@@ -512,26 +573,38 @@ class KinovodYdlController(YtDlpController):
                 return port
         raise RuntimeError(f"No free port found in range {start_port}-{end_port}")
 
-    def _load_cookies(self) -> list[dict[str, Any]]:
-        if (
-            not self._cookie_file
-            or not self._cookie_file.strip()
-            or not Path(self._cookie_file).exists()
-            or Path(self._cookie_file).stat().st_size < 10
-        ):
-            raise KinovodCookieError
+    def _load_cookies_password(self) -> list[dict[str, Any]]:
+        if not self._cookie_file or not self._cookie_file.strip():
+            raise KinovodCookieError("Cookie file path is empty")
+
+        cookie_path = Path(self._cookie_file)
+        if not cookie_path.exists() or cookie_path.stat().st_size < 10:
+            raise KinovodCookieError(f"Invalid cookie file: {self._cookie_file}")
+
         try:
-            with Path(self._cookie_file).open("r", encoding="utf-8") as f:
+            with cookie_path.open("r", encoding="utf-8") as f:
                 cookies = json.load(f)
-            if isinstance(cookies, list):
-                self._cookies = cookies
-                logging.info(
-                    "Loaded %s cookies from %s", len(cookies), self._cookie_file
-                )
-                return cookies
-        except Exception as e:
-            logging.exception("Kinovod Cookie errror: %s.", e)
-        raise KinovodCookieError
+        except (json.JSONDecodeError, OSError) as e:
+            logging.exception("Failed to load cookies: %s", e)
+            raise KinovodCookieError(
+                f"Failed to parse cookie file: {self._cookie_file}"
+            ) from e
+
+        # Проверка и фильтрация
+        if not isinstance(cookies, list):
+            raise KinovodCookieError(f"Invalid cookie format in {self._cookie_file}")
+
+        # Поиск и удаление password
+        password = next((item for item in cookies if "password" in item), None)
+        if not password:
+            raise KinovodAuthError(
+                f"Password absent in cookie file: {self._cookie_file}"
+            )
+
+        self._password = password.get("password")
+        self._cookies = [item for item in cookies if "password" not in item]
+        logging.info("Loaded %s cookies from %s", len(self._cookies), self._cookie_file)
+        return self._cookies
 
     async def _get_mirror_from_cookie(self) -> None:
         """Extract mirror domain from cookie file and set mirror URL."""
@@ -543,7 +616,7 @@ class KinovodYdlController(YtDlpController):
             raise KinovodCookieError
         self._cookie_file = str(cookie_files[0])
 
-        cookies = self._load_cookies()
+        cookies = self._load_cookies_password()
         kinovod_mirror_domain: str = ""
         for cookie in cookies:
             if cookie.get("name") == "kv_auth":
