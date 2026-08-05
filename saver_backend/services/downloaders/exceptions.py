@@ -51,3 +51,7 @@ class KinovodMirrorError(KinovodParseError):
 
 class KinovodCookieError(Exception):
     """Exception for Kinovod cookie error."""
+
+
+class KinovodAuthError(Exception):
+    """Exception for Kinovod auth error."""

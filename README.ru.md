@@ -41,28 +41,28 @@
 
 Резолвер автоматически определяет источник по host'у и path'у URL. Каждой платформе соответствует отдельный контроллер в `saver_backend/services/downloaders/`.
 
-| Платформа | Бэкенд | Аутентификация        | Заметки                                          |
-|---|---|-----------------------|--------------------------------------------------|
-| YouTube (видео) | yt-dlp + aria2c + bgutil POT provider | cookies               | выбор качества                                   |
-| YouTube Shorts | yt-dlp + bgutil POT provider | cookies               | прямое скачивание                                |
-| Instagram (reels, posts, карусели) | scraper indown.io | нет                   | основной обработчик `/p/` и `/reel(s)/`          |
-| Instagram (stories) | [`instaloader`](https://instaloader.github.io/) | session-файл аккаунта |                                                  |
-| TikTok | API `tikwm.com` | нет                   | видео и фото-слайдшоу                            |
-| X (Twitter) | yt-dlp + fallback на `fixupx.com` | нет                   |                                                  |
-| VK Video | yt-dlp через RU-прокси | нет                   | выбор качества                                   |
-| VK Clips | yt-dlp через RU-прокси | нет                   |                                                  |
-| VK посты на стене и фото | [`vkbottle`](https://github.com/vkbottle/vkbottle) | VK service-токен(ы)   | смешанная медиа (фото + видео + аудио)           |
-| Rutube | yt-dlp через RU-прокси | нет                   | выбор качества                                   |
-| OK.ru | yt-dlp через RU-прокси | нет                   | выбор качества                                   |
-| Pinterest | yt-dlp | нет                   |                                                  |
-| Дзен | yt-dlp | нет                   |                                                  |
-| Reddit | yt-dlp + aria2c | cookies опционально   | видео и анимированные GIF                        |
-| Facebook | yt-dlp через прокси | нет                   | fb.com / m.fb.com / fb.watch                     |
-| Kinovod | Playwright + headless Chrome через CDP + патч playerjs | нужен RU-прокси       | полные фильмы и сериалы с мастером сезонов/серий |
-| Yandex Music | [`ymdantic`](https://pypi.org/project/ymdantic/) | YM-токен              | треки и альбомы целиком (аудио)                  |
-| M3U8 потоки | yt-dlp | нет                   | любой URL, заканчивающийся на `.m3u8`            |
-| Adult-сайты | yt-dlp | cookies опционально   | список хостов в `adult_ydl_source.py`            |
-| Douyin | seekin.ai | нет | видео                                            |
+| Платформа | Бэкенд | Аутентификация                                   | Заметки                                          |
+|---|---|--------------------------------------------------|--------------------------------------------------|
+| YouTube (видео) | yt-dlp + aria2c + bgutil POT provider | cookies                                          | выбор качества                                   |
+| YouTube Shorts | yt-dlp + bgutil POT provider | cookies                                          | прямое скачивание                                |
+| Instagram (reels, posts, карусели) | scraper indown.io | нет                                              | основной обработчик `/p/` и `/reel(s)/`          |
+| Instagram (stories) | [`instaloader`](https://instaloader.github.io/) | session-файл аккаунта                            |                                                  |
+| TikTok | API `tikwm.com` | нет                                              | видео и фото-слайдшоу                            |
+| X (Twitter) | yt-dlp + fallback на `fixupx.com` | нет                                              |                                                  |
+| VK Video | yt-dlp через RU-прокси | нет                                              | выбор качества                                   |
+| VK Clips | yt-dlp через RU-прокси | нет                                              |                                                  |
+| VK посты на стене и фото | [`vkbottle`](https://github.com/vkbottle/vkbottle) | VK service-токен(ы)                              | смешанная медиа (фото + видео + аудио)           |
+| Rutube | yt-dlp через RU-прокси | нет                                              | выбор качества                                   |
+| OK.ru | yt-dlp через RU-прокси | нет                                              | выбор качества                                   |
+| Pinterest | yt-dlp | нет                                              |                                                  |
+| Дзен | yt-dlp | нет                                              |                                                  |
+| Reddit | yt-dlp + aria2c | cookies опционально                              | видео и анимированные GIF                        |
+| Facebook | yt-dlp через прокси | нет                                              | fb.com / m.fb.com / fb.watch                     |
+| Kinovod | Playwright + headless Chrome через CDP + патч playerjs | элемент {"password":""} в куках, нужен RU-прокси | полные фильмы и сериалы с мастером сезонов/серий |
+| Yandex Music | [`ymdantic`](https://pypi.org/project/ymdantic/) | YM-токен                                         | треки и альбомы целиком (аудио)                  |
+| M3U8 потоки | yt-dlp | нет                                              | любой URL, заканчивающийся на `.m3u8`            |
+| Adult-сайты | yt-dlp | cookies опционально                              | список хостов в `adult_ydl_source.py`            |
+| Douyin | seekin.ai | нет                                              | видео                                            |
 
 ## 🏗️ Архитектура
 
