@@ -64,12 +64,9 @@ class BaseSourceController(ABC):
         self._last_percent = 0
 
         # Proxies
-        proxies = self._select_proxies()
-        random.shuffle(proxies)
         self._proxy: str | None = None
         self._proxies: list[str] = []
-        if proxies:
-            self._proxy, *self._proxies = proxies
+        self._select_proxies(self.PROXY_TYPE)
 
     @abstractmethod
     async def close(self) -> None:
@@ -80,7 +77,7 @@ class BaseSourceController(ABC):
         """Get the telegram message ID."""
         return self._message_id
 
-    def _select_proxies(self) -> list[str]:
+    def _select_proxies(self, proxy_type: ProxyType) -> list[str]:
         """
         Selects a list of proxies based on the controller's PROXY_TYPE.
 
@@ -93,13 +90,20 @@ class BaseSourceController(ABC):
         local_proxies = settings.proxies
         ru_proxies = settings.proxies_ru
 
-        if self.PROXY_TYPE == ProxyType.LOCAL:
-            return local_proxies
-        if self.PROXY_TYPE == ProxyType.RU:
-            return ru_proxies or local_proxies  # Fallback to local
-        if self.PROXY_TYPE == ProxyType.ALL:
-            return local_proxies + ru_proxies
-        return []
+        proxies = []
+        if proxy_type == ProxyType.LOCAL:
+            proxies = local_proxies
+        if proxy_type == ProxyType.RU:
+            proxies = ru_proxies or local_proxies  # Fallback to local
+        if proxy_type == ProxyType.ALL:
+            proxies = local_proxies + ru_proxies
+
+        random.shuffle(proxies)
+
+        if proxies:
+            self._proxy, *self._proxies = proxies
+
+        return proxies
 
     async def set_user_language(self, language: str | None = None) -> None:
         """
