@@ -176,4 +176,5 @@ class YouTubeVideoYdlController(YtDlpController):
                 }
             )
             self._yt_dlp = self._create_yt_dlp(self._yt_dlp.params)
-            await super().download_video()
+
+        await super().download_video()

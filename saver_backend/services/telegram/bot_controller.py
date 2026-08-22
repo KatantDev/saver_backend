@@ -975,8 +975,7 @@ class TelegramBotController:
                 if video.duration and video.duration < 180
                 else URLInputFile(
                     url=video.direct_download_url,
-                    filename=(video.filename or video.direct_download_url)
-                    + settings.telegram_filename_sufix,
+                    filename=(video.filename or video.direct_download_url),
                 )
             )
             thumbnail_input = video.thumbnail_url
@@ -984,8 +983,7 @@ class TelegramBotController:
             logging.info("Sending video via file upload: %s", video.path)
             video_input = FSInputFile(
                 path=video.path,
-                filename=(video.filename or str(video.source_id))
-                + settings.telegram_filename_sufix,
+                filename=(video.filename or str(video.source_id)),
             )
             if video.thumbnail and Path(video.thumbnail).exists():
                 thumbnail_input = FSInputFile(path=video.thumbnail)
