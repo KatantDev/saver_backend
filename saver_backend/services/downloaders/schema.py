@@ -16,6 +16,7 @@ from saver_backend.entities.enums import SourceEnum, VideoTheatreEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.consts import MAX_FILE_SIZE_BYTES
 from saver_backend.services.language_resolver import LanguageResolver
+from saver_backend.settings import settings
 from saver_backend.telegram_bot.keyboards.callback import VideoTranslationCallback
 
 if TYPE_CHECKING:
@@ -30,6 +31,26 @@ class BaseContentDTO(BaseModel):
     url: str | None = None
     title: str | None = None
     quality: str | None = "best"
+
+    @property
+    def filename(self) -> str:
+        """Generate a sanitized filename for tg upload with length constraints."""
+
+        filename = re.sub(
+            r'[\\/*?:"<>|;]', " ", self.title or self.source_id or "media_file"
+        )
+        len_filename = len(filename)
+        len_suffix = len(settings.telegram_filename_sufix)
+        if len_filename + len_suffix > 60:
+            filename = (
+                filename[: 60 - len_filename - len_suffix]
+                + settings.telegram_filename_sufix
+            )
+            filename = re.sub(r"[\.\[\]\(\)]*", "", re.sub(r" +", "_", filename))
+        else:
+            filename = filename + settings.telegram_filename_sufix
+
+        return filename
 
 
 class FormatDTO(BaseModel):
@@ -162,7 +183,6 @@ class VideoDTO(BaseContentDTO):
     translation: str | None = None
     episode: str | None = None
     direct_download_url: str | None = None
-    filename: str | None = None
 
     formats: list[FormatDTO] = Field(default_factory=list)
 
@@ -353,11 +373,11 @@ class VideoDTO(BaseContentDTO):
         _height = int(h) if (h := info.get("height")) else None
         if file_path and (_width is None or _height is None):
             _width, _height = cls.get_video_dimensions_ffmpeg(file_path)
+
         return cls(
             path=file_path,
             thumbnail_url=info.get("thumbnail"),
             title=title,
-            filename=title,
             channel=channel,
             channel_id=channel_id,
             channel_url=channel_url,

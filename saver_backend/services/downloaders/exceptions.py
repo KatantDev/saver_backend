@@ -55,3 +55,7 @@ class KinovodCookieError(Exception):
 
 class KinovodAuthError(Exception):
     """Exception for Kinovod auth error."""
+
+
+class InstaIndownError(Exception):
+    """Exception for Insta indown error."""
