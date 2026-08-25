@@ -13,6 +13,7 @@ from httpx import AsyncClient
 from saver_backend.entities.enums import FsmKeysEnum, ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.exceptions import InstaIndownError
 from saver_backend.services.downloaders.schema import (
     PhotoDTO,
     VideoDTO,
@@ -73,23 +74,84 @@ class InstagramInDownController(BaseSourceController):
             return url.replace("/reels/", "/reel/")
         return url
 
-    async def _get_csrf_token_referrer(self, referer: str) -> list[str] | None:
-        """Fetch the page to get the valid CSRF token."""
+    async def _get_main_page(self, referer: str) -> str | None:
+        """Fetch the main page HTML."""
         if self._client is None:
             return None
         try:
             response = await self._client.get(referer)
             response.raise_for_status()
-            match = re.search(r'name="referer" value="([^"]+)"', response.text)
-            referer = ""
-            if match:
-                referer = match.group(1)
-            match = re.search(r'name="_token" value="([^"]+)"', response.text)
-            if match:
-                return [match.group(1), referer]
+            return response.text
         except Exception as e:
-            logging.error(f"Failed to get CSRF token from {referer}: {e}")
-        return None
+            logging.error(f"Failed to fetch main page from {referer}: {e}")
+            return None
+
+    def _get_referer(self, html: str) -> str:
+        """Extract referer from HTML."""
+        match = re.search(r'name="referer" value="([^"]+)"', html)
+        return match.group(1) if match else ""
+
+    def _get_csrf_token(self, html: str) -> str:
+        """Extract CSRF token from HTML."""
+        match = re.search(r'name="_token" value="([^"]+)"', html)
+        return match.group(1) if match else ""
+
+    async def _get_additional_post_param(self, html_main_page: str) -> tuple[str, str]:
+        """
+        Extract additional POST parameters from asset JS file.
+
+        Returns tuple of (param_name, param_value) or empty strings if not found.
+        """
+        if self._client is None:
+            return "e", "e"
+
+        # Extract asset JS URL
+        match = re.search(r'src="([^"]*assets/app-[^"]*\.js)"', html_main_page)
+        if not match:
+            logging.warning("Could not find asset JS URL in main page")
+            return "e", "e"
+
+        asset_js_url = match.group(1)
+        if not asset_js_url.startswith("http"):
+            asset_js_url = f"{self.BASE_URL}{asset_js_url}"
+
+        try:
+            response = await self._client.get(asset_js_url)
+            response.raise_for_status()
+            js_content = response.text
+
+            pattern = (
+                r'e\.name\s*=\s*([`"\'])([^`"\']+)\1\s*,'
+                r'\s*e\.value\s*=\s*([`"\'])([^`"\']+)\3'
+            )
+            match = re.search(pattern, js_content)
+
+            if match:
+                # param_name is group 2, param_value is group 4
+                return match.group(2), match.group(4)
+
+        except Exception as e:
+            logging.error(f"Failed to fetch asset JS: {e}")
+
+        return "e", "e"
+
+    async def _get_form_fields(self, referer: str) -> list[str] | None:
+        """Fetch the page to get the valid CSRF token and additional params."""
+        if self._client is None:
+            return None
+
+        html = await self._get_main_page(referer)
+        if not html:
+            return None
+
+        token = self._get_csrf_token(html)
+        referer_val = self._get_referer(html)
+
+        # Get additional POST parameters from asset JS
+        param_name, param_value = await self._get_additional_post_param(html)
+
+        # Return token, referer, and additional params
+        return [token, referer_val, param_name, param_value]
 
     def _extract_clean_url(self, raw_url: str) -> str | None:
         """
@@ -125,6 +187,9 @@ class InstagramInDownController(BaseSourceController):
         :param filename: Target filename.
         """
         file_path = self._download_directory / filename
+        if "indown.io/344.jpg" in url:
+            raise InstaIndownError(f"[indown] Error 344; {self._proxy}")
+
         if self._client is None:
             return
         try:
@@ -188,13 +253,16 @@ class InstagramInDownController(BaseSourceController):
         self._process_percent(10)
         for _ in range(1, 3):
             # 2. Get Token and referer
-            form_fields = await self._get_csrf_token_referrer(referer_url)
+            form_fields = await self._get_form_fields(referer_url)
             if not form_fields:
                 logging.error("Could not fetch CSRF token from indown.io")
                 await self._send_error_message()
                 return
             token = form_fields[0]
             referer = form_fields[1]
+            param_name = form_fields[2] if len(form_fields) > 2 else "e"
+            param_value = form_fields[3] if len(form_fields) > 3 else "e"
+
             self._client.headers.update({"Referer": referer})
 
             # 4. Post Data
@@ -203,7 +271,7 @@ class InstagramInDownController(BaseSourceController):
                 "referer": referer,
                 "locale": "en",
                 "_token": token,
-                "a": "a",
+                param_name: param_value,
             }
 
             try:
@@ -418,6 +486,8 @@ class InstagramInDownController(BaseSourceController):
         for index, item in enumerate(media_items):
             try:
                 await self._process_single_item(item, index)
+            except InstaIndownError as e:
+                raise e
             except Exception as e:
                 logging.error(f"Failed to download/process item {index}: {e}")
 
