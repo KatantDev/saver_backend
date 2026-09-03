@@ -32,7 +32,7 @@ class InstagramInDownController(BaseSourceController):
     USER_AGENT = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/147.0.0.0 Safari/537.36"
+        "Chrome/151.0.0.0 Safari/537.36"
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
