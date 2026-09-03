@@ -204,6 +204,9 @@ class InstagramInDownDetector(Detector):
         InstagramContentTypeEnum.POST: re.compile(
             r"^/(?:[^/]+/)?p/(?P<code>[A-Za-z0-9_-]+)/?$",
         ),
+        InstagramContentTypeEnum.STORIES: re.compile(
+            r"^/stories/(?P<user>[A-Za-z0-9._]+)/(?P<code>\d+)/?$",
+        ),
     }
 
     def match(self, url: str) -> Optional[Resolution]:
