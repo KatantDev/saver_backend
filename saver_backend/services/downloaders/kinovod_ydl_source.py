@@ -102,7 +102,7 @@ class KinovodYdlController(YtDlpController):
         self._mirror_host: Optional[str] = None
         self._cookie_file: Optional[str] = None
         self._cookies: Optional[list[dict[str, Any]]] = None
-        self._password: str = ""
+        self._pin: str = ""
 
     async def close(self) -> None:
         """Close browser and page resources."""
@@ -230,35 +230,24 @@ class KinovodYdlController(YtDlpController):
                 logging.error("Page is not initialized")
                 return
 
-            password_input = await self._page.wait_for_selector(
-                '//*[@id="kv-site-pass"]',
+            pin_input = await self._page.wait_for_selector(
+                '//*[@id="kv-pin-clip"]',
                 timeout=5000,  # 5 seconds timeout
             )
 
-            if not password_input:
-                logging.warning("Password input field not found")
+            if not pin_input:
+                logging.warning("Pin input field not found")
                 return
 
-            await password_input.fill(self._password)
-            logging.info("[kinovod] Password entered successfully")
+            await pin_input.fill(self._pin)
+            logging.info("[kinovod] Pin entered successfully")
 
-            submit_button = await self._page.wait_for_selector(
-                'button[type="submit"]',
-                timeout=5000,
-            )
-
-            if submit_button:
-                await submit_button.click()
-                logging.info("Submit button clicked")
-
-                # Wait 5 seconds after login
-                await asyncio.sleep(5)
-                logging.info("Waited 5 seconds after login")
-            else:
-                logging.warning("Submit button not found")
+            # Wait 5 seconds after login
+            await asyncio.sleep(5)
+            logging.info("Waited 5 seconds after login")
 
         except PlaywrightTimeoutError:
-            logging.error("Timeout waiting for password input or submit button")
+            logging.error("Timeout waiting for pin input")
             raise KinovodAuthError("Login elements not found on page") from None
         except Exception as e:
             logging.exception(f"Error during login: {e}")
@@ -269,12 +258,12 @@ class KinovodYdlController(YtDlpController):
             if self._page is None:
                 return
 
-            password_input = await self._page.wait_for_selector(
-                '//*[@id="kv-site-pass"]',
+            pin_input = await self._page.wait_for_selector(
+                '//*[@id="kv-pin-clip"]',
                 timeout=2000,
             )
 
-            if password_input:
+            if pin_input:
                 logging.info("Authentication required, performing login...")
                 await self._login()
 
@@ -573,7 +562,7 @@ class KinovodYdlController(YtDlpController):
                 return port
         raise RuntimeError(f"No free port found in range {start_port}-{end_port}")
 
-    def _load_cookies_password(self) -> list[dict[str, Any]]:
+    def _load_cookies_pin(self) -> list[dict[str, Any]]:
         if not self._cookie_file or not self._cookie_file.strip():
             raise KinovodCookieError("Cookie file path is empty")
 
@@ -593,14 +582,12 @@ class KinovodYdlController(YtDlpController):
         if not isinstance(cookies, list):
             raise KinovodCookieError(f"Invalid cookie format in {self._cookie_file}")
 
-        password = next((item for item in cookies if "password" in item), None)
-        if not password:
-            raise KinovodAuthError(
-                f"Password absent in cookie file: {self._cookie_file}"
-            )
+        pin = next((item for item in cookies if "pin" in item), None)
+        if not pin:
+            raise KinovodAuthError(f"Pin absent in cookie file: {self._cookie_file}")
 
-        self._password = password.get("password")
-        self._cookies = [item for item in cookies if "password" not in item]
+        self._pin = pin.get("pin")
+        self._cookies = [item for item in cookies if "pin" not in item]
         logging.info("Loaded %s cookies from %s", len(self._cookies), self._cookie_file)
         return self._cookies
 
@@ -614,7 +601,7 @@ class KinovodYdlController(YtDlpController):
             raise KinovodCookieError
         self._cookie_file = str(cookie_files[0])
 
-        cookies = self._load_cookies_password()
+        cookies = self._load_cookies_pin()
         kinovod_mirror_domain: str = ""
         for cookie in cookies:
             if cookie.get("name") == "kv_auth":
