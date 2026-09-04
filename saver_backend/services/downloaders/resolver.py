@@ -704,6 +704,8 @@ class KinovodDetector(Detector):
     SOURCE = SourceEnum.KINOVOD_YDL
     CONTROLLER = KinovodYdlController
     HOSTS = (
+        "kivod2.xyz",
+        "knvdk.xyz",
         "kinovod.pro",
         "www.kinovod.pro",
     )
