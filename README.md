@@ -41,28 +41,28 @@ Telegram bot backend that downloads media from a wide range of social platforms 
 
 The resolver auto-detects the source by URL host and path. Each platform has its own controller in `saver_backend/services/downloaders/`.
 
-| Platform | Backend | Auth required                                   | Notes |
-|---|---|-------------------------------------------------|---|
-| YouTube (videos) | yt-dlp + aria2c + bgutil POT provider | cookies                                         | quality picker |
-| YouTube Shorts | yt-dlp + bgutil POT provider | cookies                                         | direct download |
-| Instagram (reels, posts, carousels) | indown.io scraper | none                                            | primary handler for `/p/` and `/reel(s)/` |
-| Instagram (stories) | [`instaloader`](https://instaloader.github.io/) | account session file                            | |
-| TikTok | `tikwm.com` API | none                                            | videos and photo slideshows |
-| X (Twitter) | yt-dlp + `fixupx.com` fallback | none                                            | |
-| VK Video | yt-dlp via RU proxy | none                                            | quality picker |
-| VK Clips | yt-dlp via RU proxy | none                                            | |
-| VK wall posts & photos | [`vkbottle`](https://github.com/vkbottle/vkbottle) | VK service token(s)                             | mixed media (photo + video + audio) |
-| Rutube | yt-dlp via RU proxy | none                                            | quality picker |
-| OK.ru | yt-dlp via RU proxy | none                                            | quality picker |
-| Pinterest | yt-dlp | none                                            | |
-| Dzen | yt-dlp | none                                            | |
-| Reddit | yt-dlp + aria2c | optional cookies                                | videos and animated GIFs |
-| Facebook | yt-dlp via proxy | none                                            | fb.com / m.fb.com / fb.watch |
-| Kinovod | Playwright + headless Chrome over CDP + custom playerjs patch | item {"password":""} in cookies, needs RU proxy | full films / series with season/episode wizard |
-| Yandex Music | [`ymdantic`](https://pypi.org/project/ymdantic/) | YM token                                        | tracks and full albums (audio) |
-| M3U8 streams | yt-dlp | none                                            | any URL ending in `.m3u8` |
-| Adult sites | yt-dlp | optional cookies                                | hosts wired in `adult_ydl_source.py` |
-| Douyin | seekin.ai | none                                            | videos |
+| Platform | Backend | Auth required                              | Notes |
+|---|---|--------------------------------------------|---|
+| YouTube (videos) | yt-dlp + aria2c + bgutil POT provider | cookies                                    | quality picker |
+| YouTube Shorts | yt-dlp + bgutil POT provider | cookies                                    | direct download |
+| Instagram (reels, posts, carousels) | indown.io scraper | none                                       | primary handler for `/p/` and `/reel(s)/` |
+| Instagram (stories) | [`instaloader`](https://instaloader.github.io/) | account session file                       | |
+| TikTok | `tikwm.com` API | none                                       | videos and photo slideshows |
+| X (Twitter) | yt-dlp + `fixupx.com` fallback | none                                       | |
+| VK Video | yt-dlp via RU proxy | none                                       | quality picker |
+| VK Clips | yt-dlp via RU proxy | none                                       | |
+| VK wall posts & photos | [`vkbottle`](https://github.com/vkbottle/vkbottle) | VK service token(s)                        | mixed media (photo + video + audio) |
+| Rutube | yt-dlp via RU proxy | none                                       | quality picker |
+| OK.ru | yt-dlp via RU proxy | none                                       | quality picker |
+| Pinterest | yt-dlp | none                                       | |
+| Dzen | yt-dlp | none                                       | |
+| Reddit | yt-dlp + aria2c | optional cookies                           | videos and animated GIFs |
+| Facebook | yt-dlp via proxy | none                                       | fb.com / m.fb.com / fb.watch |
+| Kinovod | Playwright + headless Chrome over CDP + custom playerjs patch | item {"pin":""} in cookies, needs RU proxy | full films / series with season/episode wizard |
+| Yandex Music | [`ymdantic`](https://pypi.org/project/ymdantic/) | YM token                                   | tracks and full albums (audio) |
+| M3U8 streams | yt-dlp | none                                       | any URL ending in `.m3u8` |
+| Adult sites | yt-dlp | optional cookies                           | hosts wired in `adult_ydl_source.py` |
+| Douyin | seekin.ai | none                                       | videos |
 
 ## 🏗️ Architecture
 
