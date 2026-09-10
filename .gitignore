@@ -150,3 +150,10 @@ cf-origin-ca.pem
 
 # MacOS
 .DS_Store
+
+.gitignore
+saver_serv_cookies/*
+devlocal/
+dev.env
+debug/
+scripts/start_taskiq_worker1.sh

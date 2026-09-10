@@ -46,6 +46,7 @@ class SourceEnum(str, Enum):
     YMDANTIC = "ymdantic"
     REDDIT_YDL = "reddit_ydl"
     DOUYIN = "douyin"
+    KWAI = "kwai"
 
 
 class InstagramContentTypeEnum(str, Enum):
