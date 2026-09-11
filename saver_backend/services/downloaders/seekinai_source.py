@@ -456,4 +456,5 @@ def create_seekin_controller(source: SourceEnum) -> type[SeekinAiController]:
 
 
 KwaiController = create_seekin_controller(SourceEnum.KWAI)
+KuaishouController = create_seekin_controller(SourceEnum.KUAISHOU)
 DouyinController = create_seekin_controller(SourceEnum.DOUYIN)
