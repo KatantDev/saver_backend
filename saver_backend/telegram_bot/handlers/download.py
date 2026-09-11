@@ -664,6 +664,7 @@ async def on_flac_select(
             SourceEnum.REDDIT_YDL,
             SourceEnum.DOUYIN,
             SourceEnum.KWAI,
+            SourceEnum.KUAISHOU,
         ],
     ),
 )
