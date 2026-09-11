@@ -40,6 +40,7 @@ dependencies = [
   "aiohttp-socks>=0.11.0,<1",
   "slippers-proxy>=0.3.0,<1",
   "lxml>=6.1.1",
+  "py-mini-racer>=0.6.0",
 ]
 
 [dependency-groups]
@@ -141,6 +142,7 @@ ignore = [
     "D202",    # No blank lines allowed after function docstring
     "ANN401",  # typing.Any are disallowed in `**kwargs
     "PLR0913", # Too many arguments for function call
+    "PLR0917", # Too many positional arguments
     "D106",    # Missing docstring in public nested class
     "S105",    # Possible hardcoded password (settings defaults are placeholders)
     "PLC0415", # `import` should be at top-level (we use lazy/local imports)

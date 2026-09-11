@@ -13,7 +13,6 @@ from saver_backend.entities.enums import (
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.adult_ydl_source import AdultYdlController
 from saver_backend.services.downloaders.base_source import BaseSourceController
-from saver_backend.services.downloaders.douyin_source import DouyinController
 from saver_backend.services.downloaders.dzen_ydl import (
     DzenYdlController,
 )
@@ -42,6 +41,11 @@ from saver_backend.services.downloaders.pinterest_ydl_source import (
 from saver_backend.services.downloaders.reddit_ydl_source import RedditYdlController
 from saver_backend.services.downloaders.rutube_ydl_source import (
     RutubeYdlController,
+)
+from saver_backend.services.downloaders.seekinai_source import (
+    DouyinController,
+    KuaishouController,
+    KwaiController,
 )
 from saver_backend.services.downloaders.tiktok_api_source import TikTokAPIController
 from saver_backend.services.downloaders.vk_api_source import (
@@ -796,8 +800,49 @@ class DouyinDetector(Detector):
         if modal_id and resolution is not None:
             resolution.metadata = modal_id.groupdict()
             resolution.metadata["type"] = "modal_id"
-            resolution.url = url
         return resolution
+
+
+@register_detector()
+class KwaiDetector(Detector):
+    """Detector for Douyin urls."""
+
+    SOURCE = SourceEnum.KWAI
+    CONTROLLER = KwaiController
+    HOSTS = (
+        "kwai.com",
+        "www.kwai.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "video": re.compile(r"/@[^/]+/video/(?P<code>[^/]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid douyin url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
+
+
+@register_detector()
+class KuaishouDetector(Detector):
+    """Detector for Douyin urls."""
+
+    SOURCE = SourceEnum.KUAISHOU
+    CONTROLLER = KuaishouController
+    HOSTS = (
+        "kuaishou.com",
+        "www.kuaishou.com",
+    )
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "short-video": re.compile(r"^/short-video/(?P<code>[^/]+)"),
+    }
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a valid douyin url."""
+        if not self._host_in(url, *self.HOSTS):
+            return None
+        return self._match_regex(url)
 
 
 class SourceResolver:
