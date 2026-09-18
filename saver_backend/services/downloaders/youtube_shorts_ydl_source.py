@@ -10,7 +10,7 @@ class YouTubeShortsYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from YT Shorts through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_SHORTS_YDL
-    COOKIES: ClassVar[bool] = True
+    COOKIES: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the controller with custom yt-dlp parameters for YouTube."""
@@ -18,8 +18,6 @@ class YouTubeShortsYdlController(YtDlpController):
 
         youtube_params = {
             "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",
-            "downloader": "aria2c",
-            "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
             "extractor_args": {
                 "youtubepot-bgutilhttp": {
                     "base_url": ["http://saver_backend-bgutil:4416"],
@@ -27,6 +25,9 @@ class YouTubeShortsYdlController(YtDlpController):
             },
             "remote_components": ["ejs:github"],
         }
+        self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
+            format_spec=youtube_params["format"]
+        )
         self._yt_dlp.params.update(youtube_params)
 
     async def get_video_info(self, url: str) -> dict[str, Any] | None:

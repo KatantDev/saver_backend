@@ -13,27 +13,14 @@ class YouTubeVideoYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from YouTube through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_VIDEO_YDL
-    COOKIES: ClassVar[bool] = True
+    COOKIES: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the controller with standard yt-dlp parameters for YouTube."""
         super().__init__(*args, **kwargs)
 
         youtube_params = {
-            "downloader": "aria2c",
-            "external_downloader_args": {
-                "aria2c": [
-                    "-x",
-                    "16",
-                    "-s",
-                    "16",
-                    "-k",
-                    "1M",
-                    "--timeout=60",  # Таймаут для соединения
-                    "--max-tries=10",  # Максимальное количество попыток
-                    "--retry-wait=5",  # Ждать между попытками
-                ],
-            },
+            "format": "bestvideo+bestaudio",
             "extractor_args": {
                 "youtubepot-bgutilhttp": {
                     "base_url": ["http://saver_backend-bgutil:4416"],
@@ -41,6 +28,10 @@ class YouTubeVideoYdlController(YtDlpController):
             },
             "remote_components": ["ejs:github"],
         }
+        self._cookie_fallback = False
+        self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
+            format_spec=youtube_params["format"]
+        )
         self._yt_dlp.params.update(youtube_params)
 
     def _remove_combined_formats(
@@ -158,6 +149,27 @@ class YouTubeVideoYdlController(YtDlpController):
                     telegram_id=self._telegram_id,
                 )
                 return None
+            if (
+                "Sign in" in str(e)
+                and not self._cookie_fallback
+                and not self._base_options.get("cookiefile")
+            ):
+                self._cookie_fallback = True
+                params = self._yt_dlp.params
+                self._yt_dlp.close()
+                del self._yt_dlp
+                params.get("extractor_args", {}).update(
+                    {
+                        "youtube": {
+                            "player_client": ["mweb"],
+                        }
+                    }
+                )
+                self._set_cookies(force_set=self._cookie_fallback)
+                params.pop("proxy")
+                self._yt_dlp = self._create_yt_dlp(params)
+                self._set_proxy()
+                return await self.get_video_info(url=url)
             raise
 
     async def download_video(self) -> None:
