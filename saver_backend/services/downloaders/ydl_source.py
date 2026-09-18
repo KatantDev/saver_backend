@@ -99,8 +99,8 @@ class YtDlpController(BaseSourceController, ABC):
             raise VideoInfoNotSetError
         return self._video
 
-    def _set_cookies(self) -> None:
-        if not self.COOKIES:
+    def _set_cookies(self, force_set: bool = False) -> None:
+        if not self.COOKIES and not force_set:
             return
 
         base_dir = Path(__file__).resolve().parent.parent.parent.parent
