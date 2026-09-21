@@ -23,7 +23,8 @@ command="taskiq worker saver_backend.tkq:broker saver_backend.task_manager.event
 if [ "$reload" = true ]; then
   command="$command --reload"
 fi
-
+echo "**********  patch yt-dlp   **********"
+/opt/.venv/bin/python scripts/patch_yt_dlp.py
 # Выполнение скрипта compile_po.sh
 /bin/bash scripts/compile_po.sh
 

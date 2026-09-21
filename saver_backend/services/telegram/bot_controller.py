@@ -1027,7 +1027,7 @@ class TelegramBotController:
                 chat_id=telegram_id,
             )
             await self._send(coro2)
-
+        logging.info(f"[sfd] Successfully sent source id: {video.source_id}")
         return message.video
 
     async def send_video_by_file_id(
@@ -1058,6 +1058,10 @@ class TelegramBotController:
                     url="",
                     title=cache_item.meta_data_dto.title_html,
                 ),
+            )
+            logging.info(
+                f"[sfbfd cache] Successfully sent source id:"
+                f" {cache_item.meta_data_dto.source_id}"
             )
             return message.video
         except (TelegramForbiddenError, TelegramBadRequest) as e:
