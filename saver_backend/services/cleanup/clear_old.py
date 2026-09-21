@@ -13,7 +13,7 @@ class CleanupService:
     Scans the download directory and removes files older than specified age limit.
     """
 
-    DEFAULT_AGE_LIMIT: ClassVar[int] = 3600  # 1 hour in seconds
+    DEFAULT_AGE_LIMIT: ClassVar[int] = 3600 * 72  # 72 hour in seconds
 
     def __init__(
         self,
