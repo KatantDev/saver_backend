@@ -881,11 +881,14 @@ class SourceResolver:
         :param source: Source.
         :return: Controller.
         """
+        url = "nourl"
         if isinstance(source, str):
             source = self.resolve(source)
+            url = source.url
         if isinstance(source, Resolution):
+            url = source.url
             source = source.source
-        logging.info("Getting controller for %s", source)
+        logging.info("Getting controller for %s; url: %s", source, url)
         controller = self._detectors[source].CONTROLLER
         if controller is None or controller is BaseSourceController:
             return None
