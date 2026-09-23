@@ -969,7 +969,11 @@ class TelegramBotController:
         video_input: str | FSInputFile | URLInputFile
         thumbnail_input: str | FSInputFile | None = None
         if video.direct_download_url:
-            logging.info("Sending video via direct URL: %s", video.direct_download_url)
+            logging.info(
+                "Sending video via direct URL: %s, user_id=%s",
+                video.direct_download_url,
+                telegram_id,
+            )
             video_input = (
                 video.direct_download_url
                 if video.duration and video.duration < 180
@@ -980,7 +984,9 @@ class TelegramBotController:
             )
             thumbnail_input = video.thumbnail_url
         elif video.path and video.path.exists():
-            logging.info("Sending video via file upload: %s", video.path)
+            logging.info(
+                "Sending video via file upload: %s, user_id=%s", video.path, telegram_id
+            )
             video_input = FSInputFile(
                 path=video.path,
                 filename=(video.filename or str(video.source_id)),
@@ -1027,7 +1033,10 @@ class TelegramBotController:
                 chat_id=telegram_id,
             )
             await self._send(coro2)
-        logging.info(f"[sfd] Successfully sent source id: {video.source_id}")
+        logging.info(
+            f"[sfd] Successfully sent source id: {video.source_id};"
+            f" user_id={telegram_id}"
+        )
         return message.video
 
     async def send_video_by_file_id(
@@ -1061,7 +1070,8 @@ class TelegramBotController:
             )
             logging.info(
                 f"[sfbfd cache] Successfully sent source id:"
-                f" {cache_item.meta_data_dto.source_id}"
+                f" {cache_item.source_id};"
+                f"  user_id={telegram_id}"
             )
             return message.video
         except (TelegramForbiddenError, TelegramBadRequest) as e:
