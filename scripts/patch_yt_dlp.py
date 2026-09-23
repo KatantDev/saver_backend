@@ -48,7 +48,7 @@ replacements = [
         "search": "metadata = self._parse_json(metadata, video_id)",
         "replace": (
             "if isinstance(metadata, str):\n"
-            "                metadata = self._parse_json(metadata, video_id)"
+            "                metadata=self._parse_json(metadata,video_id)"
         ),
     },
 ]
