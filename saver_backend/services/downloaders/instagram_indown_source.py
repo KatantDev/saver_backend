@@ -487,9 +487,18 @@ class InstagramInDownController(BaseSourceController):
             try:
                 await self._process_single_item(item, index)
             except InstaIndownError as e:
+                logging.error(
+                    f"[InstaIndownError]:"
+                    f" {self._resolution.url};"
+                    f" user_id={self._telegram_id}; {e}"
+                )
                 raise e
             except Exception as e:
-                logging.error(f"Failed to download/process item {index}: {e}")
+                logging.error(
+                    f"Failed to download/process item {index}:"
+                    f" {self._resolution.url};"
+                    f" user_id={self._telegram_id}; {e}"
+                )
 
     async def _send_media_result(
         self,

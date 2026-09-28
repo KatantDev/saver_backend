@@ -22,5 +22,8 @@ async def get_session(
         await session.rollback()
         logging.error(error)
     finally:
+        tolog = session.tolog if hasattr(session, "tolog") else "no tolog"
+        logging.info(f"Session start closing... {tolog}")
         await session.commit()
         await session.close()
+        logging.info(f"Session closed. {tolog}")

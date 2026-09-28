@@ -18,7 +18,7 @@ def init_db(state: FastAPIState | TaskiqState) -> async_sessionmaker[AsyncSessio
     engine = create_async_engine(
         str(settings.db_url),
         echo=settings.db_echo,
-        pool_size=20,
+        pool_size=70,
         max_overflow=10,
     )
     session_factory = async_sessionmaker(

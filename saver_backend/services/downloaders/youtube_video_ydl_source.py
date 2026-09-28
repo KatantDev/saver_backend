@@ -140,7 +140,12 @@ class YouTubeVideoYdlController(YtDlpController):
                 "Your IP address is blocked from accessing this post" in e.msg
                 or "Unable to connect to proxy" in e.msg
                 or "SOCKS server failure" in e.msg
+                or "403: Forbidden" in str(e)
             ):
+                logging.warning(
+                    f"[youtup] proxy: {self._yt_dlp.params['proxy']};"
+                    f" url: {self._resolution.url}; error: {e!s}"
+                )
                 self._set_proxy()
                 return await self.get_video_info(url=url)
             if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):

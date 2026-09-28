@@ -32,7 +32,10 @@ async def save_video(
     :param db: Database state with DAOs.
     """
     # Getting controller for the resolution
-    logging.info("Resolving controller for %s", resolution)
+    db.session.tolog = (  # type: ignore[attr-defined]
+        f"{resolution.url}; user_id={telegram_id}"
+    )
+    logging.info("Resolving controller for %s, user_id=%s", resolution, telegram_id)
     yt_dlp_controller = state.source_resolver.get_controller(resolution)
     if yt_dlp_controller is None:
         return
@@ -65,7 +68,7 @@ async def save_video(
             language="en",
         )
     except Exception as error:
-        logging.exception(error)
+        logging.exception(f"{resolution.url}; user_id={telegram_id} {error}")
     finally:
         await controller.close()
 
@@ -90,10 +93,17 @@ async def process_inline_query(
     :param state: The application state.
     :param db: The database state.
     """
+    db.session.tolog = (  # type: ignore[attr-defined]
+        f"{resolution.url}; user_id={telegram_id}"
+    )
     controller_class = state.source_resolver.get_controller(resolution)
     if not controller_class:
         return
-
+    logging.info(
+        "[inline] Getting controller for %s; user_id=%s",
+        resolution,
+        telegram_id,
+    )
     controller = controller_class(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,
@@ -129,13 +139,23 @@ async def get_video_info(
     :param state: The application state.
     :param db: The database state.
     """
+    db.session.tolog = (  # type: ignore[attr-defined]
+        f"{resolution.url}; user_id={telegram_id}"
+    )
     # Getting controller for the resolution
     controller_class = state.source_resolver.get_controller(resolution)
     if not controller_class:
-        logging.error("Not found controller for %s", resolution)
+        logging.error(
+            "Not found controller for %s, user_id=%s", resolution, telegram_id
+        )
         return
 
     # Initializing controller + setting user language
+    logging.info(
+        "Getting controller for %s; user_id=%s",
+        resolution,
+        telegram_id,
+    )
     controller = controller_class(
         resolution=resolution,
         telegram_bot_controller=state.telegram_bot_controller,

@@ -1,5 +1,4 @@
 import ipaddress
-import logging
 import re
 from abc import ABC, abstractmethod
 from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar
@@ -885,7 +884,6 @@ class SourceResolver:
             source = self.resolve(source)
         if isinstance(source, Resolution):
             source = source.source
-        logging.info("Getting controller for %s", source)
         controller = self._detectors[source].CONTROLLER
         if controller is None or controller is BaseSourceController:
             return None
