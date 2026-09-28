@@ -68,7 +68,7 @@ class YouTubeVideoYdlController(YtDlpController):
                 fmt.get("acodec") != "none"
                 and fmt.get("vcodec") == "none"
                 and fmt.get("video_ext") == "none"
-                and fmt.get("audio_ext") != "none"
+                and fmt.get("audio_ext") == "m4a"
             ):
                 # Priority: higher bitrate is better, if available
                 abr = fmt.get("abr") or 0
