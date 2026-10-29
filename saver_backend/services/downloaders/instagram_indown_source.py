@@ -14,6 +14,9 @@ from saver_backend.entities.enums import FsmKeysEnum, ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.exceptions import InstaIndownError
+from saver_backend.services.downloaders.instagram_ydl_source import (
+    InstagramYdlController,
+)
 from saver_backend.services.downloaders.schema import (
     PhotoDTO,
     VideoDTO,
@@ -256,7 +259,7 @@ class InstagramInDownController(BaseSourceController):
             form_fields = await self._get_form_fields(referer_url)
             if not form_fields:
                 logging.error("Could not fetch CSRF token from indown.io")
-                await self._send_error_message()
+                await self._fallback_to_ydl()
                 return
             token = form_fields[0]
             referer = form_fields[1]
@@ -283,7 +286,7 @@ class InstagramInDownController(BaseSourceController):
                 html = response.text
             except Exception as e:
                 logging.exception(f"Failed to fetch data from indown.io: {e}")
-                await self._send_error_message()
+                await self._fallback_to_ydl()
                 return
 
             self._process_percent(40)
@@ -304,11 +307,41 @@ class InstagramInDownController(BaseSourceController):
                 await self._init_httpx(self._proxy)
                 self._client.headers.update({"Referer": referer_url})
                 continue
-            await self._send_media_result(media_items)
+            try:
+                await self._send_media_result(media_items)
+            except InstaIndownError:
+                self.cleanup_files(media_items)
+                await self._fallback_to_ydl()
             return
 
         logging.warning("No media found in indown.io response.")
-        await self._send_error_message()
+        await self._fallback_to_ydl()
+
+    async def _fallback_to_ydl(self) -> None:
+        """Retry the download through yt-dlp when indown.io fails."""
+        logging.warning(
+            "indown.io failed, falling back to yt-dlp: %s; user_id=%s",
+            self._resolution.url,
+            self._telegram_id,
+        )
+        controller = InstagramYdlController(
+            resolution=self._resolution,
+            telegram_bot_controller=self._telegram_bot_controller,
+            telegram_id=self._telegram_id,
+            user_dao=self._user_dao,
+            history_dao=self._history_dao,
+            cache_dao=self._cache_dao,
+            message_id=self._message_id,
+            inline_query_id=self._inline_query_id,
+        )
+        try:
+            await controller.download_video()
+        except Exception:
+            logging.exception("yt-dlp fallback failed: %s", self._resolution.url)
+            self._message_id = controller.message_id
+            await self._send_error_message()
+        finally:
+            await controller.close()
 
     def _create_dto(
         self,
