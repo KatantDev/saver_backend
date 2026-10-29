@@ -4,6 +4,9 @@ from yt_dlp import DownloadError
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
+from saver_backend.services.downloaders.youtube_video_ydl_source import (
+    YOUTUBE_H264_FORMAT,
+)
 
 
 class YouTubeShortsYdlController(YtDlpController):
@@ -17,7 +20,8 @@ class YouTubeShortsYdlController(YtDlpController):
         super().__init__(*args, **kwargs)
 
         youtube_params = {
-            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio/best[ext=mp4]",
+            "format": YOUTUBE_H264_FORMAT,
+            "merge_output_format": "mp4",
             "extractor_args": {
                 "youtubepot-bgutilhttp": {
                     "base_url": ["http://saver_backend-bgutil:4416"],

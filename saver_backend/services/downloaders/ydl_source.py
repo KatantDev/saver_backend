@@ -19,6 +19,12 @@ from saver_backend.services.downloaders.exceptions import (
 from saver_backend.services.downloaders.schema import AudioDTO, PhotoDTO, VideoDTO
 from saver_backend.settings import settings
 
+DOWNLOAD_RETRIES = 10
+
+
+def _retry_backoff(attempt: int) -> float:
+    return float(min(2**attempt, 10))
+
 
 class YtDlpController(BaseSourceController, ABC):
     """Asynchronous controller for downloading videos through yt-dlp."""
@@ -56,6 +62,12 @@ class YtDlpController(BaseSourceController, ABC):
             "postprocessor_args": [
                 "-nostdin",
             ],
+            "retries": DOWNLOAD_RETRIES,
+            "fragment_retries": DOWNLOAD_RETRIES,
+            "retry_sleep_functions": {
+                "http": _retry_backoff,
+                "fragment": _retry_backoff,
+            },
         }
         if self._selected_format_id:
             self._base_options["format"] = self._selected_format_id

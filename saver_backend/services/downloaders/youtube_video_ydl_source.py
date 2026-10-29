@@ -8,6 +8,18 @@ from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
+# H.264 + AAC in mp4, up to 1080p (vertical too)
+YOUTUBE_H264_FORMAT = (
+    "bv*[vcodec^=avc1][height<=1920][width<=1920]+ba[ext=m4a]"
+    "/b[vcodec^=avc1][ext=mp4]"
+    "/bv*[height<=1920][width<=1920]+ba"
+    "/b"
+)
+
+
+def _is_h264(fmt: dict[str, Any]) -> bool:
+    return str(fmt.get("vcodec") or "").startswith("avc1")
+
 
 class YouTubeVideoYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from YouTube through yt-dlp."""
@@ -20,7 +32,8 @@ class YouTubeVideoYdlController(YtDlpController):
         super().__init__(*args, **kwargs)
 
         youtube_params = {
-            "format": "bestvideo+bestaudio",
+            "format": YOUTUBE_H264_FORMAT,
+            "merge_output_format": "mp4",
             "extractor_args": {
                 "youtubepot-bgutilhttp": {
                     "base_url": ["http://saver_backend-bgutil:4416"],
@@ -83,14 +96,20 @@ class YouTubeVideoYdlController(YtDlpController):
         best_audio_id = best_audio.get("format_id")
         best_audio_codec = best_audio.get("acodec")
 
+        # Keep only H.264 qualities if available
+        video_only_mp4 = [
+            fmt
+            for fmt in formats
+            if fmt.get("video_ext") == "mp4"
+            and fmt.get("acodec") == "none"
+            and fmt.get("vcodec") != "none"
+        ]
+        h264_only = any(_is_h264(fmt) for fmt in video_only_mp4)
+
         # Modify formats: combine mp4 video-only with best audio
         modified_formats = []
         for fmt in formats:
-            if (
-                fmt.get("video_ext") == "mp4"
-                and fmt.get("acodec") == "none"
-                and fmt.get("vcodec") != "none"
-            ):
+            if fmt in video_only_mp4 and (not h264_only or _is_h264(fmt)):
                 modified_fmt = fmt.copy()
                 original_format_id = fmt.get("format_id", "")
                 modified_fmt["format_id"] = f"{original_format_id}+{best_audio_id}"
