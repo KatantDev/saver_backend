@@ -209,6 +209,7 @@ class YtDlpController(BaseSourceController, ABC):
             if settings.environment == "local":
                 logging.exception(e)
             sentry_sdk.capture_exception(e)
+            return
 
         if not self._video or not self._video.path:
             await self._send_error_message()

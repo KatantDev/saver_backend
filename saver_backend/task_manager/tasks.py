@@ -63,12 +63,19 @@ async def save_video(
     try:
         await controller.download_video()
     except TikTokYtDlpDownloaderError:
+        await controller.delete_processing_message()
         await state.telegram_bot_controller.send_tiktok_error_downloading(
             telegram_id=telegram_id,
             language="en",
         )
     except Exception as error:
         logging.exception(f"{resolution.url}; user_id={telegram_id} {error}")
+        if controller.message_id is not None:
+            await controller.delete_processing_message()
+            await state.telegram_bot_controller.send_error_downloading(
+                telegram_id=telegram_id,
+                resolution_url=resolution.url,
+            )
     finally:
         await controller.close()
 
