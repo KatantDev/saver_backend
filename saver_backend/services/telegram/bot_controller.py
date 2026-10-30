@@ -948,6 +948,39 @@ class TelegramBotController:
 
         return media_group
 
+    async def _send_video_or_upload(
+        self,
+        video: VideoDTO,
+        video_input: str | FSInputFile | URLInputFile,
+        **kwargs: Any,
+    ) -> Message:
+        """
+        Send a video, uploading it ourselves if Telegram cannot fetch the URL.
+
+        :param video: VideoDTO.
+        :param video_input: URL or file to send.
+        :param kwargs: Other send_video arguments.
+        :return: Sent message.
+        """
+        try:
+            return await self._bot.send_video(video=video_input, **kwargs)
+        except TelegramBadRequest:
+            if not isinstance(video_input, str) or not video.direct_download_url:
+                raise
+        # Telegram fetches files by URL only up to 20 MB,
+        # bigger ones have to be downloaded and uploaded by us.
+        logging.info(
+            "Telegram could not fetch the URL, uploading the file instead: user_id=%s",
+            kwargs.get("chat_id"),
+        )
+        return await self._bot.send_video(
+            video=URLInputFile(
+                url=video.direct_download_url,
+                filename=(video.filename or video.direct_download_url),
+            ),
+            **kwargs,
+        )
+
     async def send_finish_downloading(
         self,
         video: VideoDTO,
@@ -998,17 +1031,19 @@ class TelegramBotController:
                 "Cannot send video: No direct URL or valid file path provided.",
             )
             return None
+        caption = _(
+            "result direct message",
+            locale=language or self.language,
+        ).format(
+            url="",
+            title=video.title_html,
+        )
         try:
-            message = await self._bot.send_video(
+            message = await self._send_video_or_upload(
+                video=video,
+                video_input=video_input,
                 chat_id=telegram_id,
-                video=video_input,
-                caption=_(
-                    "result direct message",
-                    locale=language or self.language,
-                ).format(
-                    url="",
-                    title=video.title_html,
-                ),
+                caption=caption,
                 width=video.width,
                 height=video.height,
                 duration=video.duration,

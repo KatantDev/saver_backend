@@ -180,7 +180,9 @@ class TikTokDetector(Detector):
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "video": re.compile(r".*/video/(?P<code>\d+)"),
-        "short": re.compile(r"^/(?P<code>[A-Za-z0-9]+)/?$"),
+        "photo": re.compile(r".*/photo/(?P<code>\d+)"),
+        "mobile": re.compile(r"^/v/(?P<code>\d+)\.html$"),
+        "short": re.compile(r"^/(?:t/)?(?P<code>[A-Za-z0-9]+)/?$"),
     }
 
     def match(self, url: str) -> Optional[Resolution]:
