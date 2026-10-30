@@ -14,6 +14,10 @@ from saver_backend.entities.enums import FsmKeysEnum, ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.exceptions import InstaIndownError
+from saver_backend.services.downloaders.instagram_session import (
+    is_login_required_error,
+    request_session_check,
+)
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
 )
@@ -336,10 +340,12 @@ class InstagramInDownController(BaseSourceController):
         )
         try:
             await controller.download_video()
-        except Exception:
+        except Exception as error:
             logging.exception("yt-dlp fallback failed: %s", self._resolution.url)
             self._message_id = controller.message_id
             await self._send_error_message()
+            if is_login_required_error(error):
+                await request_session_check()
         finally:
             await controller.close()
 

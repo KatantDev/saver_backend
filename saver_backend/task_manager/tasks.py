@@ -1,3 +1,4 @@
+import html
 import json
 import logging
 
@@ -8,6 +9,10 @@ from saver_backend.entities.resolution import Resolution
 from saver_backend.services.cleanup.clear_old import CleanupService
 from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
+)
+from saver_backend.services.downloaders.instagram_session import (
+    InstagramSessionError,
+    refresh_instagram_session,
 )
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.task_manager.state import DatabaseState, SaverState
@@ -245,3 +250,26 @@ async def cleanup_old_files_task(
 
     service = CleanupService()
     await service.cleanup()
+
+
+@broker.task(
+    schedule=[{"cron": "15 */6 * * *"}],  # Every 6 hours
+)
+async def refresh_instagram_session_task(
+    state: SaverState = TaskiqDepends(),
+) -> None:
+    """
+    Periodic task to keep the Instagram service account logged in.
+
+    Also started when an Instagram download fails because login is required.
+    Admins are notified when the session cannot be restored automatically.
+    """
+    try:
+        await refresh_instagram_session()
+    except InstagramSessionError as error:
+        logging.error("Instagram session refresh failed: %s", error)
+        await state.telegram_bot_controller.send_admin_message(
+            f"Instagram session needs attention: {html.escape(str(error))}",
+        )
+    except Exception:
+        logging.exception("Instagram session refresh failed")

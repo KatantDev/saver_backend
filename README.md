@@ -170,11 +170,15 @@ The whole `cookies/*` tree is gitignored. The yt-dlp loader picks one file at ra
 
 ### Instagram session
 
-For Instagram stories, the `instaloader` source needs a saved session file:
+The Instagram service account session is kept alive automatically by `refresh_instagram_session_task` (scheduler, every 6 hours, and on demand when a download fails because Instagram asks to log in):
 
 1. Set `SAVER_BACKEND_INSTAGRAM_ACCOUNT="login:password"` in `.env`.
-2. Place a Netscape cookies export of the same Instagram account at `cookies/instagram_instaloader/<login>.txt`.
-3. Run `uv run python scripts/create_instagram_session.py` — this validates the cookies, calls `loader.test_login()` and writes `cookies/instagram_instaloader/<login>.session`.
+2. Enable two-factor authentication with an authenticator app on that account and set its secret key in `SAVER_BACKEND_INSTAGRAM_TOTP_SECRET`, so the 2FA code can be generated on login.
+3. Make sure `./cookies` is writable by the worker (UID 1000).
+
+The task checks the session in `cookies/instagram_instaloader/<login>.session` and logs in again only when it has expired (at most once an hour). The same session is exported for yt-dlp to `cookies/instagram_ydl/cookies_session.txt`. If Instagram asks for a checkpoint or the password is wrong, a message is sent to `SAVER_BACKEND_ADMIN_CHAT_ID`.
+
+To import an existing browser session instead, place a Netscape cookies export at `cookies/instagram_instaloader/<login>.txt` and run `uv run python scripts/create_instagram_session.py`.
 
 ### Database migrations
 
@@ -376,8 +380,9 @@ All application variables are prefixed with `SAVER_BACKEND_`. Compose-only varia
 | `SAVER_BACKEND_TELEGRAM_SECRET_TOKEN` | str | `verysecrettoken` | Validated against the `X-Telegram-Bot-Api-Secret-Token` header on every incoming webhook |
 | `SAVER_BACKEND_TELEGRAM_FILENAME_SUFIX` | str | ` [@saver]` | Suffix appended to downloaded filenames (note the typo `SUFIX` is preserved in the env var name) |
 | `SAVER_BACKEND_SUBSCRIPTION_CHANNELS` | JSON list[str] | `["channel_username"]` | Channels users must be subscribed to before downloading |
-| `SAVER_BACKEND_ADMIN_CHAT_ID` | int | `-4816121008` | Chat that receives unsupported-URL forwards |
-| `SAVER_BACKEND_INSTAGRAM_ACCOUNT` | str | `username:password` | Single `login:password` string used by the Instaloader source |
+| `SAVER_BACKEND_ADMIN_CHAT_ID` | int | `-4816121008` | Chat that receives unsupported-URL forwards and Instagram session alerts |
+| `SAVER_BACKEND_INSTAGRAM_ACCOUNT` | str | `username:password` | Single `login:password` string of the Instagram service account |
+| `SAVER_BACKEND_INSTAGRAM_TOTP_SECRET` | str | — | Authenticator app secret of that account, used for 2FA on automatic login |
 | `SAVER_BACKEND_TELEGRAM_BOT_API_URL` | str | `http://bot-api:8081` | Self-hosted Bot API server URL |
 
 ### Webhook

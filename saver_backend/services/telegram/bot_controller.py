@@ -1167,6 +1167,15 @@ class TelegramBotController:
         )
         await self._send(coro)
 
+    async def send_admin_message(self, text: str) -> None:
+        """
+        Send a service message to the admin chat.
+
+        :param text: Message text.
+        """
+        coro = self._bot.send_message(chat_id=settings.admin_chat_id, text=text)
+        await self._send(coro)
+
     async def delete_message(self, telegram_id: int, message_id: int) -> None:
         """
         Delete message.

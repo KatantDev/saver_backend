@@ -170,11 +170,15 @@ echo "APP_GID=$(id -g)" >> .env
 
 ### Сессия Instagram
 
-Источнику `instaloader` для stories нужен сохранённый session-файл:
+Сессию служебного аккаунта Instagram автоматически поддерживает задача `refresh_instagram_session_task` (scheduler, раз в 6 часов, а также по запросу, когда скачивание упало из-за того, что Instagram требует вход):
 
 1. Задайте `SAVER_BACKEND_INSTAGRAM_ACCOUNT="login:password"` в `.env`.
-2. Положите Netscape-экспорт cookies того же аккаунта в `cookies/instagram_instaloader/<login>.txt`.
-3. Запустите `uv run python scripts/create_instagram_session.py` — скрипт проверит cookies, вызовет `loader.test_login()` и запишет `cookies/instagram_instaloader/<login>.session`.
+2. Включите на этом аккаунте двухфакторную аутентификацию через приложение-аутентификатор и укажите её секретный ключ в `SAVER_BACKEND_INSTAGRAM_TOTP_SECRET` — код 2FA будет генерироваться при входе.
+3. Папка `./cookies` должна быть доступна воркеру на запись (UID 1000).
+
+Задача проверяет сессию в `cookies/instagram_instaloader/<login>.session` и входит заново только когда она истекла (не чаще раза в час). Та же сессия выгружается для yt-dlp в `cookies/instagram_ydl/cookies_session.txt`. Если Instagram требует checkpoint или пароль неверный, уходит сообщение в `SAVER_BACKEND_ADMIN_CHAT_ID`.
+
+Чтобы вместо этого импортировать сессию из браузера, положите Netscape-экспорт cookies в `cookies/instagram_instaloader/<login>.txt` и запустите `uv run python scripts/create_instagram_session.py`.
 
 ### Миграции БД
 
@@ -376,8 +380,9 @@ saver_backend/
 | `SAVER_BACKEND_TELEGRAM_SECRET_TOKEN` | str | `verysecrettoken` | Сверяется с заголовком `X-Telegram-Bot-Api-Secret-Token` на каждый webhook |
 | `SAVER_BACKEND_TELEGRAM_FILENAME_SUFIX` | str | ` [@saver]` | Суффикс к именам скачанных файлов (опечатка `SUFIX` сохранена в имени переменной) |
 | `SAVER_BACKEND_SUBSCRIPTION_CHANNELS` | JSON list[str] | `["channel_username"]` | Каналы, на которые юзер должен быть подписан |
-| `SAVER_BACKEND_ADMIN_CHAT_ID` | int | `-4816121008` | Чат, куда форвардятся неподдерживаемые URL |
-| `SAVER_BACKEND_INSTAGRAM_ACCOUNT` | str | `username:password` | Одна строка `login:password` для источника Instaloader |
+| `SAVER_BACKEND_ADMIN_CHAT_ID` | int | `-4816121008` | Чат, куда форвардятся неподдерживаемые URL и уведомления о сессии Instagram |
+| `SAVER_BACKEND_INSTAGRAM_ACCOUNT` | str | `username:password` | Одна строка `login:password` служебного аккаунта Instagram |
+| `SAVER_BACKEND_INSTAGRAM_TOTP_SECRET` | str | — | Секрет приложения-аутентификатора этого аккаунта для 2FA при автоматическом входе |
 | `SAVER_BACKEND_TELEGRAM_BOT_API_URL` | str | `http://bot-api:8081` | URL self-hosted Bot API |
 
 ### Webhook
