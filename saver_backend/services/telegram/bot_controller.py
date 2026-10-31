@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Awaitable, Sequence, cast
 
@@ -55,6 +56,12 @@ from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddl
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
 from saver_backend.telegram_bot.middlewares.user import UserMiddleware
 
+_LANGUAGE: ContextVar[str | None] = ContextVar("bot_language", default=None)
+_LAST_MESSAGE_ID: ContextVar[int | None] = ContextVar(
+    "bot_last_message_id",
+    default=None,
+)
+
 
 class TelegramBotController:
     """
@@ -84,7 +91,6 @@ class TelegramBotController:
             default=default,
             **kwargs,
         )
-        self.language: str | None = None
 
         self._redis = Redis.from_url(str(settings.redis_url))
         storage = RedisStorage(redis=self._redis)
@@ -92,7 +98,27 @@ class TelegramBotController:
             main_bot=self._bot,
             storage=storage,
         )
-        self.last_message_id: int | None = None
+
+    # One controller serves every request in the process, so per-user state
+    # lives in context variables: each update and each task runs in its own
+    # asyncio task and sees only the values it set itself.
+    @property
+    def language(self) -> str | None:
+        """Language of the user whose request is being handled."""
+        return _LANGUAGE.get()
+
+    @language.setter
+    def language(self, value: str | None) -> None:
+        _LANGUAGE.set(value)
+
+    @property
+    def last_message_id(self) -> int | None:
+        """Id of the last message sent while handling the current request."""
+        return _LAST_MESSAGE_ID.get()
+
+    @last_message_id.setter
+    def last_message_id(self, value: int | None) -> None:
+        _LAST_MESSAGE_ID.set(value)
 
     @property
     def bot(self) -> Bot:
