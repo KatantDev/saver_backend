@@ -392,6 +392,7 @@ class YouTubeVideoDetector(Detector):
         "www.youtube.com",
         "m.youtube.com",
         "youtu.be",
+        "youtube-nocookie.com",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "short": re.compile(r"^/(?P<code>[a-zA-Z0-9_-]{11})$"),
@@ -399,6 +400,9 @@ class YouTubeVideoDetector(Detector):
     }
 
     _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"v=([A-Za-z0-9_-]{11})")
+    _EMBED_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"^/embed/([a-zA-Z0-9_-]{11})/?$",
+    )
 
     def match(self, url: str) -> Optional[Resolution]:
         """
@@ -410,10 +414,13 @@ class YouTubeVideoDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
 
-        parsed = urlparse(url)
+        parsed = urlparse(url if "://" in url else "https://" + url)
         match = self._CODE_RE.search(parsed.query)
         if parsed.query and match:
             url = f"https://youtu.be/{match.group(1)}"
+        embed = self._EMBED_RE.match(parsed.path)
+        if embed:
+            url = f"https://youtu.be/{embed.group(1)}"
 
         return self._match_regex(url)
 
@@ -501,11 +508,15 @@ class RutubeDetector(Detector):
         "video": re.compile(r"^/video/(?P<code>[a-zA-Z0-9]+)/?"),
         "embed": re.compile(r"^/play/embed/(?P<code>[a-zA-Z0-9]+)/?"),
     }
+    _SHORTS_RE: ClassVar[re.Pattern[str]] = re.compile(r"^/shorts/([a-zA-Z0-9]+)/?$")
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Rutube video url."""
         if not self._host_in(url, *self.HOSTS):
             return None
+        shorts = self._SHORTS_RE.match(urlparse(self._clean_url(url)).path)
+        if shorts:
+            url = f"https://rutube.ru/video/{shorts.group(1)}/"
         return self._match_regex(url)
 
 
@@ -642,11 +653,16 @@ class DzenDetector(Detector):
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "video": re.compile(r"^/video/watch/(?P<code>[a-zA-Z0-9_-]+)"),
     }
+    _SHORTS_RE: ClassVar[re.Pattern[str]] = re.compile(r"^/shorts/([a-zA-Z0-9_-]+)/?$")
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Dzen video url."""
         if not self._host_in(url, *self.HOSTS):
             return None
+        # yt-dlp cannot read /shorts/ pages; the same id opens as /video/watch/
+        shorts = self._SHORTS_RE.match(urlparse(self._clean_url(url)).path)
+        if shorts:
+            url = f"https://dzen.ru/video/watch/{shorts.group(1)}"
         return self._match_regex(url)
 
 
