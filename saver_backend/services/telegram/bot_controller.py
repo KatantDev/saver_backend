@@ -47,6 +47,7 @@ from saver_backend.services.downloaders.schema import (
     VideoDTO,
 )
 from saver_backend.services.i18n import gettext as _
+from saver_backend.services.telegram.retry_after import RetryAfterMiddleware
 from saver_backend.settings import settings
 from saver_backend.telegram_bot.keyboards import inline
 from saver_backend.telegram_bot.middlewares.controller_provider import (
@@ -125,6 +126,7 @@ class TelegramBotController:
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
             timeout=180,
         )
+        self._session.middleware(RetryAfterMiddleware())
         self._bot = Bot(
             session=self._session,
             token=settings.telegram_bot_token,
@@ -286,8 +288,9 @@ class TelegramBotController:
         try:
             await coro
         except TelegramRetryAfter as e:
-            await asyncio.sleep(e.retry_after)
-            await self._send(coro=coro)
+            # The session already waited and repeated the request
+            # (RetryAfterMiddleware); a coroutine cannot be awaited twice.
+            logging.warning("Telegram flood control, request dropped: %s", e)
         except TelegramBadRequest as e:
             message = (e.message or "").lower()
             if any(
