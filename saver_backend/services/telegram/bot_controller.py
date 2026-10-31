@@ -63,6 +63,46 @@ _LAST_MESSAGE_ID: ContextVar[int | None] = ContextVar(
 )
 
 
+async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | None:
+    """
+    Read the frame size of a remote video with ffprobe.
+
+    :param url: Direct URL of the video.
+    :param timeout: Seconds to wait for ffprobe.
+    :return: (width, height), or None if it could not be read.
+    """
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0:s=x",
+            url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError:
+        return None
+    try:
+        stdout, _stderr = await asyncio.wait_for(process.communicate(), timeout)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        return None
+    try:
+        width, height = (int(x) for x in stdout.decode().strip().split("x")[:2])
+    except ValueError:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return width, height
+
+
 class TelegramBotController:
     """
     Telegram bot controller.
@@ -999,6 +1039,12 @@ class TelegramBotController:
             "Telegram could not fetch the URL, uploading the file instead: user_id=%s",
             kwargs.get("chat_id"),
         )
+        # Telegram does not read the frame size of an uploaded file, without it
+        # the video is shown as a 320x320 square.
+        if not kwargs.get("width") or not kwargs.get("height"):
+            size = await _probe_video_size(video.direct_download_url)
+            if size:
+                kwargs["width"], kwargs["height"] = size
         return await self._bot.send_video(
             video=URLInputFile(
                 url=video.direct_download_url,

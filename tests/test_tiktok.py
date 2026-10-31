@@ -12,6 +12,7 @@ from saver_backend.services.downloaders import tiktok_api_source
 from saver_backend.services.downloaders.resolver import TikTokDetector
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.downloaders.tiktok_api_source import TikTokAPIController
+from saver_backend.services.telegram import bot_controller as bot_controller_module
 from saver_backend.services.telegram.bot_controller import TelegramBotController
 
 URL = "https://www.tiktok.com/@user/video/7047596209028074758"
@@ -142,13 +143,20 @@ async def test_uploads_video_when_telegram_cannot_fetch_url() -> None:
     )
     video = VideoDTO(url=URL, source_id="1", direct_download_url="https://v/1.mp4")
 
-    message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
-        bot_controller,
-        video=video,
-        video_input="https://v/1.mp4",
-        chat_id=1,
-    )
+    with patch.object(
+        bot_controller_module,
+        "_probe_video_size",
+        AsyncMock(return_value=(576, 1024)),
+    ):
+        message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
+            bot_controller,
+            video=video,
+            video_input="https://v/1.mp4",
+            chat_id=1,
+        )
 
     assert message is sent
     retry = bot_controller._bot.send_video.await_args_list[1]  # noqa: SLF001
     assert isinstance(retry.kwargs["video"], URLInputFile)
+    assert retry.kwargs["width"] == 576
+    assert retry.kwargs["height"] == 1024
