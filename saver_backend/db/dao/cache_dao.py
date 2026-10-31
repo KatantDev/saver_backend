@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from saver_backend.db.dao.base_dao import BaseDAO
@@ -38,6 +38,24 @@ class CacheDAO(BaseDAO):
         self.session.add(model)
         await self._release()
         return model
+
+    async def delete_by_file_id(self, source: SourceEnum, file_id: str) -> None:
+        """
+        Delete every cache entry of a source that points to a Telegram file.
+
+        One file can be cached under several ids (the real id and the id from
+        the link), so all of them are removed together.
+
+        :param source: The source of the content.
+        :param file_id: Telegram file_id of the cached file.
+        """
+        await self.session.execute(
+            delete(CacheModel).where(
+                CacheModel.source == source,
+                CacheModel.file_id == file_id,
+            ),
+        )
+        await self._release()
 
     async def get_by_filters(
         self,

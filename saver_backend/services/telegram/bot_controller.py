@@ -1184,15 +1184,18 @@ class TelegramBotController:
                 f"  user_id={telegram_id}"
             )
             return message.video
-        except (TelegramForbiddenError, TelegramBadRequest) as e:
+        except TelegramForbiddenError as e:
             logging.warning(
-                "Failed to send video by file_id %s to user %s: %s. "
-                "Cache might be invalid.",
+                "Failed to send video by file_id %s to user %s: %s",
                 file_id,
                 telegram_id,
                 e,
             )
             return None
+        except TelegramBadRequest:
+            # Telegram rejected the cached file; the caller drops the cache
+            # entry and downloads the video again.
+            raise
         except Exception as e:
             if settings.environment == "local":
                 logging.exception(e)
