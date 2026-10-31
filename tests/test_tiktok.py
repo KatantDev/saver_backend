@@ -1,9 +1,10 @@
 import time
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import URLInputFile
+from aiogram.types import FSInputFile, URLInputFile
 from fakeredis.aioredis import FakeRedis
 
 from saver_backend.entities.enums import SourceEnum
@@ -131,8 +132,51 @@ async def test_requests_wait_for_their_turn() -> None:
 
 
 @pytest.mark.anyio
-async def test_uploads_video_when_telegram_cannot_fetch_url() -> None:
-    """Videos over Telegram's URL limit are uploaded as files."""
+async def test_uploads_video_when_telegram_cannot_fetch_url(tmp_path: Path) -> None:
+    """Videos over Telegram's URL limit are downloaded and uploaded as files."""
+    bot_controller = MagicMock()
+    sent = MagicMock()
+    bot_controller._bot.send_video = AsyncMock(  # noqa: SLF001
+        side_effect=[
+            TelegramBadRequest(method=MagicMock(), message="failed to get HTTP URL"),
+            sent,
+        ],
+    )
+    video = VideoDTO(url=URL, source_id="1", direct_download_url="https://v/1.mp4")
+    downloaded = tmp_path / "video.mp4"
+    downloaded.write_bytes(b"video")
+
+    with (
+        patch.object(
+            bot_controller_module,
+            "_download_to_temp_file",
+            AsyncMock(return_value=downloaded),
+        ),
+        patch.object(
+            bot_controller_module,
+            "_probe_video_size",
+            AsyncMock(return_value=(576, 1024)),
+        ) as probe,
+    ):
+        message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
+            bot_controller,
+            video=video,
+            video_input="https://v/1.mp4",
+            chat_id=1,
+        )
+
+    assert message is sent
+    probe.assert_awaited_once_with(str(downloaded))
+    retry = bot_controller._bot.send_video.await_args_list[1]  # noqa: SLF001
+    assert isinstance(retry.kwargs["video"], FSInputFile)
+    assert retry.kwargs["width"] == 576
+    assert retry.kwargs["height"] == 1024
+    assert not downloaded.exists()
+
+
+@pytest.mark.anyio
+async def test_falls_back_to_url_upload_when_download_fails() -> None:
+    """If the file cannot be downloaded, Telegram gets the URL to stream."""
     bot_controller = MagicMock()
     sent = MagicMock()
     bot_controller._bot.send_video = AsyncMock(  # noqa: SLF001
@@ -145,8 +189,8 @@ async def test_uploads_video_when_telegram_cannot_fetch_url() -> None:
 
     with patch.object(
         bot_controller_module,
-        "_probe_video_size",
-        AsyncMock(return_value=(576, 1024)),
+        "_download_to_temp_file",
+        AsyncMock(side_effect=OSError("disk full")),
     ):
         message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
             bot_controller,
@@ -158,5 +202,3 @@ async def test_uploads_video_when_telegram_cannot_fetch_url() -> None:
     assert message is sent
     retry = bot_controller._bot.send_video.await_args_list[1]  # noqa: SLF001
     assert isinstance(retry.kwargs["video"], URLInputFile)
-    assert retry.kwargs["width"] == 576
-    assert retry.kwargs["height"] == 1024

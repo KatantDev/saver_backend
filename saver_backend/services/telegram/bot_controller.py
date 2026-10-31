@@ -1,10 +1,13 @@
 import asyncio
 import logging
+import os
+import tempfile
 import uuid
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Awaitable, Sequence, cast
 
+import aiohttp
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -66,9 +69,9 @@ _LAST_MESSAGE_ID: ContextVar[int | None] = ContextVar(
 
 async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | None:
     """
-    Read the frame size of a remote video with ffprobe.
+    Read the frame size of a video with ffprobe.
 
-    :param url: Direct URL of the video.
+    :param url: Path or URL of the video.
     :param timeout: Seconds to wait for ffprobe.
     :return: (width, height), or None if it could not be read.
     """
@@ -85,23 +88,58 @@ async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | 
             "csv=p=0:s=x",
             url,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
         )
-    except OSError:
+    except OSError as e:
+        logging.warning("ffprobe could not start: %s", e)
         return None
     try:
-        stdout, _stderr = await asyncio.wait_for(process.communicate(), timeout)
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
     except TimeoutError:
         process.kill()
         await process.wait()
+        logging.warning("ffprobe timed out on %s", url)
         return None
     try:
         width, height = (int(x) for x in stdout.decode().strip().split("x")[:2])
     except ValueError:
+        logging.warning(
+            "ffprobe could not read the frame size of %s: %s",
+            url,
+            stderr.decode(errors="replace").strip()[:300],
+        )
         return None
     if width <= 0 or height <= 0:
         return None
     return width, height
+
+
+async def _download_to_temp_file(url: str, timeout: float = 600) -> Path:
+    """
+    Download a file to a temporary path.
+
+    :param url: Direct URL of the file.
+    :param timeout: Seconds allowed for the whole download.
+    :return: Path of the downloaded file; the caller deletes it.
+    """
+    fd, name = tempfile.mkstemp(prefix="saver_upload_", suffix=".mp4")
+    os.close(fd)
+    path = Path(name)
+    try:
+        async with (
+            aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=timeout),
+            ) as session,
+            session.get(url) as response,
+        ):
+            response.raise_for_status()
+            with path.open("wb") as file:
+                async for chunk in response.content.iter_chunked(1024 * 1024):
+                    file.write(chunk)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return path
 
 
 class TelegramBotController:
@@ -1042,19 +1080,28 @@ class TelegramBotController:
             "Telegram could not fetch the URL, uploading the file instead: user_id=%s",
             kwargs.get("chat_id"),
         )
-        # Telegram does not read the frame size of an uploaded file, without it
-        # the video is shown as a 320x320 square.
-        if not kwargs.get("width") or not kwargs.get("height"):
-            size = await _probe_video_size(video.direct_download_url)
-            if size:
-                kwargs["width"], kwargs["height"] = size
-        return await self._bot.send_video(
-            video=URLInputFile(
-                url=video.direct_download_url,
-                filename=(video.filename or video.direct_download_url),
-            ),
-            **kwargs,
-        )
+        filename = video.filename or video.direct_download_url
+        try:
+            path = await _download_to_temp_file(video.direct_download_url)
+        except Exception as e:
+            logging.warning("Could not download %s for upload: %s", filename, e)
+            return await self._bot.send_video(
+                video=URLInputFile(url=video.direct_download_url, filename=filename),
+                **kwargs,
+            )
+        try:
+            # Telegram does not read the frame size of an uploaded file,
+            # without it the video is shown as a 320x320 square.
+            if not kwargs.get("width") or not kwargs.get("height"):
+                size = await _probe_video_size(str(path))
+                if size:
+                    kwargs["width"], kwargs["height"] = size
+            return await self._bot.send_video(
+                video=FSInputFile(path=path, filename=filename),
+                **kwargs,
+            )
+        finally:
+            path.unlink(missing_ok=True)
 
     async def send_finish_downloading(
         self,
