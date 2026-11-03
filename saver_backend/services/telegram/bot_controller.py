@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Awaitable, Sequence, cast
 
@@ -46,6 +47,7 @@ from saver_backend.services.downloaders.schema import (
     VideoDTO,
 )
 from saver_backend.services.i18n import gettext as _
+from saver_backend.services.telegram.retry_after import RetryAfterMiddleware
 from saver_backend.settings import settings
 from saver_backend.telegram_bot.keyboards import inline
 from saver_backend.telegram_bot.middlewares.controller_provider import (
@@ -54,6 +56,52 @@ from saver_backend.telegram_bot.middlewares.controller_provider import (
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
 from saver_backend.telegram_bot.middlewares.user import UserMiddleware
+
+_LANGUAGE: ContextVar[str | None] = ContextVar("bot_language", default=None)
+_LAST_MESSAGE_ID: ContextVar[int | None] = ContextVar(
+    "bot_last_message_id",
+    default=None,
+)
+
+
+async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | None:
+    """
+    Read the frame size of a remote video with ffprobe.
+
+    :param url: Direct URL of the video.
+    :param timeout: Seconds to wait for ffprobe.
+    :return: (width, height), or None if it could not be read.
+    """
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0:s=x",
+            url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError:
+        return None
+    try:
+        stdout, _stderr = await asyncio.wait_for(process.communicate(), timeout)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        return None
+    try:
+        width, height = (int(x) for x in stdout.decode().strip().split("x")[:2])
+    except ValueError:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return width, height
 
 
 class TelegramBotController:
@@ -78,13 +126,13 @@ class TelegramBotController:
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
             timeout=180,
         )
+        self._session.middleware(RetryAfterMiddleware())
         self._bot = Bot(
             session=self._session,
             token=settings.telegram_bot_token,
             default=default,
             **kwargs,
         )
-        self.language: str | None = None
 
         self._redis = Redis.from_url(str(settings.redis_url))
         storage = RedisStorage(redis=self._redis)
@@ -92,7 +140,27 @@ class TelegramBotController:
             main_bot=self._bot,
             storage=storage,
         )
-        self.last_message_id: int | None = None
+
+    # One controller serves every request in the process, so per-user state
+    # lives in context variables: each update and each task runs in its own
+    # asyncio task and sees only the values it set itself.
+    @property
+    def language(self) -> str | None:
+        """Language of the user whose request is being handled."""
+        return _LANGUAGE.get()
+
+    @language.setter
+    def language(self, value: str | None) -> None:
+        _LANGUAGE.set(value)
+
+    @property
+    def last_message_id(self) -> int | None:
+        """Id of the last message sent while handling the current request."""
+        return _LAST_MESSAGE_ID.get()
+
+    @last_message_id.setter
+    def last_message_id(self, value: int | None) -> None:
+        _LAST_MESSAGE_ID.set(value)
 
     @property
     def bot(self) -> Bot:
@@ -220,8 +288,9 @@ class TelegramBotController:
         try:
             await coro
         except TelegramRetryAfter as e:
-            await asyncio.sleep(e.retry_after)
-            await self._send(coro=coro)
+            # The session already waited and repeated the request
+            # (RetryAfterMiddleware); a coroutine cannot be awaited twice.
+            logging.warning("Telegram flood control, request dropped: %s", e)
         except TelegramBadRequest as e:
             message = (e.message or "").lower()
             if any(
@@ -948,6 +1017,45 @@ class TelegramBotController:
 
         return media_group
 
+    async def _send_video_or_upload(
+        self,
+        video: VideoDTO,
+        video_input: str | FSInputFile | URLInputFile,
+        **kwargs: Any,
+    ) -> Message:
+        """
+        Send a video, uploading it ourselves if Telegram cannot fetch the URL.
+
+        :param video: VideoDTO.
+        :param video_input: URL or file to send.
+        :param kwargs: Other send_video arguments.
+        :return: Sent message.
+        """
+        try:
+            return await self._bot.send_video(video=video_input, **kwargs)
+        except TelegramBadRequest:
+            if not isinstance(video_input, str) or not video.direct_download_url:
+                raise
+        # Telegram fetches files by URL only up to 20 MB,
+        # bigger ones have to be downloaded and uploaded by us.
+        logging.info(
+            "Telegram could not fetch the URL, uploading the file instead: user_id=%s",
+            kwargs.get("chat_id"),
+        )
+        # Telegram does not read the frame size of an uploaded file, without it
+        # the video is shown as a 320x320 square.
+        if not kwargs.get("width") or not kwargs.get("height"):
+            size = await _probe_video_size(video.direct_download_url)
+            if size:
+                kwargs["width"], kwargs["height"] = size
+        return await self._bot.send_video(
+            video=URLInputFile(
+                url=video.direct_download_url,
+                filename=(video.filename or video.direct_download_url),
+            ),
+            **kwargs,
+        )
+
     async def send_finish_downloading(
         self,
         video: VideoDTO,
@@ -998,17 +1106,19 @@ class TelegramBotController:
                 "Cannot send video: No direct URL or valid file path provided.",
             )
             return None
+        caption = _(
+            "result direct message",
+            locale=language or self.language,
+        ).format(
+            url="",
+            title=video.title_html,
+        )
         try:
-            message = await self._bot.send_video(
+            message = await self._send_video_or_upload(
+                video=video,
+                video_input=video_input,
                 chat_id=telegram_id,
-                video=video_input,
-                caption=_(
-                    "result direct message",
-                    locale=language or self.language,
-                ).format(
-                    url="",
-                    title=video.title_html,
-                ),
+                caption=caption,
                 width=video.width,
                 height=video.height,
                 duration=video.duration,
@@ -1165,6 +1275,15 @@ class TelegramBotController:
                 locale=language or self.language,
             ).format(url=resolution_url),
         )
+        await self._send(coro)
+
+    async def send_admin_message(self, text: str) -> None:
+        """
+        Send a service message to the admin chat.
+
+        :param text: Message text.
+        """
+        coro = self._bot.send_message(chat_id=settings.admin_chat_id, text=text)
         await self._send(coro)
 
     async def delete_message(self, telegram_id: int, message_id: int) -> None:

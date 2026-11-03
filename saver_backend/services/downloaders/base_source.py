@@ -236,8 +236,12 @@ class BaseSourceController(ABC):
         )
 
         if telegram_video:
+            # The progress message is deleted by send_finish_downloading
+            self._message_id = None
             cache_model = await self._save_content_to_cache(video_dto, telegram_video)
             await self._create_history_entry(cache_model)
+        elif not self._inline_query_id:
+            await self._send_error_message()
 
         if self._inline_query_id:
             await self._answer_inline_query(

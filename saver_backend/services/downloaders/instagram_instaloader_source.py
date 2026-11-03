@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from pathlib import Path
 from typing import Any, ClassVar
 
 import instaloader
@@ -13,6 +12,10 @@ from instaloader.structures import Post, PostSidecarNode, Profile, StoryItem
 from saver_backend.entities.enums import InstagramContentTypeEnum, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.instagram_session import (
+    request_session_check,
+    session_path,
+)
 from saver_backend.services.downloaders.schema import PhotoDTO, VideoDTO
 from saver_backend.settings import settings
 
@@ -41,19 +44,20 @@ class InstagramInstaloaderController(BaseSourceController):
 
     async def _try_login_with_session(self, login: str) -> bool:
         """Tries to load a session for a given username."""
-        session_path = Path(f"cookies/{self.SOURCE.value}/{login}.session")
-        if not session_path.exists():
+        path = session_path(login)
+        if not path.exists():
             logging.error(
                 "Instaloader session file not found for %s at %s",
                 login,
-                session_path,
+                path,
             )
+            await request_session_check()
             return False
 
         try:
             self._instaloader_client.load_session_from_file(
                 username=login,
-                filename=str(session_path),
+                filename=str(path),
             )
             self._process_percent(percent=16)
             logging.info("Instaloader session successfully loaded for user %s", login)

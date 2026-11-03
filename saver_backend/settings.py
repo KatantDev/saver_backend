@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     subscription_channels: list[str] = ["channel_username"]
     admin_chat_id: int = -4816121008
     instagram_account: str = "username:password"
+    # Authenticator app secret of the Instagram account, used to pass 2FA on login
+    instagram_totp_secret: Optional[str] = None
 
     # VK Configuration
     vk_service_token: list[str] = ["vk_token"]
