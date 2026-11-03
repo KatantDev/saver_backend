@@ -36,7 +36,7 @@ class CacheDAO(BaseDAO):
             meta_data=cache_dto.meta_data.model_dump(mode="json"),
         )
         self.session.add(model)
-        await self.session.flush()
+        await self._release()
         return model
 
     async def get_by_filters(
@@ -64,7 +64,9 @@ class CacheDAO(BaseDAO):
             query = query.where(CacheModel.content_type == content_type)
 
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        model = result.scalar_one_or_none()
+        await self._release()
+        return model
 
     async def get_latest(
         self,
@@ -89,7 +91,9 @@ class CacheDAO(BaseDAO):
 
         query = query.limit(limit)
         result = await self.session.execute(query)
-        return list(result.scalars().all())
+        models = list(result.scalars().all())
+        await self._release()
+        return models
 
     async def update_or_create(
         self,
@@ -134,5 +138,6 @@ class CacheDAO(BaseDAO):
         returning_stmt = stmt.returning(CacheModel)
 
         result = await self.session.execute(returning_stmt)
-        await self.session.flush()
-        return result.scalar_one_or_none()
+        model = result.scalar_one_or_none()
+        await self._release()
+        return model

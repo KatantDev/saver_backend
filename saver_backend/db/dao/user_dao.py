@@ -35,7 +35,7 @@ class UserDAO(BaseDAO):
             lang=language_code,
         )
         self.session.add(model)
-        await self.session.flush([model])
+        await self._release()
         return model
 
     async def update(
@@ -66,6 +66,7 @@ class UserDAO(BaseDAO):
             )
         )
         await self.session.execute(query)
+        await self._release()
 
     async def get_by_id(
         self,
@@ -76,14 +77,18 @@ class UserDAO(BaseDAO):
         Get user by telegram id.
 
         :param telegram_id: telegram id of a user.
-        :param with_for_update: if True, lock the row for update.
+        :param with_for_update: if True, lock the row for update. The
+            transaction then stays open, and the caller has to end it.
         :return: user model.
         """
         query = select(UserModel).where(UserModel.telegram_id == telegram_id)
         if with_for_update:
             query = query.with_for_update()
         result = await self.session.execute(query)
-        return result.scalar()
+        user = result.scalar()
+        if not with_for_update:
+            await self._release()
+        return user
 
     async def get_language(self, telegram_id: int) -> str:
         """
@@ -108,4 +113,6 @@ class UserDAO(BaseDAO):
         if created_after:
             query = query.where(UserModel.created_at >= created_after)
         result = await self.session.execute(query)
-        return result.scalar() or 0
+        count = result.scalar() or 0
+        await self._release()
+        return count

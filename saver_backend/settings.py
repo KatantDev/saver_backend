@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     db_pass: str = "saver_backend"
     db_base: str = "saver_backend"
     db_echo: bool = False
+    # Per process: the API and each taskiq worker process get their own pool,
+    # and all of them together must stay below Postgres max_connections (100).
+    db_pool_size: int = 5
+    db_max_overflow: int = 15
 
     # Variables for Redis
     redis_host: str = "saver_backend-redis"
