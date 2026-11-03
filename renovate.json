@@ -144,6 +144,13 @@
       "schedule": ["at any time"]
     },
     {
+      "description": "yt-dlp: raise the lower bound on every release. With the default `replace` strategy a new release still fits `>=X,<2027`, so Renovate opened no PR and the version only moved with lock-file maintenance, which nobody merged — the bot ran a two-month-old yt-dlp. `bump` makes each release its own PR to `dev` that auto-merges after the checks (sites break often, fixes land in yt-dlp within days).",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": ["yt-dlp"],
+      "rangeStrategy": "bump",
+      "automerge": true
+    },
+    {
       "description": "Group Instagram-related libraries together so a tightening on Instagram's side surfaces as one PR rather than several uncorrelated bumps. Currently only Instaloader is wired (the Instaloader controller covers `/stories/`); the `indown.io` source is a custom HTTP scraper, not a packaged library, so nothing else lands in this group today.",
       "matchManagers": ["pep621"],
       "matchPackageNames": ["instaloader"],
