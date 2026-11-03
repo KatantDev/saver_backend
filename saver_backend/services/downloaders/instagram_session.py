@@ -21,8 +21,14 @@ LAST_LOGIN_FILE = COOKIES_DIR / SourceEnum.INSTAGRAM_INSTALOADER.value / ".last_
 LAST_CHECK_REQUEST_FILE = (
     COOKIES_DIR / SourceEnum.INSTAGRAM_INSTALOADER.value / ".last_check_request"
 )
+LOGIN_FAILED_FILE = (
+    COOKIES_DIR / SourceEnum.INSTAGRAM_INSTALOADER.value / ".login_failed"
+)
 # Logging in from a server IP too often gets the account flagged
 MIN_LOGIN_INTERVAL = 60 * 60
+# After a failed login (wrong password, checkpoint) wait for a person instead of
+# hammering Instagram every hour, which is how accounts get locked
+LOGIN_PAUSE_AFTER_FAILURE = 24 * 60 * 60
 MIN_CHECK_REQUEST_INTERVAL = 10 * 60
 LOGIN_REQUIRED_HINTS = ("login required", "log in", "empty media response")
 
@@ -73,15 +79,32 @@ def _new_loader() -> instaloader.Instaloader:
     )
 
 
+def _age(path: Path) -> float | None:
+    if not path.exists():
+        return None
+    return time.time() - path.stat().st_mtime
+
+
 def _login_allowed() -> bool:
-    if not LAST_LOGIN_FILE.exists():
-        return True
-    return time.time() - LAST_LOGIN_FILE.stat().st_mtime >= MIN_LOGIN_INTERVAL
+    failed_age = _age(LOGIN_FAILED_FILE)
+    if failed_age is not None and failed_age < LOGIN_PAUSE_AFTER_FAILURE:
+        return False
+    last_age = _age(LAST_LOGIN_FILE)
+    return last_age is None or last_age >= MIN_LOGIN_INTERVAL
 
 
 def _login(loader: instaloader.Instaloader, login: str, password: str) -> None:
     LAST_LOGIN_FILE.parent.mkdir(parents=True, exist_ok=True)
     LAST_LOGIN_FILE.touch()
+    try:
+        _try_login(loader, login, password)
+    except InstagramSessionError:
+        LOGIN_FAILED_FILE.touch()
+        raise
+    LOGIN_FAILED_FILE.unlink(missing_ok=True)
+
+
+def _try_login(loader: instaloader.Instaloader, login: str, password: str) -> None:
     try:
         loader.login(login, password)
     except TwoFactorAuthRequiredException as error:
@@ -132,7 +155,11 @@ def refresh_session() -> bool:
 
         if not _login_allowed():
             logging.warning(
-                "Instagram login for %s skipped: tried less than an hour ago", login
+                "Instagram login for %s skipped: tried recently or the last "
+                "login failed (pause %s h, delete %s to retry now)",
+                login,
+                LOGIN_PAUSE_AFTER_FAILURE // 3600,
+                LOGIN_FAILED_FILE,
             )
             return False
 
