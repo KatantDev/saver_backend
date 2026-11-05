@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Audio, Message, Video
 
 from saver_backend.db.models.cache_model import CacheModel
@@ -433,8 +434,6 @@ class BaseSourceController(ABC):
         if not cached_item or not isinstance(cached_item.meta_data_dto, VideoDTO):
             return False
 
-        await self._create_history_entry(cached_item)
-
         logging.info(
             "Cache hit for source_id=%s, quality=%s. Sending by file_id.",
             source_id,
@@ -443,17 +442,35 @@ class BaseSourceController(ABC):
         video_dto = cached_item.meta_data_dto
 
         if self._inline_query_id:
+            await self._create_history_entry(cached_item)
             await self._telegram_bot_controller.answer_inline_query_cached_video(
                 inline_query_id=self._inline_query_id,
                 video_dto=video_dto,
                 file_id=cached_item.file_id,
             )
-        else:
-            await self.delete_processing_message()
+            return True
+
+        try:
             await self._telegram_bot_controller.send_video_by_file_id(
                 telegram_id=self._telegram_id,
                 cache_item=cached_item,
             )
+        except TelegramBadRequest as e:
+            # A broken entry would fail for every user forever:
+            # drop it and download the video again.
+            logging.warning(
+                "Telegram rejected cached file for source_id=%s, downloading again: %s",
+                source_id,
+                e,
+            )
+            await self._cache_dao.delete_by_file_id(
+                source=self.SOURCE,
+                file_id=cached_item.file_id,
+            )
+            return False
+
+        await self._create_history_entry(cached_item)
+        await self.delete_processing_message()
         return True
 
     async def _create_history_entry(

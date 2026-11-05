@@ -42,6 +42,8 @@ jobs:
           username: ${{ secrets.SSH_USER }} # из env dev/prod
           key: ${{ secrets.SSH_KEY }}       # из env dev/prod
           port: ${{ secrets.SSH_PORT }}     # (опц.) из env dev/prod
+          # Сборка + до 600s stop_grace_period старого воркера не влезают в 10m по умолчанию
+          command_timeout: 20m
           envs: GH_APP_TOKEN,DEPLOY_PATH
           script_stop: true
           script: |

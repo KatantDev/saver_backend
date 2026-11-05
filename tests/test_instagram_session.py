@@ -1,3 +1,5 @@
+import os
+import time
 from http.cookiejar import Cookie
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -48,6 +50,11 @@ def cookies_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         instagram_session,
         "LAST_LOGIN_FILE",
         tmp_path / "instagram_instaloader" / ".last_login",
+    )
+    monkeypatch.setattr(
+        instagram_session,
+        "LOGIN_FAILED_FILE",
+        tmp_path / "instagram_instaloader" / ".login_failed",
     )
     monkeypatch.setattr(instagram_session.settings, "instagram_account", "bot:secret")
     monkeypatch.setattr(instagram_session.settings, "instagram_totp_secret", None)
@@ -141,6 +148,40 @@ def test_login_is_not_retried_within_an_hour(cookies_dir: Path) -> None:
         assert refresh_session() is False
 
     assert loader.login.call_count == 1
+
+
+def test_failed_login_pauses_retries_for_a_day(cookies_dir: Path) -> None:
+    """After a failed login the bot waits a day, not an hour, before retrying."""
+    loader = _loader()
+    loader.login.side_effect = LoginException("Login: Checkpoint required.")
+    last_login = cookies_dir / "instagram_instaloader" / ".last_login"
+    failed = cookies_dir / "instagram_instaloader" / ".login_failed"
+
+    with patch.object(instagram_session, "_new_loader", return_value=loader):
+        with pytest.raises(InstagramSessionError):
+            refresh_session()
+        two_hours_ago = time.time() - 2 * 3600
+        os.utime(last_login, (two_hours_ago, two_hours_ago))
+        os.utime(failed, (two_hours_ago, two_hours_ago))
+        assert refresh_session() is False
+
+    assert loader.login.call_count == 1
+
+
+def test_successful_login_clears_the_pause(cookies_dir: Path) -> None:
+    """A login more than a day after the failure is tried, and success clears it."""
+    failed = cookies_dir / "instagram_instaloader" / ".login_failed"
+    failed.parent.mkdir(parents=True)
+    failed.touch()
+    day_ago = time.time() - 25 * 3600
+    os.utime(failed, (day_ago, day_ago))
+    loader = _loader()
+
+    with patch.object(instagram_session, "_new_loader", return_value=loader):
+        assert refresh_session() is True
+
+    loader.login.assert_called_once()
+    assert not failed.exists()
 
 
 def test_not_configured_account_is_skipped(

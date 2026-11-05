@@ -16,15 +16,19 @@ tasks:
     cmds:
       - "{{.DOCKER_COMPOSE}} build"
       - |
+        set -e
         # Check if api and taskiq-worker already started
         API_RUNNING=$({{.DOCKER_COMPOSE}} ps -q --status running api)
         WORKER_RUNNING=$({{.DOCKER_COMPOSE}} ps -q --status running taskiq-worker)
         if [ -n "$API_RUNNING" ] && [ -n "$WORKER_RUNNING" ]; then
           echo "✅ Containers running, performing rollout..."
+          # Migrate before the new code starts; a failed migration stops the deploy
+          {{.DOCKER_COMPOSE}} run --rm migrator
           docker rollout api
-          {{.DOCKER_COMPOSE}} up migrator -d
           {{.DOCKER_COMPOSE}} exec nginx nginx -s reload
           docker rollout taskiq-worker
+          # docker rollout does not cover the scheduler: recreate it on the new image
+          {{.DOCKER_COMPOSE}} up -d --no-deps taskiq-scheduler
         else
           echo "⚙️ Containers not running, starting with docker compose up..."
           {{.DOCKER_COMPOSE}} up --build -d

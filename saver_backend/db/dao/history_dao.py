@@ -35,7 +35,7 @@ class HistoryDAO(BaseDAO):
             url=url,
         )
         self.session.add(model)
-        await self.session.flush()
+        await self._release()
 
     async def get_user_history_with_cache(
         self,
@@ -71,11 +71,13 @@ class HistoryDAO(BaseDAO):
         )
 
         result = await self.session.execute(query)
-        return [
+        cached_items = [
             history_item.cache
             for history_item in result.scalars().all()
             if history_item.cache
         ]
+        await self._release()
+        return cached_items
 
     async def get_count(self, created_after: datetime | None = None) -> int:
         """
@@ -88,7 +90,9 @@ class HistoryDAO(BaseDAO):
         if created_after:
             query = query.where(HistoryModel.created_at >= created_after)
         result = await self.session.execute(query)
-        return result.scalar() or 0
+        count = result.scalar() or 0
+        await self._release()
+        return count
 
     async def get_active_users_count(self, created_after: datetime) -> int:
         """
@@ -103,7 +107,9 @@ class HistoryDAO(BaseDAO):
             HistoryModel.created_at >= created_after,
         )
         result = await self.session.execute(query)
-        return result.scalar() or 0
+        count = result.scalar() or 0
+        await self._release()
+        return count
 
     async def get_counts_by_source(self) -> list[tuple[SourceEnum, int]]:
         """
@@ -118,4 +124,5 @@ class HistoryDAO(BaseDAO):
         )
         result = await self.session.execute(query)
         rows = result.all()
+        await self._release()
         return [(SourceEnum(source), count) for source, count in rows]
