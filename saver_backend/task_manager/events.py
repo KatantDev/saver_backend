@@ -4,6 +4,7 @@ from aiogram.utils.i18n import I18n
 from taskiq import TaskiqEvents, TaskiqState
 
 from saver_backend.db.lifespan import init_db, shutdown_db
+from saver_backend.services.downloaders.instagram_session import request_session_check
 from saver_backend.services.telegram.bot_controller import TelegramBotController
 from saver_backend.tkq import broker
 
@@ -26,6 +27,12 @@ async def startup(state: TaskiqState) -> None:
     me = await telegram_bot_controller.bot.get_me()
     state.telegram_bot_controller = telegram_bot_controller
     logging.info(f"Bot {me.username} ({me.full_name}) started.")
+
+    # Log in to Instagram now instead of waiting for the 6-hourly schedule
+    try:
+        await request_session_check()
+    except Exception:
+        logging.exception("Could not queue the Instagram session check")
 
     logging.info("Taskiq worker startup")
 

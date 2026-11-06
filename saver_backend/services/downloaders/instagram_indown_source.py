@@ -10,10 +10,18 @@ import ffmpeg
 import httpx
 from httpx import AsyncClient
 
-from saver_backend.entities.enums import FsmKeysEnum, ProxyType, SourceEnum
+from saver_backend.entities.enums import (
+    FsmKeysEnum,
+    InstagramContentTypeEnum,
+    ProxyType,
+    SourceEnum,
+)
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.exceptions import InstaIndownError
+from saver_backend.services.downloaders.instagram_instaloader_source import (
+    InstagramInstaloaderController,
+)
 from saver_backend.services.downloaders.instagram_session import (
     is_login_required_error,
     request_session_check,
@@ -263,7 +271,7 @@ class InstagramInDownController(BaseSourceController):
             form_fields = await self._get_form_fields(referer_url)
             if not form_fields:
                 logging.error("Could not fetch CSRF token from indown.io")
-                await self._fallback_to_ydl()
+                await self._fallback()
                 return
             token = form_fields[0]
             referer = form_fields[1]
@@ -290,15 +298,15 @@ class InstagramInDownController(BaseSourceController):
                 html = response.text
             except Exception as e:
                 logging.exception(f"Failed to fetch data from indown.io: {e}")
-                await self._fallback_to_ydl()
+                await self._fallback()
                 return
 
             self._process_percent(40)
 
             if "Not Found" in html or "Private Video" in html:
-                await self._telegram_bot_controller.send_content_not_found_error(
-                    self._telegram_id,
-                )
+                # indown.io has no login, so content for logged-in users looks
+                # missing to it; the service account may still see it
+                await self._fallback(not_found=True)
                 return
 
             # 5. Parse and Send
@@ -315,14 +323,48 @@ class InstagramInDownController(BaseSourceController):
                 await self._send_media_result(media_items)
             except InstaIndownError:
                 self.cleanup_files(media_items)
-                await self._fallback_to_ydl()
+                await self._fallback()
             return
 
         logging.warning("No media found in indown.io response.")
-        await self._fallback_to_ydl()
+        await self._fallback()
 
-    async def _fallback_to_ydl(self) -> None:
-        """Retry the download through yt-dlp when indown.io fails."""
+    async def _fallback(self, not_found: bool = False) -> None:
+        """
+        Retry the download with the service account session when indown.io fails.
+
+        Stories go to instaloader, which picks the exact story item; the rest go
+        to yt-dlp with the session cookies.
+
+        :param not_found: indown.io reported the content as missing or private.
+        """
+        if self._resolution.metadata.get("type") == InstagramContentTypeEnum.STORIES:
+            await self._fallback_to_instaloader()
+            return
+        await self._fallback_to_ydl(not_found=not_found)
+
+    async def _fallback_to_instaloader(self) -> None:
+        logging.warning(
+            "indown.io failed, falling back to instaloader: %s; user_id=%s",
+            self._resolution.url,
+            self._telegram_id,
+        )
+        controller = InstagramInstaloaderController(
+            resolution=self._resolution,
+            telegram_bot_controller=self._telegram_bot_controller,
+            telegram_id=self._telegram_id,
+            user_dao=self._user_dao,
+            history_dao=self._history_dao,
+            cache_dao=self._cache_dao,
+            message_id=self._message_id,
+            inline_query_id=self._inline_query_id,
+        )
+        try:
+            await controller.download_video()
+        finally:
+            await controller.close()
+
+    async def _fallback_to_ydl(self, not_found: bool = False) -> None:
         logging.warning(
             "indown.io failed, falling back to yt-dlp: %s; user_id=%s",
             self._resolution.url,
@@ -343,11 +385,24 @@ class InstagramInDownController(BaseSourceController):
         except Exception as error:
             logging.exception("yt-dlp fallback failed: %s", self._resolution.url)
             self._message_id = controller.message_id
-            await self._send_error_message()
+            if not_found and not self._inline_query_id:
+                await self._send_not_found_message()
+            else:
+                await self._send_error_message()
             if is_login_required_error(error):
                 await request_session_check()
         finally:
             await controller.close()
+
+    async def _send_not_found_message(self) -> None:
+        if self._message_id:
+            await self._telegram_bot_controller.delete_message(
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+            )
+        await self._telegram_bot_controller.send_content_not_found_error(
+            self._telegram_id,
+        )
 
     def _create_dto(
         self,
