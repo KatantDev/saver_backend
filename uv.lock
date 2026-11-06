@@ -2160,7 +2160,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.41.0,<1" },
     { name = "vkbottle", specifier = ">=4.6.2" },
     { name = "yarl", specifier = ">=1.18.3,<2" },
-    { name = "ymdantic", specifier = ">=0.2.4,<1" },
+    { name = "ymdantic", specifier = ">=0.2.5,<1" },
     { name = "yt-dlp", extras = ["curl-cffi", "default"], specifier = ">=2026.7.4,<2027" },
 ]
 
@@ -2764,7 +2764,7 @@ wheels = [
 
 [[package]]
 name = "ymdantic"
-version = "0.2.4"
+version = "0.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2772,9 +2772,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "strenum" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/87/ea2c0f2b89c26a9f30d15e47781d9465c362cf89a1ff8a958cd714a80ffc/ymdantic-0.2.4.tar.gz", hash = "sha256:14c0d59bbb8709702431c1625e8301ad065c3b248f9b24e6782087e9378fce68", size = 119593, upload-time = "2026-11-05T03:01:40.26Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/c8/a575ef63465dcb33296adf9efbc4cc6a2ad2ddd050978cd5d91800e929ee/ymdantic-0.2.5.tar.gz", hash = "sha256:8663b9f8a5168d98c1ab77467992a25197661acea35c4268e851dae0204a477e", size = 120594, upload-time = "2026-11-06T06:56:20.333Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/13/bc06eccfb7cd30e296a01ce5bf73c52befc1a76c10dfd90537f41e0ecffe/ymdantic-0.2.4-py3-none-any.whl", hash = "sha256:fc41d02bf8b7cb3f49cbffb3caf1d744dc190e90f66a794bfae73e1d8b1d5898", size = 79731, upload-time = "2026-11-05T03:01:39.054Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/9c/b88e24a5a926807eb14db730974d38383e2131c614981872736d9d1f6a99/ymdantic-0.2.5-py3-none-any.whl", hash = "sha256:f87a3a10da8aecc8282f6c20b6987e0bfec2517e9de8ea37659c64b644adb8f7", size = 80746, upload-time = "2026-11-06T06:56:19.049Z" },
 ]
 
 [[package]]
