@@ -58,6 +58,7 @@ from saver_backend.telegram_bot.middlewares.controller_provider import (
 )
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
+from saver_backend.telegram_bot.middlewares.request_log import RequestLogMiddleware
 from saver_backend.telegram_bot.middlewares.user import UserMiddleware
 
 _LANGUAGE: ContextVar[str | None] = ContextVar("bot_language", default=None)
@@ -284,6 +285,7 @@ class TelegramBotController:
             ControllerProviderMiddleware(controller=self),
         )
         self._dispatcher.update.outer_middleware(UserMiddleware())
+        self._dispatcher.update.outer_middleware(RequestLogMiddleware())
         SimpleI18nMiddleware(self._i18n).setup(router=self._dispatcher)
 
     async def feed_update(self, update: Update) -> None:
