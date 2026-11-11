@@ -1069,6 +1069,18 @@ class TelegramBotController:
         :param kwargs: Other send_video arguments.
         :return: Sent message.
         """
+        # A file we upload ourselves carries no frame size, so without width and
+        # height Telegram shows it as a 320x320 square. The source should fill the
+        # size, but when its probe fails (e.g. indown + a flaky ffmpeg probe) read
+        # it here from the local file before the upload.
+        if (
+            isinstance(video_input, FSInputFile)
+            and video.path
+            and (not kwargs.get("width") or not kwargs.get("height"))
+        ):
+            size = await _probe_video_size(str(video.path))
+            if size:
+                kwargs["width"], kwargs["height"] = size
         try:
             return await self._bot.send_video(video=video_input, **kwargs)
         except TelegramBadRequest:

@@ -86,3 +86,80 @@ async def test_sends_error_when_fallback_fails() -> None:
     ydl.close.assert_awaited_once()
     telegram.send_error_downloading.assert_awaited_once()
     await controller.close()
+
+
+@pytest.mark.anyio
+async def test_story_falls_back_to_instaloader() -> None:
+    """Stories go to instaloader with the service account session, not yt-dlp."""
+    cache_dao = AsyncMock()
+    cache_dao.get_by_filters.return_value = None
+    telegram = AsyncMock()
+    telegram.get_fsm_data.return_value = None
+    controller = InstagramInDownController(
+        resolution=Resolution(
+            source=SourceEnum.INSTAGRAM_INDOWN,
+            url="https://www.instagram.com/stories/nasa/3500000000000000000/",
+            metadata={"user": "nasa", "code": "3500000000000000000", "type": "stories"},
+        ),
+        telegram_bot_controller=telegram,
+        telegram_id=1,
+        user_dao=AsyncMock(),
+        history_dao=AsyncMock(),
+        cache_dao=cache_dao,
+        message_id=1,
+    )
+    loader = AsyncMock()
+
+    with (
+        patch.object(controller, "_get_form_fields", AsyncMock(return_value=None)),
+        patch.object(
+            instagram_indown_source,
+            "InstagramInstaloaderController",
+            return_value=loader,
+        ) as loader_cls,
+        patch.object(instagram_indown_source, "InstagramYdlController") as ydl_cls,
+    ):
+        await controller.download_video()
+
+    loader_cls.assert_called_once()
+    loader.download_video.assert_awaited_once()
+    loader.close.assert_awaited_once()
+    ydl_cls.assert_not_called()
+    await controller.close()
+
+
+@pytest.mark.anyio
+async def test_not_found_tries_session_before_giving_up() -> None:
+    """Missing content is retried with the session; if that fails, it is 'not found'."""
+    controller, telegram = _controller()
+    form_fields = ["token", "https://indown.io/", "e", "e"]
+    response = AsyncMock()
+    response.text = "<html>Private Video</html>"
+    response.raise_for_status = lambda: None
+    ydl = AsyncMock()
+    ydl.message_id = 1
+    ydl.download_video.side_effect = RuntimeError("login required")
+
+    with (
+        patch.object(
+            controller,
+            "_get_form_fields",
+            AsyncMock(return_value=form_fields),
+        ),
+        patch.object(
+            instagram_indown_source,
+            "InstagramYdlController",
+            return_value=ydl,
+        ),
+        patch("httpx.AsyncClient.post", AsyncMock(return_value=response)),
+        patch.object(
+            instagram_indown_source, "request_session_check", AsyncMock()
+        ) as check,
+    ):
+        await controller.download_video()
+
+    ydl.download_video.assert_awaited_once()
+    telegram.send_content_not_found_error.assert_awaited_once()
+    telegram.send_error_downloading.assert_not_awaited()
+    check.assert_awaited_once()
+    await controller.close()

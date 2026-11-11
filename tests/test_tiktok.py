@@ -132,6 +132,67 @@ async def test_requests_wait_for_their_turn() -> None:
 
 
 @pytest.mark.anyio
+async def test_probes_local_file_when_size_missing(tmp_path: Path) -> None:
+    """A local file with no width/height is probed so Telegram keeps the real size."""
+    bot_controller = MagicMock()
+    sent = MagicMock()
+    bot_controller._bot.send_video = AsyncMock(return_value=sent)  # noqa: SLF001
+    local = tmp_path / "reel.mp4"
+    local.write_bytes(b"video")
+    video = VideoDTO(url=URL, source_id="1", path=local)
+
+    with patch.object(
+        bot_controller_module,
+        "_probe_video_size",
+        AsyncMock(return_value=(576, 1024)),
+    ) as probe:
+        message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
+            bot_controller,
+            video=video,
+            video_input=FSInputFile(path=local),
+            chat_id=1,
+            width=None,
+            height=None,
+        )
+
+    assert message is sent
+    probe.assert_awaited_once_with(str(local))
+    sent_call = bot_controller._bot.send_video.await_args_list[0]  # noqa: SLF001
+    assert sent_call.kwargs["width"] == 576
+    assert sent_call.kwargs["height"] == 1024
+
+
+@pytest.mark.anyio
+async def test_keeps_given_size_for_local_file(tmp_path: Path) -> None:
+    """A local file that already has a size is sent without an extra probe."""
+    bot_controller = MagicMock()
+    sent = MagicMock()
+    bot_controller._bot.send_video = AsyncMock(return_value=sent)  # noqa: SLF001
+    local = tmp_path / "reel.mp4"
+    local.write_bytes(b"video")
+    video = VideoDTO(url=URL, source_id="1", path=local, width=720, height=1280)
+
+    with patch.object(
+        bot_controller_module,
+        "_probe_video_size",
+        AsyncMock(return_value=(1, 1)),
+    ) as probe:
+        await TelegramBotController._send_video_or_upload(  # noqa: SLF001
+            bot_controller,
+            video=video,
+            video_input=FSInputFile(path=local),
+            chat_id=1,
+            width=720,
+            height=1280,
+        )
+
+    probe.assert_not_awaited()
+    sent_call = bot_controller._bot.send_video.await_args_list[0]  # noqa: SLF001
+    assert sent_call.kwargs["width"] == 720
+    assert sent_call.kwargs["height"] == 1280
+
+
+@pytest.mark.anyio
 async def test_uploads_video_when_telegram_cannot_fetch_url(tmp_path: Path) -> None:
     """Videos over Telegram's URL limit are downloaded and uploaded as files."""
     bot_controller = MagicMock()
