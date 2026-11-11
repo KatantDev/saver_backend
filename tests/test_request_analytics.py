@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiogram.types import Chat, Message
+from aiogram.types import Chat, Message, Update
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.telegram.request_report_service import (
@@ -61,6 +61,24 @@ async def test_ignores_messages_without_a_link() -> None:
     dao = await _run("hello there, how are you")
 
     dao.create.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_logs_request_wrapped_in_an_update() -> None:
+    """An update-level event (Update, not Message) is still logged."""
+    dao = AsyncMock()
+    user = MagicMock(id=uuid.uuid4())
+    handler = AsyncMock(return_value="ok")
+    data = {"user": user, "request_log_dao": dao}
+    update = Update.model_construct(
+        update_id=1,
+        message=_message("https://www.tiktok.com/@x/video/1"),
+    )
+    result = await RequestLogMiddleware()(handler, update, data)
+
+    assert result == "ok"
+    dao.create.assert_awaited_once()
+    assert dao.create.await_args.kwargs["host"] == "tiktok.com"
 
 
 @pytest.mark.anyio

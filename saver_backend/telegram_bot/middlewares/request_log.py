@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from urllib.parse import urlparse
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message, TelegramObject
+from aiogram.types import Message, TelegramObject, Update
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.resolver import SourceResolver
@@ -28,6 +28,15 @@ class RequestLogMiddleware(BaseMiddleware):
 
     def __init__(self) -> None:
         self._resolver = SourceResolver()
+
+    @staticmethod
+    def _message(event: TelegramObject) -> Message | None:
+        """Pull the message out of either a Message or an Update event."""
+        if isinstance(event, Message):
+            return event
+        if isinstance(event, Update):
+            return event.message
+        return None
 
     @staticmethod
     def _host(url: str) -> str:
@@ -56,7 +65,8 @@ class RequestLogMiddleware(BaseMiddleware):
         """
         user: "UserModel | None" = data.get("user")
         dao: "RequestLogDAO | None" = data.get("request_log_dao")
-        text = event.text if isinstance(event, Message) and event.text else ""
+        message = self._message(event)
+        text = message.text if message and message.text else ""
         if user is not None and dao is not None and text:
             resolution = self._resolver.resolve(text)
             # Only log messages that actually carry a link: a supported source,
