@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from saver_backend.db.dao.cache_dao import CacheDAO
 from saver_backend.db.dao.history_dao import HistoryDAO
+from saver_backend.db.dao.request_log_dao import RequestLogDAO
 from saver_backend.db.dao.user_dao import UserDAO
 
 
@@ -30,4 +31,5 @@ class DAOProviderMiddleware(BaseMiddleware):
         data["user_dao"] = UserDAO(session)
         data["history_dao"] = HistoryDAO(session)
         data["cache_dao"] = CacheDAO(session)
+        data["request_log_dao"] = RequestLogDAO(session)
         return await handler(event, data)

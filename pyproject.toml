@@ -153,10 +153,14 @@ mccabe = { max-complexity = 10 }
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = [
-    "S101", # Use of assert detected
+    "S101",    # Use of assert detected
+    "RUF001",  # Cyrillic letters in report assertions are intentional
 ]
 "*/exceptions.py" = ["D101"]
 "saver_backend/services/downloaders/resolver.py" = ["D102"]
+# The admin request report is built in code (not i18n) on purpose: it is an
+# owner-only command and must not depend on compiled .mo translations.
+"saver_backend/services/telegram/request_report_service.py" = ["RUF001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
