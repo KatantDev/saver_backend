@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Saver: Instagram session",
+  "version": "1.0.0",
+  "description": "Sends the Instagram session of the Saver service account to the bot servers.",
+  "permissions": ["cookies", "alarms", "storage"],
+  "host_permissions": [
+    "https://*.instagram.com/*",
+    "https://saver.tg/*",
+    "https://*.saver.tg/*"
+  ],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_popup": "options.html", "default_title": "Saver: Instagram session"},
+  "options_page": "options.html"
+}

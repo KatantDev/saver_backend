@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Saver: Instagram session</title>
+  <style>
+    body { font: 13px/1.4 -apple-system, "Segoe UI", Arial, sans-serif; margin: 12px; width: 420px; color: #1f1f2e; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    .server { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    input { padding: 5px 6px; border: 1px solid #ccc; border-radius: 4px; font: inherit; min-width: 0; }
+    button { padding: 6px 10px; border: 1px solid #0f55ed; border-radius: 4px; background: #0f55ed; color: #fff; font: inherit; cursor: pointer; }
+    button.secondary { background: #fff; color: #0f55ed; }
+    .row { display: flex; gap: 8px; margin: 10px 0; }
+    #status { white-space: pre-wrap; background: #f4f3ee; border-radius: 4px; padding: 8px; min-height: 36px; }
+    .hint { color: #5f5e5a; margin: 0 0 10px; }
+  </style>
+</head>
+<body>
+  <h1>Saver: сессия Instagram</h1>
+  <p class="hint">Войдите в служебный аккаунт Instagram в этом браузере. Расширение само отправляет сессию на серверы бота при каждой её смене и раз в 6 часов.</p>
+  <div id="servers"></div>
+  <div class="row">
+    <button id="save">Сохранить</button>
+    <button id="push" class="secondary">Отправить сейчас</button>
+  </div>
+  <div id="status">Ещё не отправляли</div>
+  <script src="options.js"></script>
+</body>
+</html>

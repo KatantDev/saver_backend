@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     instagram_account: str = "username:password"
     # Authenticator app secret of the Instagram account, used to pass 2FA on login
     instagram_totp_secret: Optional[str] = None
+    # Token of POST /api/instagram/session. When set, the session comes from a
+    # browser extension and the bot never logs in with the password
+    instagram_session_token: Optional[str] = None
 
     # VK Configuration
     vk_service_token: list[str] = ["vk_token"]
