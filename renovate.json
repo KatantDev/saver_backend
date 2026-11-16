@@ -14,7 +14,9 @@
     "dev"
   ],
   "osvVulnerabilityAlerts": true,
-  "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
+  "dependencyDashboard": {
+    "osvVulnerabilitySummary": "unresolved"
+  },
   "branchConcurrentLimit": 5,
   "internalChecksFilter": "strict",
   "minimumReleaseAgeBehaviour": "timestamp-required",
