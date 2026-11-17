@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import ffmpeg
 import pytest
-from aiogram.types import Video
+from aiogram.types import FSInputFile, URLInputFile, Video
 
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.base_source import BaseSourceController
@@ -201,3 +201,83 @@ async def test_cached_send_takes_back_a_square(duration: int) -> None:
                 chat_id=1,
                 message_id=55,
             )
+
+
+@pytest.mark.anyio
+async def test_url_video_without_size_is_uploaded_with_meta(tmp_path: Path) -> None:
+    """A reel indown could not save is downloaded here and sent with its size."""
+    controller = MagicMock()
+    controller._upload_with_meta = (  # noqa: SLF001
+        lambda *a: TelegramBotController._upload_with_meta(controller, *a)  # noqa: SLF001
+    )
+    sent = MagicMock()
+    controller._bot.send_video = AsyncMock(return_value=sent)  # noqa: SLF001
+    downloaded = tmp_path / "reel.mp4"
+    downloaded.write_bytes(b"video")
+    video = VideoDTO(
+        url="https://www.instagram.com/reel/x/",
+        source_id="x",
+        direct_download_url="https://cdn/x.mp4",
+    )
+
+    with (
+        patch.object(
+            bot_controller, "_download_to_temp_file", AsyncMock(return_value=downloaded)
+        ),
+        patch.object(
+            bot_controller,
+            "_probe_video",
+            AsyncMock(return_value={"width": 720, "height": 1280, "duration": 101}),
+        ),
+    ):
+        message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
+            controller,
+            video=video,
+            video_input=URLInputFile(url="https://cdn/x.mp4", filename="x"),
+            chat_id=1,
+            width=None,
+            height=None,
+            duration=None,
+        )
+
+    assert message is sent
+    call = controller._bot.send_video.await_args_list[0]  # noqa: SLF001
+    assert isinstance(call.kwargs["video"], FSInputFile)
+    assert (call.kwargs["width"], call.kwargs["height"], call.kwargs["duration"]) == (
+        720,
+        1280,
+        101,
+    )
+    assert not downloaded.exists()
+
+
+@pytest.mark.anyio
+async def test_url_video_falls_back_to_url_when_download_fails() -> None:
+    """If the file cannot be fetched, the URL still goes to Telegram as before."""
+    controller = MagicMock()
+    controller._upload_with_meta = (  # noqa: SLF001
+        lambda *a: TelegramBotController._upload_with_meta(controller, *a)  # noqa: SLF001
+    )
+    sent = MagicMock()
+    controller._bot.send_video = AsyncMock(return_value=sent)  # noqa: SLF001
+    video = VideoDTO(
+        url="https://www.instagram.com/reel/x/",
+        source_id="x",
+        direct_download_url="https://cdn/x.mp4",
+    )
+    url_input = URLInputFile(url="https://cdn/x.mp4", filename="x")
+
+    with patch.object(
+        bot_controller, "_download_to_temp_file", AsyncMock(side_effect=OSError("403"))
+    ):
+        message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
+            controller,
+            video=video,
+            video_input=url_input,
+            chat_id=1,
+            width=None,
+            height=None,
+        )
+
+    assert message is sent
+    assert controller._bot.send_video.await_args_list[0].kwargs["video"] is url_input  # noqa: SLF001

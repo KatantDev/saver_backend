@@ -1107,6 +1107,35 @@ class TelegramBotController:
 
         return media_group
 
+    async def _upload_with_meta(
+        self,
+        video: VideoDTO,
+        video_input: URLInputFile,
+        kwargs: dict[str, Any],
+    ) -> Message | None:
+        """
+        Download a video sent by URL, fill its size and duration, upload the file.
+
+        :param video: VideoDTO with direct_download_url.
+        :param video_input: URLInputFile the caller wanted to send.
+        :param kwargs: send_video arguments, updated in place.
+        :return: Sent message, or None if the file could not be downloaded.
+        """
+        url = video.direct_download_url or ""
+        try:
+            path = await _download_to_temp_file(url)
+        except Exception as e:
+            logging.warning("Could not download %s to read its size: %s", url, e)
+            return None
+        try:
+            await _fill_video_meta(str(path), kwargs)
+            return await self._bot.send_video(
+                video=FSInputFile(path=path, filename=video_input.filename),
+                **kwargs,
+            )
+        finally:
+            path.unlink(missing_ok=True)
+
     async def _send_video_or_upload(
         self,
         video: VideoDTO,
@@ -1127,6 +1156,18 @@ class TelegramBotController:
         # it here from the local file before the upload.
         if isinstance(video_input, FSInputFile) and video.path:
             await _fill_video_meta(str(video.path), kwargs)
+        elif (
+            isinstance(video_input, URLInputFile)
+            and video.direct_download_url
+            and not (kwargs.get("width") and kwargs.get("height"))
+        ):
+            # aiogram would stream the URL to Telegram without a frame size and
+            # Telegram would show a 320x320 square with no duration (indown falls
+            # back to the URL when its own download fails). Download it here,
+            # read the size and upload the file instead.
+            sent = await self._upload_with_meta(video, video_input, kwargs)
+            if sent is not None:
+                return sent
         try:
             return await self._bot.send_video(video=video_input, **kwargs)
         except TelegramBadRequest:
