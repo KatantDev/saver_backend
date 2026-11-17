@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import tempfile
@@ -51,6 +52,10 @@ from saver_backend.services.downloaders.schema import (
 )
 from saver_backend.services.i18n import gettext as _
 from saver_backend.services.telegram.retry_after import RetryAfterMiddleware
+from saver_backend.services.telegram.video_meta import (
+    BrokenCachedVideoError,
+    is_broken_video,
+)
 from saver_backend.settings import settings
 from saver_backend.telegram_bot.keyboards import inline
 from saver_backend.telegram_bot.middlewares.controller_provider import (
@@ -68,13 +73,14 @@ _LAST_MESSAGE_ID: ContextVar[int | None] = ContextVar(
 )
 
 
-async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | None:
+async def _probe_video(url: str, timeout: float = 20) -> dict[str, int] | None:
     """
-    Read the frame size of a video with ffprobe.
+    Read the frame size and duration of a video with ffprobe.
 
     :param url: Path or URL of the video.
     :param timeout: Seconds to wait for ffprobe.
-    :return: (width, height), or None if it could not be read.
+    :return: {"width", "height", "duration"} (duration may be 0 if unknown),
+        or None if the frame size could not be read.
     """
     try:
         process = await asyncio.create_subprocess_exec(
@@ -84,9 +90,9 @@ async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | 
             "-select_streams",
             "v:0",
             "-show_entries",
-            "stream=width,height",
+            "stream=width,height,duration:format=duration",
             "-of",
-            "csv=p=0:s=x",
+            "json",
             url,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -102,8 +108,10 @@ async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | 
         logging.warning("ffprobe timed out on %s", url)
         return None
     try:
-        width, height = (int(x) for x in stdout.decode().strip().split("x")[:2])
-    except ValueError:
+        data = json.loads(stdout.decode() or "{}")
+        stream = (data.get("streams") or [{}])[0]
+        width, height = int(stream["width"]), int(stream["height"])
+    except ValueError, KeyError, TypeError, IndexError:
         logging.warning(
             "ffprobe could not read the frame size of %s: %s",
             url,
@@ -112,7 +120,49 @@ async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | 
         return None
     if width <= 0 or height <= 0:
         return None
-    return width, height
+    raw_duration = stream.get("duration") or (data.get("format") or {}).get("duration")
+    try:
+        duration = round(float(raw_duration)) if raw_duration else 0
+    except ValueError:
+        duration = 0
+    return {"width": width, "height": height, "duration": duration}
+
+
+async def _probe_video_size(url: str, timeout: float = 20) -> tuple[int, int] | None:
+    """
+    Read the frame size of a video with ffprobe.
+
+    :param url: Path or URL of the video.
+    :param timeout: Seconds to wait for ffprobe.
+    :return: (width, height), or None if it could not be read.
+    """
+    probe = await _probe_video(url, timeout)
+    return (probe["width"], probe["height"]) if probe else None
+
+
+async def _fill_video_meta(path: str, kwargs: dict[str, Any]) -> None:
+    """
+    Fill missing width, height and duration of send_video kwargs from the file.
+
+    Telegram does not read them from an uploaded file: without them the video
+    is shown as a 320x320 square with a zero duration.
+
+    :param path: Local path or URL of the video.
+    :param kwargs: send_video arguments, updated in place.
+    """
+    if kwargs.get("width") and kwargs.get("height") and kwargs.get("duration"):
+        return
+    probe = await _probe_video(path)
+    if probe is None:
+        logging.warning(
+            "Sending %s without frame size: Telegram will show it as 320x320",
+            path,
+        )
+        return
+    if not kwargs.get("width") or not kwargs.get("height"):
+        kwargs["width"], kwargs["height"] = probe["width"], probe["height"]
+    if not kwargs.get("duration") and probe["duration"]:
+        kwargs["duration"] = probe["duration"]
 
 
 async def _download_to_temp_file(url: str, timeout: float = 600) -> Path:
@@ -1075,14 +1125,8 @@ class TelegramBotController:
         # height Telegram shows it as a 320x320 square. The source should fill the
         # size, but when its probe fails (e.g. indown + a flaky ffmpeg probe) read
         # it here from the local file before the upload.
-        if (
-            isinstance(video_input, FSInputFile)
-            and video.path
-            and (not kwargs.get("width") or not kwargs.get("height"))
-        ):
-            size = await _probe_video_size(str(video.path))
-            if size:
-                kwargs["width"], kwargs["height"] = size
+        if isinstance(video_input, FSInputFile) and video.path:
+            await _fill_video_meta(str(video.path), kwargs)
         try:
             return await self._bot.send_video(video=video_input, **kwargs)
         except TelegramBadRequest:
@@ -1106,10 +1150,7 @@ class TelegramBotController:
         try:
             # Telegram does not read the frame size of an uploaded file,
             # without it the video is shown as a 320x320 square.
-            if not kwargs.get("width") or not kwargs.get("height"):
-                size = await _probe_video_size(str(path))
-                if size:
-                    kwargs["width"], kwargs["height"] = size
+            await _fill_video_meta(str(path), kwargs)
             return await self._bot.send_video(
                 video=FSInputFile(path=path, filename=filename),
                 **kwargs,
@@ -1239,6 +1280,16 @@ class TelegramBotController:
                     title=cache_item.meta_data_dto.title_html,
                 ),
             )
+            if is_broken_video(message.video):
+                # Cached before the size fix: every user would get the square.
+                # Take the message back; the caller re-downloads the video.
+                await self._send(
+                    self._bot.delete_message(
+                        chat_id=telegram_id,
+                        message_id=message.message_id,
+                    ),
+                )
+                raise BrokenCachedVideoError(cache_item.source_id)
             logging.info(
                 f"[sfbfd cache] Successfully sent source id:"
                 f" {cache_item.source_id};"
@@ -1253,9 +1304,9 @@ class TelegramBotController:
                 e,
             )
             return None
-        except TelegramBadRequest:
-            # Telegram rejected the cached file; the caller drops the cache
-            # entry and downloads the video again.
+        except TelegramBadRequest, BrokenCachedVideoError:
+            # Telegram rejected the cached file or it plays as a 320x320 square;
+            # the caller drops the cache entry and downloads the video again.
             raise
         except Exception as e:
             if settings.environment == "local":
