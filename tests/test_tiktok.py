@@ -143,8 +143,8 @@ async def test_probes_local_file_when_size_missing(tmp_path: Path) -> None:
 
     with patch.object(
         bot_controller_module,
-        "_probe_video_size",
-        AsyncMock(return_value=(576, 1024)),
+        "_probe_video",
+        AsyncMock(return_value={"width": 576, "height": 1024, "duration": 12}),
     ) as probe:
         message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
             bot_controller,
@@ -160,6 +160,7 @@ async def test_probes_local_file_when_size_missing(tmp_path: Path) -> None:
     sent_call = bot_controller._bot.send_video.await_args_list[0]  # noqa: SLF001
     assert sent_call.kwargs["width"] == 576
     assert sent_call.kwargs["height"] == 1024
+    assert sent_call.kwargs["duration"] == 12
 
 
 @pytest.mark.anyio
@@ -174,8 +175,8 @@ async def test_keeps_given_size_for_local_file(tmp_path: Path) -> None:
 
     with patch.object(
         bot_controller_module,
-        "_probe_video_size",
-        AsyncMock(return_value=(1, 1)),
+        "_probe_video",
+        AsyncMock(return_value={"width": 1, "height": 1, "duration": 1}),
     ) as probe:
         await TelegramBotController._send_video_or_upload(  # noqa: SLF001
             bot_controller,
@@ -184,6 +185,7 @@ async def test_keeps_given_size_for_local_file(tmp_path: Path) -> None:
             chat_id=1,
             width=720,
             height=1280,
+            duration=30,
         )
 
     probe.assert_not_awaited()
@@ -215,8 +217,8 @@ async def test_uploads_video_when_telegram_cannot_fetch_url(tmp_path: Path) -> N
         ),
         patch.object(
             bot_controller_module,
-            "_probe_video_size",
-            AsyncMock(return_value=(576, 1024)),
+            "_probe_video",
+            AsyncMock(return_value={"width": 576, "height": 1024, "duration": 12}),
         ) as probe,
     ):
         message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
@@ -232,6 +234,7 @@ async def test_uploads_video_when_telegram_cannot_fetch_url(tmp_path: Path) -> N
     assert isinstance(retry.kwargs["video"], FSInputFile)
     assert retry.kwargs["width"] == 576
     assert retry.kwargs["height"] == 1024
+    assert retry.kwargs["duration"] == 12
     assert not downloaded.exists()
 
 

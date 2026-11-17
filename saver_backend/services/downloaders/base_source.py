@@ -23,6 +23,10 @@ from saver_backend.services.downloaders.schema import (
     VideoTheatreDTO,
 )
 from saver_backend.services.i18n import gettext as _
+from saver_backend.services.telegram.video_meta import (
+    BrokenCachedVideoError,
+    is_broken_video,
+)
 from saver_backend.settings import settings
 
 if TYPE_CHECKING:
@@ -318,6 +322,12 @@ class BaseSourceController(ABC):
         :param content_dto: The original DTO with metadata.
         :param telegram_video: The Video object from aiogram after sending.
         """
+        if isinstance(telegram_video, Video) and is_broken_video(telegram_video):
+            logging.warning(
+                "Not caching source_id=%s: Telegram got it without size and duration",
+                getattr(content_dto, "source_id", None),
+            )
+            return None
         dto_for_cache = content_dto.model_copy(update={"path": None, "thumbnail": None})
         cache_dto = CacheDTO.from_telegram_object(
             source=self.SOURCE,
@@ -455,11 +465,11 @@ class BaseSourceController(ABC):
                 telegram_id=self._telegram_id,
                 cache_item=cached_item,
             )
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, BrokenCachedVideoError) as e:
             # A broken entry would fail for every user forever:
             # drop it and download the video again.
             logging.warning(
-                "Telegram rejected cached file for source_id=%s, downloading again: %s",
+                "Cached file for source_id=%s is broken, downloading again: %r",
                 source_id,
                 e,
             )
