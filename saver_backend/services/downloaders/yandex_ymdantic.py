@@ -15,6 +15,13 @@ from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import AudioDTO
 from saver_backend.settings import settings
 
+# All tracks of an album used to be requested at once and a failed one was
+# dropped silently (9 of 11 tracks in the 13.11 audit). Fewer requests at a time
+# and a second and third try for the tracks that failed.
+ALBUM_FETCH_CONCURRENCY = 4
+ALBUM_TRACK_ATTEMPTS = 3
+ALBUM_RETRY_PAUSE_SECONDS = 1.0
+
 
 class YmdanticController(BaseSourceController):
     """
@@ -163,15 +170,13 @@ class YmdanticController(BaseSourceController):
                 for track in volume:
                     track_ids.append(track.id)
 
-            # Fetch all tracks concurrently
-            album_id_str = str(album_id)
-            tasks = [self._get_track(track_id, album_id_str) for track_id in track_ids]
-            results = await asyncio.gather(*tasks)
+            found = await self._fetch_album_tracks(track_ids, str(album_id))
+            # Keep the album order whatever attempt a track came with
+            dtos = [found[track_id] for track_id in track_ids if track_id in found]
 
-            dtos = [dto for dto in results if dto is not None]
-
-            logging.info(
-                "Successfully fetched %d/%d tracks from album %s",
+            log = logging.info if len(dtos) == len(track_ids) else logging.warning
+            log(
+                "Fetched %d/%d tracks from album %s",
                 len(dtos),
                 len(track_ids),
                 album_id,
@@ -181,6 +186,44 @@ class YmdanticController(BaseSourceController):
         except Exception as e:
             logging.exception("Failed to get album %s: %s", album_id, e)
             return []
+
+    async def _fetch_album_tracks(
+        self,
+        track_ids: list[int],
+        album_id: str,
+    ) -> dict[int, AudioDTO]:
+        """
+        Fetch album tracks a few at a time, trying the failed ones again.
+
+        :param track_ids: IDs of the album tracks.
+        :param album_id: ID of the album.
+        :return: Fetched tracks by track ID.
+        """
+        semaphore = asyncio.Semaphore(ALBUM_FETCH_CONCURRENCY)
+
+        async def fetch(track_id: int) -> AudioDTO | None:
+            async with semaphore:
+                return await self._get_track(track_id, album_id)
+
+        found: dict[int, AudioDTO] = {}
+        missing = list(track_ids)
+        for attempt in range(ALBUM_TRACK_ATTEMPTS):
+            if attempt:
+                logging.warning(
+                    "Album %s: trying %d tracks again (attempt %d)",
+                    album_id,
+                    len(missing),
+                    attempt + 1,
+                )
+                await asyncio.sleep(ALBUM_RETRY_PAUSE_SECONDS)
+            results = await asyncio.gather(*(fetch(t) for t in missing))
+            found.update(
+                {t: dto for t, dto in zip(missing, results, strict=True) if dto},
+            )
+            missing = [t for t in missing if t not in found]
+            if not missing:
+                break
+        return found
 
     async def _download_audio_file(
         self,
@@ -619,7 +662,10 @@ class YmdanticController(BaseSourceController):
 
             if audio_dtos:
                 if await self._has_any_flac_in_album(audio_dtos):
-                    await self._send_audio_album(audio_dtos[:-1])
+                    # The last track goes out with the FLAC button; an album of
+                    # one track has nothing else to send (it used to send «Error»)
+                    if len(audio_dtos) > 1:
+                        await self._send_audio_album(audio_dtos[:-1])
                     await self._store_album_info_to_fsm(audio_dtos)
                     await self._send_flac_button()
                 else:
