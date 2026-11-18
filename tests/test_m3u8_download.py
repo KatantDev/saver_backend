@@ -16,6 +16,7 @@ from saver_backend.services.downloaders.m3u8_ydl_source import (
     M3U8_DEFAULT_FORMAT,
     M3U8YdlController,
 )
+from saver_backend.services.downloaders.schema import VideoDTO
 
 FFMPEG = shutil.which("ffmpeg")
 pytestmark = pytest.mark.skipif(
@@ -135,3 +136,63 @@ async def test_chosen_quality_is_kept() -> None:
 
     assert picked._yt_dlp.params["format"] == "720"  # noqa: SLF001
     assert default._yt_dlp.params["format"] == M3U8_DEFAULT_FORMAT  # noqa: SLF001
+
+
+@pytest.mark.anyio
+async def test_split_stream_menu_joins_audio_to_the_chosen_quality(
+    streams: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Video-only streams are offered with audio; the picked one downloads."""
+    monkeypatch.chdir(tmp_path)
+    url = f"{streams}/split/master.m3u8"
+    menu = _controller(url)
+    info = await menu.get_video_info(url)
+    await menu.close()
+    assert info is not None
+    # The quality menu is built from the info dict (task_manager/tasks.py)
+    formats = VideoDTO.from_yt_dlp(info=info).formats
+
+    assert formats
+    assert all(fmt.format_id.endswith("+ba") for fmt in formats)
+
+    picked = _controller(url, format_id=formats[0].format_id)
+    file_path = await _download(picked, url)
+    await picked.close()
+
+    probe = subprocess.run(  # noqa: S603 - fixed arguments, no user input
+        [
+            shutil.which("ffprobe") or "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
+            str(file_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert sorted(probe.stdout.split()) == ["audio", "video"]
+
+
+@pytest.mark.anyio
+async def test_single_stream_playlist_gets_a_menu(
+    streams: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A plain playlist states no size: it is probed, the menu shows 240p."""
+    monkeypatch.chdir(tmp_path)
+    url = f"{streams}/muxed/stream.m3u8"
+    controller = _controller(url)
+    info = await controller.get_video_info(url)
+    await controller.close()
+    assert info is not None
+
+    labels = VideoDTO.from_yt_dlp(info=info).unique_labels
+
+    assert labels == ["240p"]
