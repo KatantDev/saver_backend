@@ -36,11 +36,27 @@ if TYPE_CHECKING:
     from saver_backend.services.telegram.bot_controller import TelegramBotController
 
 
+def exceeds_resolution(video: VideoDTO, limit: int | None) -> bool:
+    """
+    Whether a video is bigger than the limit on the smaller side of the frame.
+
+    :param video: Video with its frame size.
+    :param limit: Largest allowed smaller side, None for no limit.
+    :return: True if the video is above the limit.
+    """
+    if not video.width or not video.height or not limit:
+        return False
+    return min(video.width, video.height) > limit
+
+
 class BaseSourceController(ABC):
     """Asynchronous controller for downloading videos from different sources."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.UNSUPPORTED
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.LOCAL
+    # Largest smaller side of the frame the source sends; bigger cached copies
+    # (saved before the limit) are dropped and downloaded again
+    MAX_RESOLUTION: ClassVar[int | None] = None
 
     def __init__(
         self,
@@ -450,6 +466,20 @@ class BaseSourceController(ABC):
             quality,
         )
         video_dto = cached_item.meta_data_dto
+
+        if exceeds_resolution(video_dto, self.MAX_RESOLUTION):
+            logging.info(
+                "Cached file for source_id=%s is %sx%s, above %sp: downloading again",
+                source_id,
+                video_dto.width,
+                video_dto.height,
+                self.MAX_RESOLUTION,
+            )
+            await self._cache_dao.delete_by_file_id(
+                source=self.SOURCE,
+                file_id=cached_item.file_id,
+            )
+            return False
 
         if self._inline_query_id:
             await self._create_history_entry(cached_item)

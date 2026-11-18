@@ -17,6 +17,7 @@ class XYdlController(YtDlpController):
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.X_YDL
     COOKIES: ClassVar[bool] = False
+    MAX_RESOLUTION: ClassVar[int | None] = X_MAX_RESOLUTION
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the controller with specific yt-dlp parameters for X."""

@@ -1,9 +1,16 @@
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yt_dlp
 
-from saver_backend.services.downloaders.x_ydl_source import XYdlController
+from saver_backend.entities.enums import SourceEnum
+from saver_backend.services.downloaders.base_source import BaseSourceController
+from saver_backend.services.downloaders.schema import VideoDTO
+from saver_backend.services.downloaders.x_ydl_source import (
+    X_MAX_RESOLUTION,
+    XYdlController,
+)
 
 
 def _formats(sizes: list[tuple[int, int]]) -> list[dict[str, Any]]:
@@ -97,3 +104,68 @@ def test_only_4k_is_still_downloaded(x_params: dict[str, Any]) -> None:
     info = _selected(x_params, [(3840, 2160)])
 
     assert (info["width"], info["height"]) == (3840, 2160)
+
+
+def _cached_source(
+    limit: int | None,
+    width: int,
+    height: int,
+) -> tuple[MagicMock, MagicMock]:
+    source = MagicMock()
+    source.SOURCE = SourceEnum.X_YDL
+    source.MAX_RESOLUTION = limit
+    source._inline_query_id = None  # noqa: SLF001
+    source._telegram_id = 1  # noqa: SLF001
+    cached = MagicMock()
+    cached.file_id = "cached-file-id"
+    cached.meta_data_dto = VideoDTO(
+        url="https://x.com/NASA/status/1",
+        source_id="1",
+        width=width,
+        height=height,
+    )
+    source._cache_dao.get_by_filters = AsyncMock(return_value=cached)  # noqa: SLF001
+    source._cache_dao.delete_by_file_id = AsyncMock()  # noqa: SLF001
+    source._telegram_bot_controller.send_video_by_file_id = AsyncMock()  # noqa: SLF001
+    source._create_history_entry = AsyncMock()  # noqa: SLF001
+    source.delete_processing_message = AsyncMock()
+    return source, cached
+
+
+@pytest.mark.anyio
+async def test_cached_4k_copy_is_dropped_and_downloaded_again() -> None:
+    """A 4K file cached before the limit is not sent, the video is re-downloaded."""
+    source, _ = _cached_source(X_MAX_RESOLUTION, 3840, 2160)
+
+    sent = await BaseSourceController.send_video_from_cache(source, "1", "best")
+
+    assert sent is False
+    source._telegram_bot_controller.send_video_by_file_id.assert_not_awaited()  # noqa: SLF001
+    source._cache_dao.delete_by_file_id.assert_awaited_once_with(  # noqa: SLF001
+        source=SourceEnum.X_YDL,
+        file_id="cached-file-id",
+    )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("limit", "width", "height"),
+    [
+        (X_MAX_RESOLUTION, 1920, 1080),
+        (X_MAX_RESOLUTION, 1080, 1920),
+        (None, 3840, 2160),
+    ],
+)
+async def test_cached_copy_within_limit_is_sent(
+    limit: int | None,
+    width: int,
+    height: int,
+) -> None:
+    """1080p copies of X and sources without a limit are served from the cache."""
+    source, _ = _cached_source(limit, width, height)
+
+    sent = await BaseSourceController.send_video_from_cache(source, "1", "best")
+
+    assert sent is True
+    source._telegram_bot_controller.send_video_by_file_id.assert_awaited_once()  # noqa: SLF001
+    source._cache_dao.delete_by_file_id.assert_not_awaited()  # noqa: SLF001
