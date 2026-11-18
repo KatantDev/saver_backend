@@ -1321,7 +1321,8 @@ class TelegramBotController:
                     title=cache_item.meta_data_dto.title_html,
                 ),
             )
-            if is_broken_video(message.video):
+            dto = cache_item.meta_data_dto
+            if is_broken_video(message.video, (dto.width, dto.height)):
                 # Cached before the size fix: every user would get the square.
                 # Take the message back; the caller re-downloads the video.
                 await self._send(
