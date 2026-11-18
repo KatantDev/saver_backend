@@ -36,12 +36,12 @@ def _make_video(path: Path, size: str = "576x1024", seconds: int = 2) -> Path:
     return path
 
 
-def _video(duration: int) -> Video:
+def _video(duration: int, width: int = 320, height: int = 320) -> Video:
     return Video(
         file_id="f",
         file_unique_id="u",
-        width=320,
-        height=320,
+        width=width,
+        height=height,
         duration=duration,
     )
 
@@ -104,14 +104,26 @@ async def test_fill_meta_logs_unreadable_file(
 
 @pytest.mark.parametrize(
     ("video", "broken"),
-    [(_video(0), True), (_video(12), False), (None, False)],
+    [
+        (_video(0), True),
+        (_video(0, 576, 1024), True),
+        (_video(150), True),
+        (_video(150, 576, 1024), False),
+        (None, False),
+    ],
 )
-def test_broken_video_is_one_without_duration(
+def test_broken_video_is_one_without_duration_or_size(
     video: Video | None,
     broken: bool,
 ) -> None:
-    """Telegram marks a file it got without metadata with a zero duration."""
+    """No duration, or a 320x320 square Telegram drew for an unknown size."""
     assert is_broken_video(video) is broken
+
+
+def test_real_320_square_is_kept_when_the_source_says_so() -> None:
+    """A video that really is 320x320 is not taken for a broken one."""
+    assert is_broken_video(_video(12), (320, 320)) is False
+    assert is_broken_video(_video(12), (None, None)) is True
 
 
 @pytest.mark.anyio
@@ -164,12 +176,12 @@ async def test_broken_cached_video_is_dropped_and_downloaded_again() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("duration", [0, 101])
-async def test_cached_send_takes_back_a_square(duration: int) -> None:
+async def test_cached_send_takes_back_a_square_without_duration(duration: int) -> None:
     """A cached square is deleted from the chat and reported; a good file is kept."""
     controller = MagicMock()
     message = MagicMock()
     message.message_id = 55
-    message.video = _video(duration)
+    message.video = _video(duration, 720, 1280) if duration else _video(0)
     controller._bot.send_video = AsyncMock(return_value=message)  # noqa: SLF001
     controller._send = AsyncMock()  # noqa: SLF001
     controller.language = "en"
@@ -281,3 +293,53 @@ async def test_url_video_falls_back_to_url_when_download_fails() -> None:
 
     assert message is sent
     assert controller._bot.send_video.await_args_list[0].kwargs["video"] is url_input  # noqa: SLF001
+
+
+@pytest.mark.anyio
+async def test_cached_square_with_duration_is_taken_back() -> None:
+    """TikTok over 20 MB cached as 320x320 with a duration is dropped (#11)."""
+    controller = MagicMock()
+    message = MagicMock()
+    message.message_id = 56
+    message.video = _video(150)
+    controller._bot.send_video = AsyncMock(return_value=message)  # noqa: SLF001
+    controller._send = AsyncMock()  # noqa: SLF001
+    controller.language = "en"
+    cache_item = MagicMock()
+    cache_item.file_id = "file-id"
+    cache_item.source_id = "7107337212743830830"
+    cache_item.meta_data_dto = VideoDTO(
+        url="https://www.tiktok.com/@tatemcrae/video/7107337212743830830",
+        source_id="7107337212743830830",
+    )
+
+    with (
+        patch.object(bot_controller, "_", lambda *_a, **_k: "{url}{title}"),
+        pytest.raises(BrokenCachedVideoError),
+    ):
+        await TelegramBotController.send_video_by_file_id(
+            controller,
+            telegram_id=1,
+            cache_item=cache_item,
+        )
+    controller._bot.delete_message.assert_called_once_with(  # noqa: SLF001
+        chat_id=1,
+        message_id=56,
+    )
+
+
+@pytest.mark.anyio
+async def test_square_with_duration_is_not_cached() -> None:
+    """An upload Telegram still shows as 320x320 is not saved to the cache."""
+    source = MagicMock()
+    source.SOURCE = SourceEnum.TIKTOK
+    dto = VideoDTO(url="https://www.tiktok.com/@a/video/1", source_id="1")
+
+    cached = await BaseSourceController._save_content_to_cache(  # noqa: SLF001
+        source,
+        dto,
+        _video(150),
+    )
+
+    assert cached is None
+    source._cache_dao.create.assert_not_called()  # noqa: SLF001
