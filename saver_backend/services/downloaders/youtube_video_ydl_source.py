@@ -25,6 +25,8 @@ class YouTubeVideoYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from YouTube through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_VIDEO_YDL
+    # Prod drops ~1 in 5 YouTube downloads once while a retry passes (task 24)
+    RETRIES_ON_ERROR: ClassVar[int] = 1
     COOKIES: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
