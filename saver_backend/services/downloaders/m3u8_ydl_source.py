@@ -5,22 +5,34 @@ from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
+# Best video with the best separate audio, or the best stream that has both
+M3U8_DEFAULT_FORMAT = "bv*+ba/b"
+
 
 class M3U8YdlController(YtDlpController):
-    """Asynchronous controller for downloading videos from Rutube through yt-dlp."""
+    """Asynchronous controller for downloading raw HLS (m3u8) streams via yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.M3U8_YDL
     COOKIES: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize the controller with standard yt-dlp parameters for Rutube."""
+        """Initialize the controller with yt-dlp parameters for HLS streams."""
         super().__init__(*args, **kwargs)
 
-        params = {
+        params: dict[str, Any] = {
             "downloader": "aria2c",
             "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
         }
+        if not self._selected_format_id:
+            # Many playlists keep video and audio in separate streams: «best»
+            # (one stream with both) does not exist there and yt-dlp fails
+            params["format"] = M3U8_DEFAULT_FORMAT
+            params["merge_output_format"] = "mp4"
         self._yt_dlp.params.update(params)
+        if "format" in params:
+            self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
+                format_spec=params["format"],
+            )
 
     async def get_video_info(self, url: str) -> dict[str, Any] | None:
         """
@@ -50,7 +62,10 @@ class M3U8YdlController(YtDlpController):
         )
         self._video = VideoDTO.from_yt_dlp(
             info=info_dict,
-            file_path=self._download_directory / f"{url_path}.{ext}",
+            # Same name as yt-dlp writes (outtmpl «%(id)s.<token>.%(ext)s»);
+            # without the token the finished file was never found («Error»)
+            file_path=self._download_directory
+            / f"{url_path}.{self._download_token}.{ext}",
             extract_direct_links=self.DIRECT_URL_DOWNLOAD,
             quality=self._selected_format_id or "best",
         )
