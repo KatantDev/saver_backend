@@ -338,9 +338,17 @@ class BaseSourceController(ABC):
         :param content_dto: The original DTO with metadata.
         :param telegram_video: The Video object from aiogram after sending.
         """
-        if isinstance(telegram_video, Video) and is_broken_video(telegram_video):
+        source_size = (
+            (content_dto.width, content_dto.height)
+            if isinstance(content_dto, VideoDTO)
+            else None
+        )
+        if isinstance(telegram_video, Video) and is_broken_video(
+            telegram_video,
+            source_size,
+        ):
             logging.warning(
-                "Not caching source_id=%s: Telegram got it without size and duration",
+                "Not caching source_id=%s: Telegram got it without size or duration",
                 getattr(content_dto, "source_id", None),
             )
             return None
