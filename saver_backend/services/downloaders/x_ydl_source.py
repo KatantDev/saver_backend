@@ -7,6 +7,10 @@ from yt_dlp.utils import DownloadError
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
+# X serves up to 4K (160 MB for 86 s), far more than a phone needs. The cap is
+# on the smaller side of the frame, so vertical videos also stay at 1080x1920.
+X_MAX_RESOLUTION = 1080
+
 
 class XYdlController(YtDlpController):
     """Controller for downloading videos from X/Twitter with a text fallback."""
@@ -20,6 +24,8 @@ class XYdlController(YtDlpController):
 
         x_params = {
             "format": "bestvideo+bestaudio/best",
+            # Best formats up to 1080p come first; a bigger one only if nothing else
+            "format_sort": [f"res:{X_MAX_RESOLUTION}"],
             "downloader": "aria2c",
             "downloader_args": ["-x", "16", "-s", "16", "-k", "1M"],
         }
