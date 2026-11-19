@@ -15,6 +15,25 @@ from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import AudioDTO
 from saver_backend.settings import settings
 
+CODEC_SEPARATOR = "-"
+
+
+def is_lossless_codec(codec: str | None) -> bool:
+    """
+    Tell whether Yandex Music returned a real lossless file.
+
+    The lossless request can still answer with ``aac-mp4`` when a track has no
+    FLAC: that file is smaller than the 320 kbps MP3, so the
+    «High Quality [Lossless]» button must only be offered for ``flac-*``.
+
+    :param codec: Codec string from the file info, e.g. ``flac-mp4``.
+    :return: True only for a FLAC stream.
+    """
+    if not codec or CODEC_SEPARATOR not in codec:
+        return False
+    return codec.split(CODEC_SEPARATOR)[0].lower() == "flac"
+
+
 # All tracks of an album used to be requested at once and a failed one was
 # dropped silently (9 of 11 tracks in the 13.11 audit). Fewer requests at a time
 # and a second and third try for the tracks that failed.
@@ -128,7 +147,7 @@ class YmdanticController(BaseSourceController):
                 logging.warning("No download info found for track %s", track_id)
                 return None
 
-            if self.CODECSEPARATOR in download_infos.codec:
+            if is_lossless_codec(download_infos.codec):
                 direct_url = str(download_infos.url)
 
                 # Get track metadata
@@ -144,6 +163,11 @@ class YmdanticController(BaseSourceController):
                     )[0],
                     codec=download_infos.codec,
                 )
+            logging.info(
+                "No lossless file for track %s (codec %s)",
+                track_id,
+                download_infos.codec,
+            )
             return None
 
         except YMError as ye:
@@ -543,7 +567,7 @@ class YmdanticController(BaseSourceController):
                 logging.warning("No download info found for track %s", track_id)
                 continue
 
-            if self.CODECSEPARATOR in download_infos.codec:
+            if is_lossless_codec(download_infos.codec):
                 if check:
                     flac_dtos.append(audio_dto)
                     break
