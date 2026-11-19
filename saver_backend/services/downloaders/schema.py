@@ -41,6 +41,21 @@ def is_live_stream(info: dict[str, Any]) -> bool:
     return bool(info.get("is_live")) or info.get("live_status") in LIVE_STATUSES
 
 
+# YouTube refuses a scheduled stream or premiere with an error, not an info dict
+LIVE_ERROR_HINTS = ("live event will begin", "premieres in", "premiere will begin")
+
+
+def is_live_error(error: BaseException) -> bool:
+    """
+    Tell whether yt-dlp failed because the stream has not started yet.
+
+    :param error: Exception raised while getting the video info.
+    :return: True for a scheduled live event or premiere.
+    """
+    message = str(error).lower()
+    return any(hint in message for hint in LIVE_ERROR_HINTS)
+
+
 class BaseContentDTO(BaseModel):
     """Base DTO for any cachable content."""
 
