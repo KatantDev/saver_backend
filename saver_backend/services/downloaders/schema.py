@@ -24,6 +24,38 @@ if TYPE_CHECKING:
     from aiogram.types import Video as TgVideo
 
 
+# yt-dlp ``live_status`` values for a stream that has no finished recording yet
+LIVE_STATUSES = frozenset({"is_live", "is_upcoming", "post_live"})
+
+
+def is_live_stream(info: dict[str, Any]) -> bool:
+    """
+    Tell whether yt-dlp returned a live, scheduled or still processing stream.
+
+    Such a page only has an endless HLS feed, so the quality menu is empty and
+    the user used to get «No formats available» without the reason.
+
+    :param info: yt-dlp info dict.
+    :return: True when the video can only be saved after the broadcast ends.
+    """
+    return bool(info.get("is_live")) or info.get("live_status") in LIVE_STATUSES
+
+
+# YouTube refuses a scheduled stream or premiere with an error, not an info dict
+LIVE_ERROR_HINTS = ("live event will begin", "premieres in", "premiere will begin")
+
+
+def is_live_error(error: BaseException) -> bool:
+    """
+    Tell whether yt-dlp failed because the stream has not started yet.
+
+    :param error: Exception raised while getting the video info.
+    :return: True for a scheduled live event or premiere.
+    """
+    message = str(error).lower()
+    return any(hint in message for hint in LIVE_ERROR_HINTS)
+
+
 class BaseContentDTO(BaseModel):
     """Base DTO for any cachable content."""
 

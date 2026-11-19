@@ -1499,6 +1499,26 @@ class TelegramBotController:
         )
         await self._send(coro)
 
+    async def edit_video_is_live(
+        self,
+        telegram_id: int,
+        message_id: int,
+        language: str | None = None,
+    ) -> None:
+        """
+        Tell the user that a live stream can only be saved after it ends.
+
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID.
+        :param language: Language for message.
+        """
+        coro = self._bot.edit_message_text(
+            message_id=message_id,
+            chat_id=telegram_id,
+            text=_("video is live", locale=language or self.language),
+        )
+        await self._send(coro)
+
     async def send_choose_quality(
         self,
         telegram_id: int,
