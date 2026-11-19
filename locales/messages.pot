@@ -31,6 +31,9 @@ msgstr ""
 msgid "video info without formats"
 msgstr ""
 
+msgid "video is live"
+msgstr ""
+
 msgid "choose quality"
 msgstr ""
 
