@@ -37,7 +37,7 @@ from aiogram.types import (
     URLInputFile,
     Video,
 )
-from aiogram.utils.i18n import I18n, SimpleI18nMiddleware
+from aiogram.utils.i18n import I18n
 from aiogram.utils.media_group import MediaGroupBuilder
 from redis.asyncio import Redis
 from sentry_sdk import capture_exception, new_scope
@@ -64,7 +64,10 @@ from saver_backend.telegram_bot.middlewares.controller_provider import (
 from saver_backend.telegram_bot.middlewares.dao_provider import DAOProviderMiddleware
 from saver_backend.telegram_bot.middlewares.database import DatabaseProviderMiddleware
 from saver_backend.telegram_bot.middlewares.request_log import RequestLogMiddleware
-from saver_backend.telegram_bot.middlewares.user import UserMiddleware
+from saver_backend.telegram_bot.middlewares.user import (
+    UserI18nMiddleware,
+    UserMiddleware,
+)
 
 _LANGUAGE: ContextVar[str | None] = ContextVar("bot_language", default=None)
 _LAST_MESSAGE_ID: ContextVar[int | None] = ContextVar(
@@ -336,7 +339,7 @@ class TelegramBotController:
         )
         self._dispatcher.update.outer_middleware(UserMiddleware())
         self._dispatcher.update.outer_middleware(RequestLogMiddleware())
-        SimpleI18nMiddleware(self._i18n).setup(router=self._dispatcher)
+        UserI18nMiddleware(self._i18n).setup(router=self._dispatcher)
 
     async def feed_update(self, update: Update) -> None:
         """
@@ -546,7 +549,9 @@ class TelegramBotController:
         try:
             message = await self._bot.send_message(
                 chat_id=telegram_id,
-                text=f"Downloading... {percent}%",
+                text=_("downloading progress", locale=self.language).format(
+                    percent=percent,
+                ),
             )
             return message.message_id
         except AiogramError as e:
@@ -569,7 +574,9 @@ class TelegramBotController:
         coro = self._bot.edit_message_text(
             chat_id=telegram_id,
             message_id=message_id,
-            text=f"Downloading... {percent}%",
+            text=_("downloading progress", locale=self.language).format(
+                percent=percent,
+            ),
         )
         await self._send(coro)
 
