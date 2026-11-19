@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiogram.utils.i18n import I18n
@@ -88,3 +88,27 @@ async def test_handler_replies_use_saved_language() -> None:
 
     assert ru == "ru"
     assert uk == "en"
+
+
+@pytest.mark.anyio
+async def test_download_progress_is_translated() -> None:
+    """«Downloading... N%» was hard-coded in English for every user."""
+    from saver_backend.services.telegram import bot_controller
+
+    controller = MagicMock()
+    controller.language = "ru"
+    controller._send = AsyncMock()  # noqa: SLF001
+    seen: list[tuple[str, str | None]] = []
+
+    def fake_gettext(key: str, locale: str | None = None) -> str:
+        seen.append((key, locale))
+        return "Скачиваем... {percent}%"
+
+    with patch.object(bot_controller, "_", fake_gettext):
+        await bot_controller.TelegramBotController.send_update_downloading(
+            controller, telegram_id=1, message_id=2, percent=40
+        )
+
+    assert seen == [("downloading progress", "ru")]
+    text = controller._bot.edit_message_text.call_args.kwargs["text"]  # noqa: SLF001
+    assert text == "Скачиваем... 40%"

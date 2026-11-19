@@ -63,6 +63,9 @@ msgstr "⚠️ Не найдено доступных форматов для с
 msgid "video is live"
 msgstr "Это прямой эфир или трансляция, которая ещё не началась или не закончилась. Скачать запись можно после окончания эфира."
 
+msgid "downloading progress"
+msgstr "Скачиваем... {percent}%"
+
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"

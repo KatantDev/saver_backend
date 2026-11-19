@@ -549,7 +549,9 @@ class TelegramBotController:
         try:
             message = await self._bot.send_message(
                 chat_id=telegram_id,
-                text=f"Downloading... {percent}%",
+                text=_("downloading progress", locale=self.language).format(
+                    percent=percent,
+                ),
             )
             return message.message_id
         except AiogramError as e:
@@ -572,7 +574,9 @@ class TelegramBotController:
         coro = self._bot.edit_message_text(
             chat_id=telegram_id,
             message_id=message_id,
-            text=f"Downloading... {percent}%",
+            text=_("downloading progress", locale=self.language).format(
+                percent=percent,
+            ),
         )
         await self._send(coro)
 
