@@ -14,7 +14,11 @@ from saver_backend.services.downloaders.instagram_session import (
     InstagramSessionError,
     refresh_instagram_session,
 )
-from saver_backend.services.downloaders.schema import VideoDTO, is_live_stream
+from saver_backend.services.downloaders.schema import (
+    VideoDTO,
+    is_live_error,
+    is_live_stream,
+)
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
 
@@ -183,6 +187,13 @@ async def get_video_info(
     try:
         info_dict = await controller.get_video_info(url=resolution.url)
     except Exception as error:
+        if is_live_error(error):
+            logging.info("Scheduled stream refused: %s; %s", resolution.url, error)
+            await state.telegram_bot_controller.edit_video_is_live(
+                telegram_id=telegram_id,
+                message_id=processing_message_id,
+            )
+            return
         logging.exception(error)
         info_dict = None
     finally:

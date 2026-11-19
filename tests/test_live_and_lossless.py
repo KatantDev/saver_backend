@@ -2,6 +2,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from yt_dlp.utils import DownloadError
 
 from saver_backend.services.downloaders.schema import AudioDTO, is_live_stream
 from saver_backend.services.downloaders.yandex_ymdantic import (
@@ -28,7 +29,7 @@ def test_live_stream_detection(info: dict[str, Any], *, expected: bool) -> None:
     assert is_live_stream(info) is expected
 
 
-async def _run_get_video_info(info: dict[str, Any]) -> MagicMock:
+async def _run_get_video_info(info: dict[str, Any] | Exception) -> MagicMock:
     bot = MagicMock()
     bot.edit_video_is_live = AsyncMock()
     bot.edit_video_no_formats = AsyncMock()
@@ -38,7 +39,10 @@ async def _run_get_video_info(info: dict[str, Any]) -> MagicMock:
 
     controller = MagicMock()
     controller.set_user_language = AsyncMock()
-    controller.get_video_info = AsyncMock(return_value=info)
+    if isinstance(info, Exception):
+        controller.get_video_info = AsyncMock(side_effect=info)
+    else:
+        controller.get_video_info = AsyncMock(return_value=info)
     controller.close = AsyncMock()
     controller.message_id = 7
 
@@ -138,3 +142,23 @@ async def test_album_lossless_check_skips_aac() -> None:
     hq = await YmdanticController._get_hq_dtos(source, dtos, check=True)  # noqa: SLF001
 
     assert hq == []
+
+
+@pytest.mark.anyio
+async def test_scheduled_stream_error_gets_live_message() -> None:
+    """YouTube answers a scheduled stream with an error, not an info dict."""
+    bot = await _run_get_video_info(
+        DownloadError("ERROR: [youtube] abc: This live event will begin in 3 hours.")
+    )
+
+    bot.edit_video_is_live.assert_awaited_once_with(telegram_id=1, message_id=7)
+    bot.edit_failed_video_info.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_other_errors_keep_the_general_message() -> None:
+    """Any other failure still gets the general error."""
+    bot = await _run_get_video_info(DownloadError("ERROR: [youtube] abc: boom"))
+
+    bot.edit_video_is_live.assert_not_awaited()
+    bot.edit_failed_video_info.assert_awaited_once()
