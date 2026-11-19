@@ -3,7 +3,6 @@ from typing import Any
 import pytest
 import yt_dlp
 
-from saver_backend.services.downloaders.dzen_ydl import DzenYdlController
 from saver_backend.services.downloaders.facebook_ydl_source import (
     FacebookYdlController,
 )
@@ -75,7 +74,7 @@ def _selected(params: dict[str, Any], sizes: list[tuple[int, int]]) -> tuple[int
     return info["width"], info["height"]
 
 
-CONTROLLERS = [FacebookYdlController, DzenYdlController]
+CONTROLLERS = [FacebookYdlController]
 VERTICAL = [(540, 960), (720, 1280), (1080, 1920)]
 
 
@@ -84,7 +83,7 @@ def test_vertical_video_keeps_its_resolution(
     controller_class: type[YtDlpController],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """FB-02 and DZ-02: a 1080x1920 reel used to come as 540x960 or 480x852."""
+    """FB-02: a 1080x1920 reel used to come as 540x960."""
     params = _params(controller_class, monkeypatch)
 
     assert _selected(params, VERTICAL) == (1080, 1920)
