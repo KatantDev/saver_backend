@@ -302,10 +302,15 @@ class YmdanticController(BaseSourceController):
         Send a single audio track to Telegram, downloading it first.
 
         :param audio_dto: AudioDTO to send.
+        :param download: Kept for callers; the file is always downloaded here.
         """
-        if not download:
+        if not audio_dto.media_url:
             await self._send_audio(audio_dto, history=history)
             return
+        # The file link works only through the proxy the API was called with:
+        # sent to Telegram as a URL, it was fetched from the server's own
+        # address, which Yandex's CDN does not answer on prod (every track hung
+        # at 16% and failed after 30 s). The file is downloaded here instead.
         # Generate safe filename
         safe_title = "".join(
             c for c in (audio_dto.title or "track") if c.isalnum() or c in "._- "
@@ -364,21 +369,19 @@ class YmdanticController(BaseSourceController):
             if cached_dto:
                 audio_dtos[i] = cached_dto
                 continue
-            if download:
-                safe_title = "".join(
-                    c
-                    for c in (audio_dto.title or "track")
-                    if c.isalnum() or c in "._- "
-                )[:50]
-                ext = "mp4" if audio_dto.flac else "mp3"
-                filename = f"{audio_dto.source_id}_{safe_title}.{ext}"
-
-                if audio_dto.flac:
-                    local_path = await self._download_audio_file(audio_dto, filename)
-                    if local_path:
-                        audio_dto.path = local_path
-                        audio_dto.media_url = None
-                        audio_dto.direct_download_url = None
+            if not audio_dto.media_url:
+                continue
+            # Downloaded through the proxy for the same reason as single tracks
+            safe_title = "".join(
+                c for c in (audio_dto.title or "track") if c.isalnum() or c in "._- "
+            )[:50]
+            ext = "mp4" if audio_dto.flac else "mp3"
+            filename = f"{audio_dto.source_id}_{safe_title}.{ext}"
+            local_path = await self._download_audio_file(audio_dto, filename)
+            if local_path:
+                audio_dto.path = local_path
+                audio_dto.media_url = None
+                audio_dto.direct_download_url = None
 
         self._process_percent(73)
 
