@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import binascii
 import logging
 import re
 import secrets
@@ -33,6 +35,60 @@ from saver_backend.services.downloaders.schema import (
     PhotoDTO,
     VideoDTO,
 )
+
+
+def story_media_id(url: str) -> int | None:
+    """
+    Read the Instagram media id of a story photo from its CDN link.
+
+    Photo links carry ``ig_cache_key``: the base64 media id plus a suffix.
+    Story videos have no such key.
+
+    :param url: CDN link returned by indown.io.
+    :return: Media id, the number in /stories/<user>/<id>/, or None.
+    """
+    key = parse_qs(urlparse(url).query).get("ig_cache_key", [""])[0]
+    if not key:
+        return None
+    head = key.split(".")[0]
+    try:
+        raw = base64.urlsafe_b64decode(head + "=" * (-len(head) % 4)).decode()
+    except binascii.Error, UnicodeDecodeError, ValueError:
+        return None
+    return int(raw) if raw.isdigit() else None
+
+
+def pick_story_links(links: list[str], story_id: int) -> list[str]:
+    """
+    Keep only the story a /stories/<user>/<id>/ link points to (task 17).
+
+    indown.io returns every current story of the account, oldest first. A
+    photo is matched by its media id. A video has no id in its link, but ids
+    grow with time, so the story sits between the photos with a smaller and a
+    larger id; when exactly one video is there, that is the story.
+
+    :param links: CDN links of all current stories, in indown.io order.
+    :param story_id: Media id from the story link.
+    :return: The matching links; all links when the story cannot be told apart.
+    """
+    ids = [story_media_id(link) for link in links]
+    if story_id in ids:
+        return [links[ids.index(story_id)]]
+
+    known = [media_id for media_id in ids if media_id is not None]
+    newest_first = len(known) > 1 and known[0] > known[-1]
+    order = list(range(len(links)))
+    if newest_first:
+        order.reverse()
+
+    before = [pos for pos, i in enumerate(order) if (ids[i] or story_id) < story_id]
+    after = [pos for pos, i in enumerate(order) if (ids[i] or story_id) > story_id]
+    start = max(before) + 1 if before else 0
+    stop = min(after) if after else len(order)
+    candidates = [order[pos] for pos in range(start, stop) if ids[order[pos]] is None]
+    if len(candidates) == 1:
+        return [links[candidates[0]]]
+    return links
 
 
 class InstagramInDownController(BaseSourceController):
@@ -480,6 +536,16 @@ class InstagramInDownController(BaseSourceController):
     ) -> list[PhotoDTO | VideoDTO]:
         """Main parsing logic converting HTML to DTOs."""
         clean_links = self._extract_carousel_links(html)
+        story_id = self._story_id()
+        if story_id is not None and len(clean_links) > 1:
+            picked = pick_story_links(clean_links, story_id)
+            logging.info(
+                "Story %s: %s of %s indown.io items kept",
+                story_id,
+                len(picked),
+                len(clean_links),
+            )
+            clean_links = picked
 
         media_items = []
         for link in clean_links:
@@ -487,6 +553,13 @@ class InstagramInDownController(BaseSourceController):
             media_items.append(dto)
 
         return media_items
+
+    def _story_id(self) -> int | None:
+        """Media id from a /stories/<user>/<id>/ link, None for other links."""
+        if self._resolution.metadata.get("type") != InstagramContentTypeEnum.STORIES:
+            return None
+        code = str(self._resolution.metadata.get("code") or "")
+        return int(code) if code.isdigit() else None
 
     def _fill_video_metadata(self, video_dto: VideoDTO) -> None:
         """Extract video metadata using ffmpeg."""
