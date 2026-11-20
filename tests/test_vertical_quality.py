@@ -100,3 +100,8 @@ def test_4k_is_still_capped(
 
     assert _selected(params, [*VERTICAL, (2160, 3840)]) == (1080, 1920)
     assert _selected(params, [(1920, 1080), (3840, 2160)]) == (1920, 1080)
+
+
+def test_dzen_retries_through_other_proxies() -> None:
+    """Prod 20.11: 2 of 3 proxies timed out on Yandex SSO, the third worked."""
+    assert DzenYdlController.RETRIES_ON_ERROR == 3
