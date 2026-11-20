@@ -19,6 +19,7 @@ def _source(retries: int, fetch_results: list[object]) -> MagicMock:
     source = MagicMock()
     source.SOURCE = SourceEnum.YOUTUBE_VIDEO_YDL
     source.RETRIES_ON_ERROR = retries
+    source.DIRECT_FALLBACK = False
     source._selected_format_id = None  # noqa: SLF001
     source._resolution.metadata = {}  # noqa: SLF001
     source._resolution.url = "https://youtu.be/x"  # noqa: SLF001
