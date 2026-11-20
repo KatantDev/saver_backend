@@ -131,3 +131,42 @@ async def test_album_with_flac_sends_all_but_the_last_track_as_a_group() -> None
     source._send_audio_album.assert_awaited_once_with(tracks[:-1])  # noqa: SLF001
     source._send_flac_button.assert_awaited_once()  # noqa: SLF001
     source._send_error_message.assert_not_awaited()  # noqa: SLF001
+
+
+@pytest.mark.anyio
+async def test_single_track_is_sent_as_a_downloaded_file(tmp_path: object) -> None:
+    """Prod: Telegram-side fetch of the Yandex link timed out, so download first."""
+    source = MagicMock()
+    source.CODECSEPARATOR = YmdanticController.CODECSEPARATOR
+    path = f"{tmp_path}/1.mp3"
+    source._download_audio_file = AsyncMock(return_value=path)  # noqa: SLF001
+    source._send_audio = AsyncMock()  # noqa: SLF001
+    dto = AudioDTO(source_id="1", title="t", media_url="https://cdn.example/1")
+
+    await YmdanticController._send_audio_track(source, dto)  # noqa: SLF001
+
+    source._download_audio_file.assert_awaited_once()  # noqa: SLF001
+    sent = source._send_audio.await_args.args[0]  # noqa: SLF001
+    assert str(sent.path) == path
+    assert sent.media_url is None
+
+
+@pytest.mark.anyio
+async def test_album_tracks_are_downloaded_before_sending(tmp_path: object) -> None:
+    """MP3 album tracks used to go to Telegram as links too."""
+    source = MagicMock()
+    source._check_dto_in_cache = AsyncMock(return_value=None)  # noqa: SLF001
+    source._download_audio_file = AsyncMock(  # noqa: SLF001
+        side_effect=lambda dto, name: f"{tmp_path}/{name}"
+    )
+    source._send_audio_group = AsyncMock()  # noqa: SLF001
+    dtos = [
+        AudioDTO(source_id=str(n), title=f"t{n}", media_url=f"https://cdn.example/{n}")
+        for n in (1, 2)
+    ]
+
+    await YmdanticController._send_audio_album(source, dtos)  # noqa: SLF001
+
+    sent = source._send_audio_group.await_args.args[0]  # noqa: SLF001
+    assert [d.media_url for d in sent] == [None, None]
+    assert all(d.path for d in sent)
