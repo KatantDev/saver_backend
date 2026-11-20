@@ -12,6 +12,10 @@ class DzenYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from Dzen Video through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.DZEN_YDL
+    # On prod some proxies time out on sso.passport.yandex.ru, a step yt-dlp
+    # takes before the video page (2 of 3 proxies tried on 20.11); the same
+    # link works through another proxy, so a failure is retried through it
+    RETRIES_ON_ERROR: ClassVar[int] = 3
     COOKIES: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
