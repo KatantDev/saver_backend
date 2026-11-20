@@ -37,6 +37,8 @@ class YtDlpController(BaseSourceController, ABC):
     # Extra attempts (each through the next proxy) when yt-dlp fails;
     # sources whose failures are known to be transient turn it on
     RETRIES_ON_ERROR: ClassVar[int] = 0
+    # One more try without a proxy when the proxied ones failed (task 6)
+    DIRECT_FALLBACK: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -150,8 +152,12 @@ class YtDlpController(BaseSourceController, ABC):
         ):
             return
 
-        for attempt in range(self.RETRIES_ON_ERROR + 1):
-            last_attempt = attempt == self.RETRIES_ON_ERROR
+        attempts = self.RETRIES_ON_ERROR + 1
+        direct_fallback = self.DIRECT_FALLBACK and bool(self._proxy)
+        if direct_fallback:
+            attempts += 1
+        for attempt in range(attempts):
+            last_attempt = attempt == attempts - 1
             try:
                 await self._fetch_and_send(
                     cache_quality_key, raise_errors=not last_attempt
@@ -160,15 +166,26 @@ class YtDlpController(BaseSourceController, ABC):
             except DownloadError as e:
                 if last_attempt:
                     raise
+                go_direct = direct_fallback and attempt == attempts - 2
                 logging.warning(
-                    "[%s] attempt %s failed for %s, retrying through another proxy: %s",
+                    "[%s] attempt %s failed for %s, retrying %s: %s",
                     self.SOURCE.value,
                     attempt + 1,
                     self._resolution.url,
+                    "without a proxy" if go_direct else "through another proxy",
                     e,
                 )
-                self._switch_proxy_for_retry()
+                if go_direct:
+                    self._switch_to_direct()
+                else:
+                    self._switch_proxy_for_retry()
                 await asyncio.sleep(RETRY_PAUSE_SECONDS)
+
+    def _switch_to_direct(self) -> None:
+        """Retry from the server's own address once every proxy has failed."""
+        self._proxy = ""
+        self._proxies = []
+        self._yt_dlp = self._create_yt_dlp({**self._yt_dlp.params, "proxy": ""})
 
     def _switch_proxy_for_retry(self) -> None:
         """Take the next proxy, or a fresh yt-dlp session if none are left."""
