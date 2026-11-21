@@ -1279,9 +1279,15 @@ class TelegramBotController:
                 cover=thumbnail_input,
                 supports_streaming=supports_streaming,
             )
-        except TelegramForbiddenError, TelegramBadRequest:
-            return None
-        except TelegramNetworkError:
+        except (TelegramForbiddenError, TelegramBadRequest, TelegramNetworkError) as e:
+            # Logged so the failed request keeps Telegram's reason (TikTok links
+            # failed on prod 21.11 in a second with nothing in the log)
+            logging.error(
+                "Telegram refused the video %s for user %s: %s",
+                video.source_id,
+                telegram_id,
+                e,
+            )
             return None
         except Exception as e:
             if settings.environment == "local":

@@ -347,6 +347,8 @@ class SeekinAiController(YtDlpController):
             return
         video_dto = await self._download_video_by_url(data.medias[0].url)
         if video_dto is None:
+            # the user was left with a progress message that never finished
+            await self._send_error_message()
             return
         video_dto = VideoDTO.from_seekinai(
             video_dto=video_dto,
@@ -429,6 +431,7 @@ class SeekinAiController(YtDlpController):
 
             data = SeekinAiFromJson.model_validate(info.data)
             if data is None:
+                await self._send_error_message()
                 return
             self._process_percent(72)
             await self._handle_video(data=data)
