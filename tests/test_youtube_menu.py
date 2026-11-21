@@ -135,3 +135,31 @@ async def test_without_proxies_there_is_no_extra_attempt() -> None:
         await YtDlpController.download_video(controller)
 
     assert controller._fetch_and_send.await_count == 2  # noqa: SLF001
+
+
+def test_first_try_uses_tv_simply() -> None:
+    """Prod 20.11: tv_simply passed 21 of 24 checks, the default client 2 of 16."""
+    from saver_backend.services.downloaders.youtube_video_ydl_source import (
+        YOUTUBE_PLAYER_CLIENTS,
+        youtube_extractor_args,
+    )
+
+    args = youtube_extractor_args(YOUTUBE_PLAYER_CLIENTS[0])
+
+    assert args["youtube"]["player_client"] == ["tv_simply"]
+    assert "youtubepot-bgutilhttp" in args
+
+
+def test_each_retry_switches_the_player_client() -> None:
+    """A retry goes through another proxy and the other client."""
+    controller = YouTubeVideoYdlController.__new__(YouTubeVideoYdlController)
+    controller._yt_dlp = MagicMock(params={})  # noqa: SLF001
+
+    with patch.object(YtDlpController, "_switch_proxy_for_retry"):
+        controller._switch_proxy_for_retry()  # noqa: SLF001
+        first = controller._yt_dlp.params["extractor_args"]["youtube"]  # noqa: SLF001
+        controller._switch_proxy_for_retry()  # noqa: SLF001
+        second = controller._yt_dlp.params["extractor_args"]["youtube"]  # noqa: SLF001
+
+    assert first["player_client"] == ["default"]
+    assert second["player_client"] == ["tv_simply"]
