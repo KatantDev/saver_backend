@@ -50,7 +50,9 @@ from saver_backend.services.downloaders.schema import (
     PhotoDTO,
     VideoDTO,
 )
+from saver_backend.services.failure_log import mark_failed
 from saver_backend.services.i18n import gettext as _
+from saver_backend.services.telegram.delivery import DeliveryMiddleware
 from saver_backend.services.telegram.retry_after import RetryAfterMiddleware
 from saver_backend.services.telegram.video_meta import (
     BrokenCachedVideoError,
@@ -219,6 +221,7 @@ class TelegramBotController:
             timeout=180,
         )
         self._session.middleware(RetryAfterMiddleware())
+        self._session.middleware(DeliveryMiddleware())
         self._bot = Bot(
             session=self._session,
             token=settings.telegram_bot_token,
@@ -652,6 +655,7 @@ class TelegramBotController:
         :param inline_query_id: ID of the inline query.
         :param error_text: Error message.
         """
+        mark_failed("inline_error")
         text = error_text or _("error downloading inline query")
 
         result = InlineQueryResultArticle(
@@ -1396,6 +1400,7 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param language: Language for the message.
         """
+        mark_failed("not_found")
         coro = self._bot.send_message(
             chat_id=telegram_id,
             text=_("content private or not found", locale=language or self.language),
@@ -1413,6 +1418,7 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param language: Language for message
         """
+        mark_failed("tiktok_unsupported")
         coro = self._bot.send_message(
             chat_id=telegram_id,
             text=_("tiktok photo unsupported", locale=language or self.language),
@@ -1432,6 +1438,7 @@ class TelegramBotController:
         :param resolution_url: Resolution URL.
         :param language: Language for message.
         """
+        mark_failed("download_error")
         coro = self._bot.send_message(
             chat_id=telegram_id,
             text=_(
@@ -1476,6 +1483,7 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language for message.
         """
+        mark_failed("video_info_error")
         if not message_id:
             return
 
@@ -1499,6 +1507,7 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language for message.
         """
+        mark_failed("no_formats")
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,
@@ -1519,6 +1528,7 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param language: Language for message.
         """
+        mark_failed("live_stream")
         coro = self._bot.edit_message_text(
             message_id=message_id,
             chat_id=telegram_id,

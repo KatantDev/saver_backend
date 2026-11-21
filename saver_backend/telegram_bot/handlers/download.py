@@ -13,6 +13,7 @@ from aiogram.types import (
     Message,
 )
 
+from saver_backend.db.dao.failed_request_dao import FailedRequestDAO
 from saver_backend.entities.enums import (
     ContentTypeEnum,
     SourceEnum,
@@ -22,6 +23,7 @@ from saver_backend.entities.enums import (
 )
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO, VideoTheatreDTO
+from saver_backend.services.failure_log import host_of
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
 from saver_backend.task_manager.tasks import (
@@ -57,6 +59,7 @@ async def send_unknown_url(
     message: Message,
     bot: Bot,
     resolution: Resolution,
+    failed_request_dao: FailedRequestDAO,
 ) -> None:
     """
     Send unknown url.
@@ -64,6 +67,7 @@ async def send_unknown_url(
     :param message: Message.
     :param bot: Bot.
     :param resolution: Resolution.
+    :param failed_request_dao: Keeps the link the user could not download.
     """
     # Check if the url is a valid url
     pattern = re.compile(r"(https?://\S+)", re.IGNORECASE)
@@ -74,6 +78,18 @@ async def send_unknown_url(
     await message.answer(
         text=_("unknown url"),
     )
+    if message.from_user:
+        try:
+            await failed_request_dao.create(
+                telegram_id=message.from_user.id,
+                source=resolution.source,
+                host=host_of(resolution.url),
+                url=resolution.url,
+                stage="unsupported",
+                reason="unsupported",
+            )
+        except Exception as error:
+            logging.warning("Could not record unsupported link: %s", error)
     await bot.send_message(
         chat_id=settings.admin_chat_id,
         text=f"Unsupported URL: {resolution.url}",
