@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from aiogram.client.session.middlewares.base import (
     BaseRequestMiddleware,
@@ -20,7 +20,7 @@ from saver_backend.services.failure_log import mark_delivered
 
 if TYPE_CHECKING:
     from aiogram.client.bot import Bot
-    from aiogram.methods import Response, TelegramMethod
+    from aiogram.methods import TelegramMethod
 
 # Requests that hand the user a result: a file, the quality menu (a photo or
 # a message with buttons) or an inline answer
@@ -50,16 +50,19 @@ class DeliveryMiddleware(BaseRequestMiddleware):
         make_request: NextRequestMiddlewareType[TelegramType],
         bot: "Bot",
         method: "TelegramMethod[TelegramType]",
-    ) -> "Response[TelegramType]":
+    ) -> TelegramType:
         """
-        Send the request and mark delivery when it succeeded.
+        Send the request and mark delivery when Telegram accepted it.
+
+        The chain returns the method's result (Message, User, ...), not a
+        Response; a request Telegram refused raises instead.
 
         :param make_request: Next step of the request chain.
         :param bot: Bot that sends the request.
         :param method: Telegram method being sent.
-        :return: Telegram response.
+        :return: Result of the method.
         """
-        response = await make_request(bot, method)
-        if response.ok and _is_result(method):
+        result = await make_request(bot, method)
+        if _is_result(method):
             mark_delivered()
-        return response
+        return cast("TelegramType", result)
