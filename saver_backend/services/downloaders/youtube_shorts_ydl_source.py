@@ -6,10 +6,13 @@ from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 from saver_backend.services.downloaders.youtube_video_ydl_source import (
     YOUTUBE_H264_FORMAT,
+    YOUTUBE_PLAYER_CLIENTS,
+    YouTubeClientRotationMixin,
+    youtube_extractor_args,
 )
 
 
-class YouTubeShortsYdlController(YtDlpController):
+class YouTubeShortsYdlController(YouTubeClientRotationMixin, YtDlpController):
     """Asynchronous controller for downloading videos from YT Shorts through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_SHORTS_YDL
@@ -26,11 +29,7 @@ class YouTubeShortsYdlController(YtDlpController):
         youtube_params = {
             "format": YOUTUBE_H264_FORMAT,
             "merge_output_format": "mp4",
-            "extractor_args": {
-                "youtubepot-bgutilhttp": {
-                    "base_url": ["http://saver_backend-bgutil:4416"],
-                },
-            },
+            "extractor_args": youtube_extractor_args(YOUTUBE_PLAYER_CLIENTS[0]),
             "remote_components": ["ejs:github"],
         }
         self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
