@@ -37,6 +37,9 @@ def is_lossless_codec(codec: str | None) -> bool:
 # All tracks of an album used to be requested at once and a failed one was
 # dropped silently (9 of 11 tracks in the 13.11 audit). Fewer requests at a time
 # and a second and third try for the tracks that failed.
+# A dead proxy must fail fast so the next one is tried (task: YM on prod)
+AUDIO_DOWNLOAD_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+AUDIO_DOWNLOAD_ATTEMPTS = 3
 ALBUM_FETCH_CONCURRENCY = 4
 ALBUM_TRACK_ATTEMPTS = 3
 ALBUM_RETRY_PAUSE_SECONDS = 1.0
@@ -71,7 +74,7 @@ class YmdanticController(BaseSourceController):
 
         # HTTP client for downloading files
         self._http_client = httpx.AsyncClient(
-            timeout=60.0,
+            timeout=AUDIO_DOWNLOAD_TIMEOUT,
             follow_redirects=True,
             proxy=proxy_url,
         )
@@ -255,41 +258,71 @@ class YmdanticController(BaseSourceController):
         filename: str,
     ) -> Path | None:
         """
-        Download audio file from direct URL.
+        Download audio file from direct URL, through another proxy on failure.
+
+        On prod 2 of 12 proxies never reach Yandex's CDN (connect timeout),
+        while the same link downloads in under a second through the others, so
+        a failed download is repeated through the next proxies.
 
         :param audio_dto: AudioDTO containing download URL.
         :param filename: Target filename.
         :return: Local file path or None on failure.
         """
-
         if not audio_dto.media_url:
             return None
 
         file_path = self._download_directory / filename
-
-        try:
-            async with self._http_client.stream("GET", audio_dto.media_url) as response:
-                response.raise_for_status()
-                with file_path.open("wb") as f:
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        f.write(chunk)
-            if audio_dto.flac:
-                flac_file_path = file_path.with_suffix(".flac")
-                await asyncio.to_thread(
-                    lambda: (
-                        ffmpeg.input(str(file_path))
-                        .output(str(flac_file_path), acodec="flac")
-                        .run()
-                    )
+        routes = [self._proxy, *(p for p in self._proxies if p != self._proxy)]
+        for attempt, proxy in enumerate(routes[:AUDIO_DOWNLOAD_ATTEMPTS]):
+            client = (
+                self._http_client
+                if attempt == 0
+                else httpx.AsyncClient(
+                    timeout=AUDIO_DOWNLOAD_TIMEOUT,
+                    follow_redirects=True,
+                    proxy=proxy or None,
                 )
-                file_path = flac_file_path
-            return file_path
+            )
+            try:
+                async with client.stream("GET", audio_dto.media_url) as response:
+                    response.raise_for_status()
+                    with file_path.open("wb") as f:
+                        async for chunk in response.aiter_bytes(chunk_size=8192):
+                            f.write(chunk)
+                break
+            except Exception as e:
+                logging.warning(
+                    "Audio download attempt %s failed for %s: %s",
+                    attempt + 1,
+                    filename,
+                    type(e).__name__,
+                )
+                if file_path.exists():
+                    file_path.unlink()
+            finally:
+                if client is not self._http_client:
+                    await client.aclose()
+        else:
+            logging.error("Failed to download audio file %s", filename)
+            return None
 
+        if not audio_dto.flac:
+            return file_path
+        try:
+            flac_file_path = file_path.with_suffix(".flac")
+            await asyncio.to_thread(
+                lambda: (
+                    ffmpeg.input(str(file_path))
+                    .output(str(flac_file_path), acodec="flac")
+                    .run()
+                )
+            )
         except Exception as e:
-            logging.error("Failed to download audio file %s: %s", filename, e)
+            logging.error("Failed to convert %s to FLAC: %s", filename, e)
             if file_path.exists():
                 file_path.unlink()
             return None
+        return flac_file_path
 
     async def _send_audio_track(
         self,

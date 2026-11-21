@@ -1,6 +1,8 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from saver_backend.services.downloaders import yandex_ymdantic
@@ -170,3 +172,36 @@ async def test_album_tracks_are_downloaded_before_sending(tmp_path: object) -> N
     sent = source._send_audio_group.await_args.args[0]  # noqa: SLF001
     assert [d.media_url for d in sent] == [None, None]
     assert all(d.path for d in sent)
+
+
+@pytest.mark.anyio
+async def test_dead_proxy_download_is_retried_through_another(
+    tmp_path: Path,
+) -> None:
+    """Prod 21.11: 2 of 12 proxies never reach Yandex's CDN."""
+
+    def dead(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("dead proxy", request=request)
+
+    def alive(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"ID3 audio bytes")
+
+    source = MagicMock()
+    source._download_directory = tmp_path  # noqa: SLF001
+    source._proxy = "proxy-dead"  # noqa: SLF001
+    source._proxies = ["proxy-alive"]  # noqa: SLF001
+    source._http_client = httpx.AsyncClient(transport=httpx.MockTransport(dead))  # noqa: SLF001
+    real_client = httpx.AsyncClient
+    used: list[str | None] = []
+
+    def client_for(**kwargs: object) -> httpx.AsyncClient:
+        used.append(kwargs.get("proxy"))  # type: ignore[arg-type]
+        return real_client(transport=httpx.MockTransport(alive))
+
+    dto = AudioDTO(source_id="1", title="t", media_url="https://cdn.example/1.mp3")
+    with patch.object(yandex_ymdantic.httpx, "AsyncClient", side_effect=client_for):
+        path = await YmdanticController._download_audio_file(source, dto, "1.mp3")  # noqa: SLF001
+
+    assert path is not None
+    assert path.read_bytes() == b"ID3 audio bytes"
+    assert used == ["proxy-alive"]
