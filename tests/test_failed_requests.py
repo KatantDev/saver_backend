@@ -4,7 +4,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiogram.methods import Response, SendMessage, SendVideo
+from aiogram.methods import GetMe, SendMessage, SendVideo
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from saver_backend.entities.enums import SourceEnum
@@ -79,8 +79,9 @@ async def test_parallel_requests_do_not_mix() -> None:
 async def _through_middleware(method: Any) -> failure_log.FailureMark:
     mark = failure_log.start()
 
-    async def make_request(_bot: Any, _method: Any) -> Response[Any]:
-        return Response[Any](ok=True, result=None)
+    async def make_request(_bot: Any, _method: Any) -> Any:
+        # the chain returns the method's result, not a Response
+        return MagicMock()
 
     await DeliveryMiddleware()(make_request, MagicMock(), method)
     return mark
@@ -92,6 +93,14 @@ async def test_sent_video_counts_as_delivered() -> None:
     mark = await _through_middleware(SendVideo(chat_id=1, video="file-id"))
 
     assert mark.delivered
+
+
+@pytest.mark.anyio
+async def test_get_me_at_startup_passes_through() -> None:
+    """Dev 21.11: the app called get_me at startup and crashed on .ok."""
+    mark = await _through_middleware(GetMe())
+
+    assert not mark.delivered
 
 
 @pytest.mark.anyio
