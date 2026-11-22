@@ -2,6 +2,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from saver_backend.db.dao.failed_request_dao import FailedRequestDAO
 from saver_backend.db.dao.request_log_dao import RequestLogDAO
 from saver_backend.services.telegram.daily_report_service import DailyReportService
 from saver_backend.services.telegram.request_report_service import RequestReportService
@@ -29,6 +30,7 @@ async def on_stats_command(
 async def on_requests_command(
     message: Message,
     request_log_dao: RequestLogDAO,
+    failed_request_dao: FailedRequestDAO,
 ) -> None:
     """
     Handle /requests command for admins: what users try to download.
@@ -39,10 +41,14 @@ async def on_requests_command(
 
     :param message: Message object.
     :param request_log_dao: RequestLogDAO instance from middleware.
+    :param failed_request_dao: FailedRequestDAO instance from middleware.
     """
     days = 1
     parts = (message.text or "").split()
     if len(parts) > 1 and parts[1].isdigit():
         days = max(1, min(int(parts[1]), 90))
-    report = await RequestReportService(request_log_dao).construct(days=days)
+    report = await RequestReportService(
+        request_log_dao,
+        failed_request_dao,
+    ).construct(days=days)
     await message.answer(report)

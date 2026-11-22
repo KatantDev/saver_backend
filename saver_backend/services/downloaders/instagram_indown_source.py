@@ -1,7 +1,11 @@
 import asyncio
+import base64
+import binascii
+import hashlib
 import logging
+import random
 import re
-import secrets
+import time
 import uuid
 from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlparse
@@ -33,6 +37,73 @@ from saver_backend.services.downloaders.schema import (
     PhotoDTO,
     VideoDTO,
 )
+from saver_backend.settings import settings
+
+# indown.io allows 50 downloads a day per address (21.11 prod: 9 of 12 proxies
+# spent by morning). A spent proxy is skipped for a while; the time of the
+# daily reset is unknown, so it is tried again after a few hours.
+INDOWN_LIMIT_TEXT = "Too many requests"
+INDOWN_LIMIT_PAUSE_SECONDS = 3 * 60 * 60
+INDOWN_MAX_ATTEMPTS = 6
+
+
+def _proxy_key(proxy: str | None) -> str:
+    """Short hash of a proxy, so the shared state never keeps its address."""
+    return hashlib.sha1((proxy or "direct").encode()).hexdigest()[:12]  # noqa: S324
+
+
+def story_media_id(url: str) -> int | None:
+    """
+    Read the Instagram media id of a story photo from its CDN link.
+
+    Photo links carry ``ig_cache_key``: the base64 media id plus a suffix.
+    Story videos have no such key.
+
+    :param url: CDN link returned by indown.io.
+    :return: Media id, the number in /stories/<user>/<id>/, or None.
+    """
+    key = parse_qs(urlparse(url).query).get("ig_cache_key", [""])[0]
+    if not key:
+        return None
+    head = key.split(".")[0]
+    try:
+        raw = base64.urlsafe_b64decode(head + "=" * (-len(head) % 4)).decode()
+    except binascii.Error, UnicodeDecodeError, ValueError:
+        return None
+    return int(raw) if raw.isdigit() else None
+
+
+def pick_story_links(links: list[str], story_id: int) -> list[str]:
+    """
+    Keep only the story a /stories/<user>/<id>/ link points to (task 17).
+
+    indown.io returns every current story of the account, oldest first. A
+    photo is matched by its media id. A video has no id in its link, but ids
+    grow with time, so the story sits between the photos with a smaller and a
+    larger id; when exactly one video is there, that is the story.
+
+    :param links: CDN links of all current stories, in indown.io order.
+    :param story_id: Media id from the story link.
+    :return: The matching links; all links when the story cannot be told apart.
+    """
+    ids = [story_media_id(link) for link in links]
+    if story_id in ids:
+        return [links[ids.index(story_id)]]
+
+    known = [media_id for media_id in ids if media_id is not None]
+    newest_first = len(known) > 1 and known[0] > known[-1]
+    order = list(range(len(links)))
+    if newest_first:
+        order.reverse()
+
+    before = [pos for pos, i in enumerate(order) if (ids[i] or story_id) < story_id]
+    after = [pos for pos, i in enumerate(order) if (ids[i] or story_id) > story_id]
+    start = max(before) + 1 if before else 0
+    stop = min(after) if after else len(order)
+    candidates = [order[pos] for pos in range(start, stop) if ids[order[pos]] is None]
+    if len(candidates) == 1:
+        return [links[candidates[0]]]
+    return links
 
 
 class InstagramInDownController(BaseSourceController):
@@ -256,78 +327,124 @@ class InstagramInDownController(BaseSourceController):
         if await self.send_video_from_cache(source_id=source_id, quality="best"):
             return
 
-        normalized_url = self._normalize_url(original_url)
-        referer_path = "/reels/"
-        referer_url = f"{self.BASE_URL}{referer_path}"
-
-        # 3. Update headers with Referer for the POST request
-        await self._init_httpx(self._proxy)
-        if self._client is None:
-            return
-
         self._process_percent(10)
-        for _ in range(1, 3):
-            # 2. Get Token and referer
-            form_fields = await self._get_form_fields(referer_url)
-            if not form_fields:
-                logging.error("Could not fetch CSRF token from indown.io")
-                await self._fallback()
+        for proxy in await self._indown_routes():
+            outcome = await self._try_indown(proxy, original_url, source_id)
+            if outcome == "done":
                 return
-            token = form_fields[0]
-            referer = form_fields[1]
-            param_name = form_fields[2] if len(form_fields) > 2 else "e"
-            param_value = form_fields[3] if len(form_fields) > 3 else "e"
-
-            self._client.headers.update({"Referer": referer})
-
-            # 4. Post Data
-            payload = {
-                "link": normalized_url,
-                "referer": referer,
-                "locale": "en",
-                "_token": token,
-                param_name: param_value,
-            }
-
-            try:
-                response = await self._client.post(
-                    f"{self.BASE_URL}/download",
-                    data=payload,
-                )
-                response.raise_for_status()
-                html = response.text
-            except Exception as e:
-                logging.exception(f"Failed to fetch data from indown.io: {e}")
-                await self._fallback()
-                return
-
-            self._process_percent(40)
-
-            if "Not Found" in html or "Private Video" in html:
+            if outcome == "not_found":
                 # indown.io has no login, so content for logged-in users looks
                 # missing to it; the service account may still see it
                 await self._fallback(not_found=True)
                 return
 
-            # 5. Parse and Send
-            media_items = self._extract_media_dtos(html, original_url, source_id)
-            if not media_items:
-                await self._change_proxy_type()
-                logging.warning("indown.io failed to parse media")
-                if self._proxies:
-                    self._proxy = secrets.choice(self._proxies)
-                await self._init_httpx(self._proxy)
-                self._client.headers.update({"Referer": referer_url})
-                continue
-            try:
-                await self._send_media_result(media_items)
-            except InstaIndownError:
-                self.cleanup_files(media_items)
-                await self._fallback()
-            return
-
         logging.warning("No media found in indown.io response.")
         await self._fallback()
+
+    async def _try_indown(  # noqa: PLR0911 - one return per indown.io outcome
+        self,
+        proxy: str | None,
+        original_url: str,
+        source_id: str,
+    ) -> str:
+        """
+        One indown.io attempt through one proxy.
+
+        :param proxy: Proxy to use, None for the server's own address.
+        :param original_url: Link the user sent.
+        :param source_id: Cache key of the content.
+        :return: "done" when the request is finished (sent or handed to the
+            fallback), "not_found" when indown.io says the content is missing,
+            "next" to try the next proxy.
+        """
+        referer_url = f"{self.BASE_URL}/reels/"
+        await self._init_httpx(proxy)
+        if self._client is None:
+            return "next"
+        form_fields = await self._get_form_fields(referer_url)
+        if not form_fields:
+            logging.error("Could not fetch CSRF token from indown.io")
+            return "next"
+        referer = form_fields[1]
+        self._client.headers.update({"Referer": referer})
+        payload = {
+            "link": self._normalize_url(original_url),
+            "referer": referer,
+            "locale": "en",
+            "_token": form_fields[0],
+            (form_fields[2] if len(form_fields) > 2 else "e"): (
+                form_fields[3] if len(form_fields) > 3 else "e"
+            ),
+        }
+        try:
+            response = await self._client.post(
+                f"{self.BASE_URL}/download", data=payload
+            )
+            response.raise_for_status()
+            html = response.text
+        except Exception as e:
+            logging.warning("indown.io request failed: %s", type(e).__name__)
+            return "next"
+
+        self._process_percent(40)
+        if INDOWN_LIMIT_TEXT in html:
+            # 50 downloads a day per address: try the next proxy
+            await self._mark_exhausted(proxy)
+            return "next"
+        if "Not Found" in html or "Private Video" in html:
+            return "not_found"
+
+        media_items = self._extract_media_dtos(html, original_url, source_id)
+        if not media_items:
+            logging.warning("indown.io failed to parse media")
+            return "next"
+        try:
+            await self._send_media_result(media_items)
+        except InstaIndownError:
+            self.cleanup_files(media_items)
+            await self._fallback()
+        return "done"
+
+    async def _indown_routes(self) -> list[str | None]:
+        """
+        Proxies to try for indown.io, those over the daily limit left out.
+
+        indown.io allows 50 downloads a day per address. With two random tries
+        the bot kept hitting spent proxies (9 of 12 on prod on 21.11 morning)
+        and fell back to yt-dlp, which cannot get photo posts without a login.
+
+        :return: Proxies to try in order; None means the server's own address.
+        """
+        exhausted = await self._exhausted_proxies()
+        pool = [*settings.proxies, *settings.proxies_ru]
+        random.shuffle(pool)
+        fresh = [p for p in pool if _proxy_key(p) not in exhausted]
+        routes: list[str | None] = []
+        routes.extend(fresh[:INDOWN_MAX_ATTEMPTS])
+        if not routes:
+            logging.warning("All indown.io proxies are over the daily limit")
+            routes = [pool[0]] if pool else [None]
+        return routes
+
+    async def _exhausted_proxies(self) -> set[str]:
+        data = await self._telegram_bot_controller.get_fsm_data(
+            user_id=int(FsmKeysEnum.INDOWN_LIMITS),
+            chat_id=int(FsmKeysEnum.INDOWN_LIMITS),
+        )
+        now = time.time()
+        return {
+            key
+            for key, until in (data or {}).items()
+            if isinstance(until, (int, float)) and until > now
+        }
+
+    async def _mark_exhausted(self, proxy: str | None) -> None:
+        logging.warning("indown.io daily limit reached on a proxy, trying another")
+        await self._telegram_bot_controller.update_fsm_data(
+            user_id=int(FsmKeysEnum.INDOWN_LIMITS),
+            chat_id=int(FsmKeysEnum.INDOWN_LIMITS),
+            data={_proxy_key(proxy): time.time() + INDOWN_LIMIT_PAUSE_SECONDS},
+        )
 
     async def _fallback(self, not_found: bool = False) -> None:
         """
@@ -480,6 +597,16 @@ class InstagramInDownController(BaseSourceController):
     ) -> list[PhotoDTO | VideoDTO]:
         """Main parsing logic converting HTML to DTOs."""
         clean_links = self._extract_carousel_links(html)
+        story_id = self._story_id()
+        if story_id is not None and len(clean_links) > 1:
+            picked = pick_story_links(clean_links, story_id)
+            logging.info(
+                "Story %s: %s of %s indown.io items kept",
+                story_id,
+                len(picked),
+                len(clean_links),
+            )
+            clean_links = picked
 
         media_items = []
         for link in clean_links:
@@ -487,6 +614,13 @@ class InstagramInDownController(BaseSourceController):
             media_items.append(dto)
 
         return media_items
+
+    def _story_id(self) -> int | None:
+        """Media id from a /stories/<user>/<id>/ link, None for other links."""
+        if self._resolution.metadata.get("type") != InstagramContentTypeEnum.STORIES:
+            return None
+        code = str(self._resolution.metadata.get("code") or "")
+        return int(code) if code.isdigit() else None
 
     def _fill_video_metadata(self, video_dto: VideoDTO) -> None:
         """Extract video metadata using ffmpeg."""

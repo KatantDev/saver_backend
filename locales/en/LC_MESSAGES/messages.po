@@ -60,6 +60,12 @@ msgstr ""
 msgid "video info without formats"
 msgstr "⚠️ No formats available for download. Please try again later."
 
+msgid "video is live"
+msgstr "This is a live stream that has not started or ended yet. You can download the recording after the broadcast ends."
+
+msgid "downloading progress"
+msgstr "Downloading... {percent}%"
+
 msgid "choose quality"
 msgstr ""
 "<b>{title}</b>\n"

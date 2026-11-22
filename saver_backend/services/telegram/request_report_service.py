@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from saver_backend.db.dao.failed_request_dao import FailedRequestDAO
 from saver_backend.db.dao.request_log_dao import RequestLogDAO
 from saver_backend.entities.enums import SourceEnum
 
@@ -13,8 +14,13 @@ class RequestReportService:
     does not go through i18n, so it does not depend on compiled translations.
     """
 
-    def __init__(self, request_log_dao: RequestLogDAO) -> None:
+    def __init__(
+        self,
+        request_log_dao: RequestLogDAO,
+        failed_request_dao: FailedRequestDAO | None = None,
+    ) -> None:
         self._request_log_dao = request_log_dao
+        self._failed_request_dao = failed_request_dao
 
     @staticmethod
     def _fmt(number: int) -> str:
@@ -68,5 +74,16 @@ class RequestReportService:
         if top_unsupported:
             lines += ["", "<b>Не поддерживаются (хосты):</b>"]
             lines += [f"{host}: {self._fmt(count)}" for host, count in top_unsupported]
+
+        if self._failed_request_dao is not None:
+            failed = await self._failed_request_dao.get_counts_by_source(
+                created_after=since,
+            )
+            total_failed = sum(count for _, _, count in failed)
+            lines += ["", f"<b>Неудачные: {self._fmt(total_failed)}</b>"]
+            lines += [
+                f"{self._source_name(source)} — {reason}: {self._fmt(count)}"
+                for source, reason, count in failed[:15]
+            ]
 
         return "\n".join(lines)

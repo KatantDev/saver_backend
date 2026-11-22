@@ -20,6 +20,7 @@ from saver_backend.services.downloaders.schema import AudioDTO, PhotoDTO, VideoD
 from saver_backend.settings import settings
 
 DOWNLOAD_RETRIES = 10
+RETRY_PAUSE_SECONDS = 2
 
 
 def _retry_backoff(attempt: int) -> float:
@@ -33,6 +34,11 @@ class YtDlpController(BaseSourceController, ABC):
     COOKIES: ClassVar[bool] = False
     SUPPORTS_STREAMING: ClassVar[bool] = True
     DIRECT_URL_DOWNLOAD: ClassVar[bool] = False
+    # Extra attempts (each through the next proxy) when yt-dlp fails;
+    # sources whose failures are known to be transient turn it on
+    RETRIES_ON_ERROR: ClassVar[int] = 0
+    # One more try without a proxy when the proxied ones failed (task 6)
+    DIRECT_FALLBACK: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -146,10 +152,62 @@ class YtDlpController(BaseSourceController, ABC):
         ):
             return
 
+        attempts = self.RETRIES_ON_ERROR + 1
+        direct_fallback = self.DIRECT_FALLBACK and bool(self._proxy)
+        if direct_fallback:
+            attempts += 1
+        for attempt in range(attempts):
+            last_attempt = attempt == attempts - 1
+            try:
+                await self._fetch_and_send(
+                    cache_quality_key, raise_errors=not last_attempt
+                )
+                return
+            except DownloadError as e:
+                if last_attempt:
+                    raise
+                go_direct = direct_fallback and attempt == attempts - 2
+                logging.warning(
+                    "[%s] attempt %s failed for %s, retrying %s: %s",
+                    self.SOURCE.value,
+                    attempt + 1,
+                    self._resolution.url,
+                    "without a proxy" if go_direct else "through another proxy",
+                    e,
+                )
+                if go_direct:
+                    self._switch_to_direct()
+                else:
+                    self._switch_proxy_for_retry()
+                await asyncio.sleep(RETRY_PAUSE_SECONDS)
+
+    def _switch_to_direct(self) -> None:
+        """Retry from the server's own address once every proxy has failed."""
+        self._proxy = ""
+        self._proxies = []
+        self._yt_dlp = self._create_yt_dlp({**self._yt_dlp.params, "proxy": ""})
+
+    def _switch_proxy_for_retry(self) -> None:
+        """Take the next proxy, or a fresh yt-dlp session if none are left."""
+        try:
+            self._set_proxy()
+        except IPAddressBlockedError:
+            self._yt_dlp = self._create_yt_dlp(self._yt_dlp.params)
+
+    async def _fetch_and_send(self, cache_quality_key: str, raise_errors: bool) -> None:
+        """
+        Read the video info, then send it from the cache or download and send it.
+
+        :param cache_quality_key: Quality the cache is keyed by.
+        :param raise_errors: Re-raise yt-dlp errors so the caller can retry,
+            instead of sending the user an error message.
+        """
         # Getting information about the video, if data is invalid, send error message
         try:
             info_dict = await self.get_video_info(url=self._resolution.url)
         except DownloadError as e:
+            if raise_errors:
+                raise
             logging.exception(e)
             await self._send_error_message()
             return

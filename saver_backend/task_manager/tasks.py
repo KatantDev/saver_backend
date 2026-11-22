@@ -6,6 +6,7 @@ from taskiq import TaskiqDepends
 
 from saver_backend.entities.enums import ContentTypeEnum
 from saver_backend.entities.resolution import Resolution
+from saver_backend.services import failure_log
 from saver_backend.services.cleanup.clear_old import CleanupService
 from saver_backend.services.downloaders.exceptions import (
     TikTokYtDlpDownloaderError,
@@ -14,9 +15,49 @@ from saver_backend.services.downloaders.instagram_session import (
     InstagramSessionError,
     refresh_instagram_session,
 )
-from saver_backend.services.downloaders.schema import VideoDTO
+from saver_backend.services.downloaders.schema import (
+    VideoDTO,
+    is_live_error,
+    is_live_stream,
+)
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
+
+
+async def _record_failure(
+    db: DatabaseState,
+    mark: failure_log.FailureMark,
+    resolution: Resolution,
+    telegram_id: int,
+    stage: str,
+) -> None:
+    """
+    Keep the full link of a request the user got no result for.
+
+    Writing the record never breaks the request: a failure here is only logged.
+
+    :param db: Database state.
+    :param mark: What happened while the request was handled.
+    :param resolution: The link and its source.
+    :param telegram_id: Telegram ID of the user.
+    :param stage: video_info, download or inline.
+    """
+    reason = failure_log.outcome(mark)
+    if reason is None:
+        return
+    try:
+        await db.session.rollback()
+        await db.failed_request_dao.create(
+            telegram_id=telegram_id,
+            source=resolution.source,
+            host=failure_log.host_of(resolution.url),
+            url=resolution.url,
+            stage=stage,
+            reason=reason,
+            error=mark.error,
+        )
+    except Exception as error:
+        logging.warning("Could not record failed request %s: %s", resolution.url, error)
 
 
 @broker.task()
@@ -63,6 +104,7 @@ async def save_video(
         format_id=format_id,
     )
     await controller.set_user_language()
+    mark = failure_log.start()
 
     # Downloading video with error handling
     try:
@@ -83,6 +125,7 @@ async def save_video(
             )
     finally:
         await controller.close()
+        await _record_failure(db, mark, resolution, telegram_id, "download")
 
 
 @broker.task(
@@ -126,12 +169,14 @@ async def process_inline_query(
         inline_query_id=inline_query_id,
     )
     await controller.set_user_language()
+    mark = failure_log.start()
     try:
         await controller.download_video()
     except Exception as error:
         logging.exception(error)
     finally:
         await controller.close()
+        await _record_failure(db, mark, resolution, telegram_id, "inline")
 
 
 @broker.task()
@@ -178,61 +223,83 @@ async def get_video_info(
         message_id=processing_message_id,
     )
     await controller.set_user_language()
-
-    # Trying to get video info
+    mark = failure_log.start()
     try:
-        info_dict = await controller.get_video_info(url=resolution.url)
-    except Exception as error:
-        logging.exception(error)
-        info_dict = None
-    finally:
-        await controller.close()
+        # Trying to get video info
+        try:
+            info_dict = await controller.get_video_info(url=resolution.url)
+        except Exception as error:
+            if is_live_error(error):
+                logging.info("Scheduled stream refused: %s; %s", resolution.url, error)
+                await state.telegram_bot_controller.edit_video_is_live(
+                    telegram_id=telegram_id,
+                    message_id=processing_message_id,
+                )
+                return
+            logging.exception(error)
+            info_dict = None
+        finally:
+            await controller.close()
 
-    if not info_dict:
-        await state.telegram_bot_controller.edit_failed_video_info(
-            telegram_id=telegram_id,
-            message_id=controller.message_id,
+        if not info_dict:
+            await state.telegram_bot_controller.edit_failed_video_info(
+                telegram_id=telegram_id,
+                message_id=controller.message_id,
+            )
+            return
+
+        if is_live_stream(info_dict):
+            logging.info(
+                "Live stream refused: %s; user_id=%s", resolution.url, telegram_id
+            )
+            await state.telegram_bot_controller.edit_video_is_live(
+                telegram_id=telegram_id,
+                message_id=processing_message_id,
+            )
+            return
+
+        # Creating data transfer object from info dict
+        video_dto = VideoDTO.from_yt_dlp(info=info_dict)
+        if not video_dto.formats:
+            await state.telegram_bot_controller.edit_video_no_formats(
+                telegram_id=telegram_id,
+                message_id=processing_message_id,
+            )
+            return
+
+        # Sending quality selection message and deleting processing message
+        quality_selection_message = (
+            await state.telegram_bot_controller.send_choose_quality(
+                telegram_id=telegram_id,
+                video_dto=video_dto,
+                contenttype=getattr(controller, "contenttype", ContentTypeEnum.VIDEO),
+            )
         )
-        return
-
-    # Creating data transfer object from info dict
-    video_dto = VideoDTO.from_yt_dlp(info=info_dict)
-    if not video_dto.formats:
-        await state.telegram_bot_controller.edit_video_no_formats(
+        await state.telegram_bot_controller.delete_message(
             telegram_id=telegram_id,
             message_id=processing_message_id,
         )
-        return
 
-    # Sending quality selection message and deleting processing message
-    quality_selection_message = await state.telegram_bot_controller.send_choose_quality(
-        telegram_id=telegram_id,
-        video_dto=video_dto,
-        contenttype=getattr(controller, "contenttype", ContentTypeEnum.VIDEO),
-    )
-    await state.telegram_bot_controller.delete_message(
-        telegram_id=telegram_id,
-        message_id=processing_message_id,
-    )
+        if not quality_selection_message:
+            logging.error(
+                "Failed to send quality selection message for user %s",
+                telegram_id,
+            )
+            return
 
-    if not quality_selection_message:
-        logging.error(
-            "Failed to send quality selection message for user %s",
-            telegram_id,
+        # Put data into FSM for further processing
+        await state.telegram_bot_controller.set_fsm_data(
+            user_id=telegram_id,
+            chat_id=telegram_id,
+            data={
+                "video_dto": video_dto.model_dump(mode="json"),
+                "videotheatre_dto": json.dumps(info_dict.get("videotheatre_dto", {})),
+                "resolution": resolution.model_dump(mode="json"),
+                "quality_selection_message_id": quality_selection_message.message_id,
+            },
         )
-        return
-
-    # Put data into FSM for further processing
-    await state.telegram_bot_controller.set_fsm_data(
-        user_id=telegram_id,
-        chat_id=telegram_id,
-        data={
-            "video_dto": video_dto.model_dump(mode="json"),
-            "videotheatre_dto": json.dumps(info_dict.get("videotheatre_dto", {})),
-            "resolution": resolution.model_dump(mode="json"),
-            "quality_selection_message_id": quality_selection_message.message_id,
-        },
-    )
+    finally:
+        await _record_failure(db, mark, resolution, telegram_id, "video_info")
 
 
 @broker.task(

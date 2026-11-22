@@ -11,6 +11,28 @@ if TYPE_CHECKING:
     pass
 
 
+# What Instagram answers for a deleted, private or never existing post
+CONTENT_UNAVAILABLE_HINTS = (
+    "empty media response",
+    "requested content is not available",
+    "content isn't available",
+    "content is not available",
+    "this post is unavailable",
+    "http error 404",
+)
+
+
+def is_content_unavailable(error: DownloadError) -> bool:
+    """
+    Whether yt-dlp failed because the post is gone or closed, not a network error.
+
+    :param error: Error raised by yt-dlp.
+    :return: True if the user should be told the post is private or deleted.
+    """
+    message = str(error.msg or error).lower()
+    return any(hint in message for hint in CONTENT_UNAVAILABLE_HINTS)
+
+
 class InstagramYdlController(YtDlpController):
     """Asynchronous controller for downloading videos from Instagram through yt-dlp."""
 
@@ -41,6 +63,12 @@ class InstagramYdlController(YtDlpController):
         try:
             return await super().get_video_info(url)
         except DownloadError as error:
-            if "No video formats found" in error.msg:
+            if not is_content_unavailable(error) or self._inline_query_id:
                 raise
-            raise
+            # A deleted or private post: say so instead of a generic error
+            logging.info("Instagram content unavailable: %s (%s)", url, error.msg)
+            await self.delete_processing_message()
+            await self._telegram_bot_controller.send_content_not_found_error(
+                telegram_id=self._telegram_id,
+            )
+            return None

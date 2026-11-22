@@ -6,13 +6,20 @@ from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 from saver_backend.services.downloaders.youtube_video_ydl_source import (
     YOUTUBE_H264_FORMAT,
+    YOUTUBE_PLAYER_CLIENTS,
+    YouTubeClientRotationMixin,
+    youtube_extractor_args,
 )
 
 
-class YouTubeShortsYdlController(YtDlpController):
+class YouTubeShortsYdlController(YouTubeClientRotationMixin, YtDlpController):
     """Asynchronous controller for downloading videos from YT Shorts through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_SHORTS_YDL
+    # Prod drops ~1 in 5 YouTube downloads once while a retry passes (task 24)
+    RETRIES_ON_ERROR: ClassVar[int] = 1
+    # A blocked proxy gives 403 while the server itself can reach YouTube
+    DIRECT_FALLBACK: ClassVar[bool] = True
     COOKIES: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -22,11 +29,7 @@ class YouTubeShortsYdlController(YtDlpController):
         youtube_params = {
             "format": YOUTUBE_H264_FORMAT,
             "merge_output_format": "mp4",
-            "extractor_args": {
-                "youtubepot-bgutilhttp": {
-                    "base_url": ["http://saver_backend-bgutil:4416"],
-                },
-            },
+            "extractor_args": youtube_extractor_args(YOUTUBE_PLAYER_CLIENTS[0]),
             "remote_components": ["ejs:github"],
         }
         self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(

@@ -17,14 +17,68 @@ YOUTUBE_H264_FORMAT = (
 )
 
 
+# yt-dlp player clients tried in turn. On 20.11 the default client got 403/400
+# on media through 6-7 of 8 prod routes for a video, tv_simply passed 21 of 24
+# (video x route) checks in 1080p H.264; the default stays as the next try.
+YOUTUBE_PLAYER_CLIENTS: tuple[tuple[str, ...], ...] = (("tv_simply",), ("default",))
+
+
+def youtube_extractor_args(clients: tuple[str, ...]) -> dict[str, Any]:
+    """
+    Build yt-dlp extractor_args for YouTube with the given player clients.
+
+    :param clients: Player clients for yt-dlp.
+    :return: extractor_args with the PO token provider and the clients.
+    """
+    return {
+        "youtubepot-bgutilhttp": {"base_url": ["http://saver_backend-bgutil:4416"]},
+        "youtube": {"player_client": list(clients)},
+    }
+
+
+class YouTubeClientRotationMixin:
+    """Switch the yt-dlp player client on every retry of a YouTube download."""
+
+    _yt_dlp: Any
+    _client_index: int = 0
+
+    def _next_player_client(self) -> None:
+        self._client_index = (self._client_index + 1) % len(YOUTUBE_PLAYER_CLIENTS)
+        clients = YOUTUBE_PLAYER_CLIENTS[self._client_index]
+        self._yt_dlp.params["extractor_args"] = youtube_extractor_args(clients)
+
+    def _switch_proxy_for_retry(self) -> None:
+        super()._switch_proxy_for_retry()  # type: ignore[misc]
+        self._next_player_client()
+
+
+def _is_combined(fmt: dict[str, Any]) -> bool:
+    """
+    Tell whether a format has both a known video and a known audio codec.
+
+    YouTube now adds format 773, a 6-channel audio track whose codecs yt-dlp
+    leaves empty. Counted as video+audio it made a second "combined" format,
+    the merge of video-only streams with audio was skipped and the menu of a
+    4K video offered only 360p.
+    """
+    return fmt.get("vcodec") not in (None, "none") and fmt.get("acodec") not in (
+        None,
+        "none",
+    )
+
+
 def _is_h264(fmt: dict[str, Any]) -> bool:
     return str(fmt.get("vcodec") or "").startswith("avc1")
 
 
-class YouTubeVideoYdlController(YtDlpController):
+class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
     """Asynchronous controller for downloading videos from YouTube through yt-dlp."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.YOUTUBE_VIDEO_YDL
+    # Prod drops ~1 in 5 YouTube downloads once while a retry passes (task 24)
+    RETRIES_ON_ERROR: ClassVar[int] = 1
+    # A blocked proxy gives 403 while the server itself can reach YouTube
+    DIRECT_FALLBACK: ClassVar[bool] = True
     COOKIES: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -34,11 +88,7 @@ class YouTubeVideoYdlController(YtDlpController):
         youtube_params = {
             "format": YOUTUBE_H264_FORMAT,
             "merge_output_format": "mp4",
-            "extractor_args": {
-                "youtubepot-bgutilhttp": {
-                    "base_url": ["http://saver_backend-bgutil:4416"],
-                },
-            },
+            "extractor_args": youtube_extractor_args(YOUTUBE_PLAYER_CLIENTS[0]),
             "remote_components": ["ejs:github"],
         }
         self._cookie_fallback = False
@@ -50,11 +100,7 @@ class YouTubeVideoYdlController(YtDlpController):
     def _remove_combined_formats(
         self, formats: list[dict[str, Any]]
     ) -> list[dict[str, Any]] | None:
-        combined_formats = [
-            fmt
-            for fmt in formats
-            if fmt.get("acodec") != "none" and fmt.get("vcodec") != "none"
-        ]
+        combined_formats = [fmt for fmt in formats if _is_combined(fmt)]
 
         if len(combined_formats) > 1:
             return None
@@ -165,7 +211,11 @@ class YouTubeVideoYdlController(YtDlpController):
                     f"[youtup] proxy: {self._yt_dlp.params['proxy']};"
                     f" url: {self._resolution.url}; error: {e!s}"
                 )
-                self._set_proxy()
+                if self.DIRECT_FALLBACK and self._proxy and not self._proxies:
+                    self._switch_to_direct()
+                else:
+                    self._set_proxy()
+                self._next_player_client()
                 return await self.get_video_info(url=url)
             if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):
                 await self.delete_processing_message()

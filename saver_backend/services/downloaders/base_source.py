@@ -23,6 +23,10 @@ from saver_backend.services.downloaders.schema import (
     VideoTheatreDTO,
 )
 from saver_backend.services.i18n import gettext as _
+from saver_backend.services.telegram.video_meta import (
+    BrokenCachedVideoError,
+    is_broken_video,
+)
 from saver_backend.settings import settings
 
 if TYPE_CHECKING:
@@ -32,11 +36,27 @@ if TYPE_CHECKING:
     from saver_backend.services.telegram.bot_controller import TelegramBotController
 
 
+def exceeds_resolution(video: VideoDTO, limit: int | None) -> bool:
+    """
+    Whether a video is bigger than the limit on the smaller side of the frame.
+
+    :param video: Video with its frame size.
+    :param limit: Largest allowed smaller side, None for no limit.
+    :return: True if the video is above the limit.
+    """
+    if not video.width or not video.height or not limit:
+        return False
+    return min(video.width, video.height) > limit
+
+
 class BaseSourceController(ABC):
     """Asynchronous controller for downloading videos from different sources."""
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.UNSUPPORTED
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.LOCAL
+    # Largest smaller side of the frame the source sends; bigger cached copies
+    # (saved before the limit) are dropped and downloaded again
+    MAX_RESOLUTION: ClassVar[int | None] = None
 
     def __init__(
         self,
@@ -318,6 +338,20 @@ class BaseSourceController(ABC):
         :param content_dto: The original DTO with metadata.
         :param telegram_video: The Video object from aiogram after sending.
         """
+        source_size = (
+            (content_dto.width, content_dto.height)
+            if isinstance(content_dto, VideoDTO)
+            else None
+        )
+        if isinstance(telegram_video, Video) and is_broken_video(
+            telegram_video,
+            source_size,
+        ):
+            logging.warning(
+                "Not caching source_id=%s: Telegram got it without size or duration",
+                getattr(content_dto, "source_id", None),
+            )
+            return None
         dto_for_cache = content_dto.model_copy(update={"path": None, "thumbnail": None})
         cache_dto = CacheDTO.from_telegram_object(
             source=self.SOURCE,
@@ -441,6 +475,20 @@ class BaseSourceController(ABC):
         )
         video_dto = cached_item.meta_data_dto
 
+        if exceeds_resolution(video_dto, self.MAX_RESOLUTION):
+            logging.info(
+                "Cached file for source_id=%s is %sx%s, above %sp: downloading again",
+                source_id,
+                video_dto.width,
+                video_dto.height,
+                self.MAX_RESOLUTION,
+            )
+            await self._cache_dao.delete_by_file_id(
+                source=self.SOURCE,
+                file_id=cached_item.file_id,
+            )
+            return False
+
         if self._inline_query_id:
             await self._create_history_entry(cached_item)
             await self._telegram_bot_controller.answer_inline_query_cached_video(
@@ -455,11 +503,11 @@ class BaseSourceController(ABC):
                 telegram_id=self._telegram_id,
                 cache_item=cached_item,
             )
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, BrokenCachedVideoError) as e:
             # A broken entry would fail for every user forever:
             # drop it and download the video again.
             logging.warning(
-                "Telegram rejected cached file for source_id=%s, downloading again: %s",
+                "Cached file for source_id=%s is broken, downloading again: %r",
                 source_id,
                 e,
             )

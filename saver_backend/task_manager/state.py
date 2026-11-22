@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import TaskiqDepends, TaskiqState
 
 from saver_backend.db.dao.cache_dao import CacheDAO
+from saver_backend.db.dao.failed_request_dao import FailedRequestDAO
 from saver_backend.db.dao.history_dao import HistoryDAO
 from saver_backend.db.dao.user_dao import UserDAO
 from saver_backend.services.downloaders.resolver import SourceResolver
@@ -48,6 +49,15 @@ class DatabaseState:
         :return: CacheDAO instance.
         """
         return CacheDAO(session=self.session)
+
+    @property
+    def failed_request_dao(self) -> "FailedRequestDAO":
+        """
+        Get failed request DAO.
+
+        :return: FailedRequestDAO instance.
+        """
+        return FailedRequestDAO(session=self.session)
 
 
 class SaverState:

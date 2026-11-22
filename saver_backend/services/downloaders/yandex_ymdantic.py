@@ -15,6 +15,35 @@ from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import AudioDTO
 from saver_backend.settings import settings
 
+CODEC_SEPARATOR = "-"
+
+
+def is_lossless_codec(codec: str | None) -> bool:
+    """
+    Tell whether Yandex Music returned a real lossless file.
+
+    The lossless request can still answer with ``aac-mp4`` when a track has no
+    FLAC: that file is smaller than the 320 kbps MP3, so the
+    «High Quality [Lossless]» button must only be offered for ``flac-*``.
+
+    :param codec: Codec string from the file info, e.g. ``flac-mp4``.
+    :return: True only for a FLAC stream.
+    """
+    if not codec or CODEC_SEPARATOR not in codec:
+        return False
+    return codec.split(CODEC_SEPARATOR)[0].lower() == "flac"
+
+
+# All tracks of an album used to be requested at once and a failed one was
+# dropped silently (9 of 11 tracks in the 13.11 audit). Fewer requests at a time
+# and a second and third try for the tracks that failed.
+# A dead proxy must fail fast so the next one is tried (task: YM on prod)
+AUDIO_DOWNLOAD_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+AUDIO_DOWNLOAD_ATTEMPTS = 3
+ALBUM_FETCH_CONCURRENCY = 4
+ALBUM_TRACK_ATTEMPTS = 3
+ALBUM_RETRY_PAUSE_SECONDS = 1.0
+
 
 class YmdanticController(BaseSourceController):
     """
@@ -45,7 +74,7 @@ class YmdanticController(BaseSourceController):
 
         # HTTP client for downloading files
         self._http_client = httpx.AsyncClient(
-            timeout=60.0,
+            timeout=AUDIO_DOWNLOAD_TIMEOUT,
             follow_redirects=True,
             proxy=proxy_url,
         )
@@ -121,7 +150,7 @@ class YmdanticController(BaseSourceController):
                 logging.warning("No download info found for track %s", track_id)
                 return None
 
-            if self.CODECSEPARATOR in download_infos.codec:
+            if is_lossless_codec(download_infos.codec):
                 direct_url = str(download_infos.url)
 
                 # Get track metadata
@@ -137,6 +166,11 @@ class YmdanticController(BaseSourceController):
                     )[0],
                     codec=download_infos.codec,
                 )
+            logging.info(
+                "No lossless file for track %s (codec %s)",
+                track_id,
+                download_infos.codec,
+            )
             return None
 
         except YMError as ye:
@@ -163,15 +197,13 @@ class YmdanticController(BaseSourceController):
                 for track in volume:
                     track_ids.append(track.id)
 
-            # Fetch all tracks concurrently
-            album_id_str = str(album_id)
-            tasks = [self._get_track(track_id, album_id_str) for track_id in track_ids]
-            results = await asyncio.gather(*tasks)
+            found = await self._fetch_album_tracks(track_ids, str(album_id))
+            # Keep the album order whatever attempt a track came with
+            dtos = [found[track_id] for track_id in track_ids if track_id in found]
 
-            dtos = [dto for dto in results if dto is not None]
-
-            logging.info(
-                "Successfully fetched %d/%d tracks from album %s",
+            log = logging.info if len(dtos) == len(track_ids) else logging.warning
+            log(
+                "Fetched %d/%d tracks from album %s",
                 len(dtos),
                 len(track_ids),
                 album_id,
@@ -182,47 +214,115 @@ class YmdanticController(BaseSourceController):
             logging.exception("Failed to get album %s: %s", album_id, e)
             return []
 
+    async def _fetch_album_tracks(
+        self,
+        track_ids: list[int],
+        album_id: str,
+    ) -> dict[int, AudioDTO]:
+        """
+        Fetch album tracks a few at a time, trying the failed ones again.
+
+        :param track_ids: IDs of the album tracks.
+        :param album_id: ID of the album.
+        :return: Fetched tracks by track ID.
+        """
+        semaphore = asyncio.Semaphore(ALBUM_FETCH_CONCURRENCY)
+
+        async def fetch(track_id: int) -> AudioDTO | None:
+            async with semaphore:
+                return await self._get_track(track_id, album_id)
+
+        found: dict[int, AudioDTO] = {}
+        missing = list(track_ids)
+        for attempt in range(ALBUM_TRACK_ATTEMPTS):
+            if attempt:
+                logging.warning(
+                    "Album %s: trying %d tracks again (attempt %d)",
+                    album_id,
+                    len(missing),
+                    attempt + 1,
+                )
+                await asyncio.sleep(ALBUM_RETRY_PAUSE_SECONDS)
+            results = await asyncio.gather(*(fetch(t) for t in missing))
+            found.update(
+                {t: dto for t, dto in zip(missing, results, strict=True) if dto},
+            )
+            missing = [t for t in missing if t not in found]
+            if not missing:
+                break
+        return found
+
     async def _download_audio_file(
         self,
         audio_dto: AudioDTO,
         filename: str,
     ) -> Path | None:
         """
-        Download audio file from direct URL.
+        Download audio file from direct URL, through another proxy on failure.
+
+        On prod 2 of 12 proxies never reach Yandex's CDN (connect timeout),
+        while the same link downloads in under a second through the others, so
+        a failed download is repeated through the next proxies.
 
         :param audio_dto: AudioDTO containing download URL.
         :param filename: Target filename.
         :return: Local file path or None on failure.
         """
-
         if not audio_dto.media_url:
             return None
 
         file_path = self._download_directory / filename
-
-        try:
-            async with self._http_client.stream("GET", audio_dto.media_url) as response:
-                response.raise_for_status()
-                with file_path.open("wb") as f:
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        f.write(chunk)
-            if audio_dto.flac:
-                flac_file_path = file_path.with_suffix(".flac")
-                await asyncio.to_thread(
-                    lambda: (
-                        ffmpeg.input(str(file_path))
-                        .output(str(flac_file_path), acodec="flac")
-                        .run()
-                    )
+        routes = [self._proxy, *(p for p in self._proxies if p != self._proxy)]
+        for attempt, proxy in enumerate(routes[:AUDIO_DOWNLOAD_ATTEMPTS]):
+            client = (
+                self._http_client
+                if attempt == 0
+                else httpx.AsyncClient(
+                    timeout=AUDIO_DOWNLOAD_TIMEOUT,
+                    follow_redirects=True,
+                    proxy=proxy or None,
                 )
-                file_path = flac_file_path
-            return file_path
+            )
+            try:
+                async with client.stream("GET", audio_dto.media_url) as response:
+                    response.raise_for_status()
+                    with file_path.open("wb") as f:
+                        async for chunk in response.aiter_bytes(chunk_size=8192):
+                            f.write(chunk)
+                break
+            except Exception as e:
+                logging.warning(
+                    "Audio download attempt %s failed for %s: %s",
+                    attempt + 1,
+                    filename,
+                    type(e).__name__,
+                )
+                if file_path.exists():
+                    file_path.unlink()
+            finally:
+                if client is not self._http_client:
+                    await client.aclose()
+        else:
+            logging.error("Failed to download audio file %s", filename)
+            return None
 
+        if not audio_dto.flac:
+            return file_path
+        try:
+            flac_file_path = file_path.with_suffix(".flac")
+            await asyncio.to_thread(
+                lambda: (
+                    ffmpeg.input(str(file_path))
+                    .output(str(flac_file_path), acodec="flac")
+                    .run()
+                )
+            )
         except Exception as e:
-            logging.error("Failed to download audio file %s: %s", filename, e)
+            logging.error("Failed to convert %s to FLAC: %s", filename, e)
             if file_path.exists():
                 file_path.unlink()
             return None
+        return flac_file_path
 
     async def _send_audio_track(
         self,
@@ -235,10 +335,15 @@ class YmdanticController(BaseSourceController):
         Send a single audio track to Telegram, downloading it first.
 
         :param audio_dto: AudioDTO to send.
+        :param download: Kept for callers; the file is always downloaded here.
         """
-        if not download:
+        if not audio_dto.media_url:
             await self._send_audio(audio_dto, history=history)
             return
+        # The file link works only through the proxy the API was called with:
+        # sent to Telegram as a URL, it was fetched from the server's own
+        # address, which Yandex's CDN does not answer on prod (every track hung
+        # at 16% and failed after 30 s). The file is downloaded here instead.
         # Generate safe filename
         safe_title = "".join(
             c for c in (audio_dto.title or "track") if c.isalnum() or c in "._- "
@@ -297,21 +402,19 @@ class YmdanticController(BaseSourceController):
             if cached_dto:
                 audio_dtos[i] = cached_dto
                 continue
-            if download:
-                safe_title = "".join(
-                    c
-                    for c in (audio_dto.title or "track")
-                    if c.isalnum() or c in "._- "
-                )[:50]
-                ext = "mp4" if audio_dto.flac else "mp3"
-                filename = f"{audio_dto.source_id}_{safe_title}.{ext}"
-
-                if audio_dto.flac:
-                    local_path = await self._download_audio_file(audio_dto, filename)
-                    if local_path:
-                        audio_dto.path = local_path
-                        audio_dto.media_url = None
-                        audio_dto.direct_download_url = None
+            if not audio_dto.media_url:
+                continue
+            # Downloaded through the proxy for the same reason as single tracks
+            safe_title = "".join(
+                c for c in (audio_dto.title or "track") if c.isalnum() or c in "._- "
+            )[:50]
+            ext = "mp4" if audio_dto.flac else "mp3"
+            filename = f"{audio_dto.source_id}_{safe_title}.{ext}"
+            local_path = await self._download_audio_file(audio_dto, filename)
+            if local_path:
+                audio_dto.path = local_path
+                audio_dto.media_url = None
+                audio_dto.direct_download_url = None
 
         self._process_percent(73)
 
@@ -500,7 +603,7 @@ class YmdanticController(BaseSourceController):
                 logging.warning("No download info found for track %s", track_id)
                 continue
 
-            if self.CODECSEPARATOR in download_infos.codec:
+            if is_lossless_codec(download_infos.codec):
                 if check:
                     flac_dtos.append(audio_dto)
                     break
@@ -619,7 +722,10 @@ class YmdanticController(BaseSourceController):
 
             if audio_dtos:
                 if await self._has_any_flac_in_album(audio_dtos):
-                    await self._send_audio_album(audio_dtos[:-1])
+                    # The last track goes out with the FLAC button; an album of
+                    # one track has nothing else to send (it used to send «Error»)
+                    if len(audio_dtos) > 1:
+                        await self._send_audio_album(audio_dtos[:-1])
                     await self._store_album_info_to_fsm(audio_dtos)
                     await self._send_flac_button()
                 else:

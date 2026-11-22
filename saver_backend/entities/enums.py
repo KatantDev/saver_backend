@@ -86,3 +86,4 @@ class FsmKeysEnum(str, Enum):
     KINOVOD = -100
     DOUYIN = -101
     INSTAGRAM_INDOWN = -102
+    INDOWN_LIMITS = -103

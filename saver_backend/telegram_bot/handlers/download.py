@@ -2,6 +2,7 @@ import contextlib
 import logging
 import re
 from contextlib import suppress
+from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -12,6 +13,7 @@ from aiogram.types import (
     Message,
 )
 
+from saver_backend.db.dao.failed_request_dao import FailedRequestDAO
 from saver_backend.entities.enums import (
     ContentTypeEnum,
     SourceEnum,
@@ -21,6 +23,7 @@ from saver_backend.entities.enums import (
 )
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services.downloaders.schema import VideoDTO, VideoTheatreDTO
+from saver_backend.services.failure_log import host_of
 from saver_backend.services.i18n import gettext as _
 from saver_backend.settings import settings
 from saver_backend.task_manager.tasks import (
@@ -56,6 +59,7 @@ async def send_unknown_url(
     message: Message,
     bot: Bot,
     resolution: Resolution,
+    failed_request_dao: FailedRequestDAO,
 ) -> None:
     """
     Send unknown url.
@@ -63,6 +67,7 @@ async def send_unknown_url(
     :param message: Message.
     :param bot: Bot.
     :param resolution: Resolution.
+    :param failed_request_dao: Keeps the link the user could not download.
     """
     # Check if the url is a valid url
     pattern = re.compile(r"(https?://\S+)", re.IGNORECASE)
@@ -73,10 +78,47 @@ async def send_unknown_url(
     await message.answer(
         text=_("unknown url"),
     )
+    if message.from_user:
+        try:
+            await failed_request_dao.create(
+                telegram_id=message.from_user.id,
+                source=resolution.source,
+                host=host_of(resolution.url),
+                url=resolution.url,
+                stage="unsupported",
+                reason="unsupported",
+            )
+        except Exception as error:
+            logging.warning("Could not record unsupported link: %s", error)
     await bot.send_message(
         chat_id=settings.admin_chat_id,
         text=f"Unsupported URL: {resolution.url}",
     )
+
+
+async def _reject_stale_menu(query: CallbackQuery, fsm_data: dict[str, Any]) -> bool:
+    """
+    Refuse a button pressed under an old quality menu.
+
+    The FSM keeps only the latest link a user sent, so a button under an older
+    menu would download that latest video instead of its own (#22). Such a menu
+    loses its buttons and the user is asked to send the link again.
+
+    :param query: The callback query from the pressed button.
+    :param fsm_data: The user's FSM data.
+    :return: True if the menu is outdated and the press was refused.
+    """
+    current = fsm_data.get("quality_selection_message_id")
+    if (
+        not isinstance(query.message, Message)
+        or not current
+        or query.message.message_id == current
+    ):
+        return False
+    with suppress(TelegramBadRequest):
+        await query.message.edit_reply_markup(reply_markup=None)
+    await query.answer(_("format selection expired"), show_alert=True)
+    return True
 
 
 async def _trigger_download(
@@ -180,6 +222,8 @@ async def on_format_select_for_videotheatre(
         return
 
     fsm_data = await state.get_data()
+    if await _reject_stale_menu(query, fsm_data):
+        return
     video_dto_data = fsm_data.get("video_dto")
     resolution_data = fsm_data.get("resolution")
 
@@ -258,6 +302,8 @@ async def on_format_select(
         return
 
     data = await state.get_data()
+    if await _reject_stale_menu(query, data):
+        return
     video_dto_data = data.get("video_dto")
     resolution_data = data.get("resolution")
 
@@ -313,6 +359,8 @@ async def on_language_select(
         return
 
     data = await state.get_data()
+    if await _reject_stale_menu(query, data):
+        return
     video_dto_data = data.get("video_dto")
     resolution_data = data.get("resolution")
 
@@ -358,6 +406,8 @@ async def on_seasons_select(
         return
 
     fsm_data = await state.get_data()
+    if await _reject_stale_menu(query, fsm_data):
+        return
     video_dto_data = fsm_data.get("video_dto")
     resolution_data = fsm_data.get("resolution")
 
@@ -446,6 +496,8 @@ async def on_episodes_select(
         return
 
     fsm_data = await state.get_data()
+    if await _reject_stale_menu(query, fsm_data):
+        return
     video_dto_data = fsm_data.get("video_dto")
     resolution_data = fsm_data.get("resolution")
 
@@ -538,6 +590,8 @@ async def on_translations_select(
         return
 
     fsm_data = await state.get_data()
+    if await _reject_stale_menu(query, fsm_data):
+        return
     video_dto_data = fsm_data.get("video_dto")
     resolution_data = fsm_data.get("resolution")
 

@@ -5,6 +5,7 @@ from aiogram.types import TelegramObject
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from saver_backend.db.dao.cache_dao import CacheDAO
+from saver_backend.db.dao.failed_request_dao import FailedRequestDAO
 from saver_backend.db.dao.history_dao import HistoryDAO
 from saver_backend.db.dao.request_log_dao import RequestLogDAO
 from saver_backend.db.dao.user_dao import UserDAO
@@ -32,4 +33,5 @@ class DAOProviderMiddleware(BaseMiddleware):
         data["history_dao"] = HistoryDAO(session)
         data["cache_dao"] = CacheDAO(session)
         data["request_log_dao"] = RequestLogDAO(session)
+        data["failed_request_dao"] = FailedRequestDAO(session)
         return await handler(event, data)
