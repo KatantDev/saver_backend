@@ -18,7 +18,6 @@ from saver_backend.services.downloaders.exceptions import (
     VideoInfoNotSetError,
 )
 from saver_backend.services.downloaders.schema import AudioDTO, PhotoDTO, VideoDTO
-from saver_backend.settings import settings
 
 DOWNLOAD_RETRIES = 10
 RETRY_PAUSE_SECONDS = 2
@@ -292,9 +291,15 @@ class YtDlpController(BaseSourceController, ABC):
                 )
             raise e
         except Exception as e:
+            # Logged everywhere: on prod 150 YouTube failures in two days had no
+            # error text in failed_request because this branch only told Sentry.
+            logging.exception(
+                "[%s] download failed for %s: %s",
+                self.SOURCE.value,
+                self._resolution.url,
+                e,
+            )
             await self._send_error_message()
-            if settings.environment == "local":
-                logging.exception(e)
             sentry_sdk.capture_exception(e)
             return
 
