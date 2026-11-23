@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import hmac
+import html
 import json
 import logging
 import re
@@ -8,6 +9,7 @@ import secrets
 import time
 from pathlib import Path
 from typing import Any, ClassVar, Optional, Union
+from urllib.parse import urlparse
 
 import py_mini_racer
 from httpx import AsyncClient, RequestError
@@ -347,6 +349,11 @@ class SeekinAiController(YtDlpController):
             return
         video_dto = await self._download_video_by_url(data.medias[0].url)
         if video_dto is None:
+            for fallback_url in await self._fallback_media_urls(data.medias[0].url):
+                video_dto = await self._download_video_by_url(fallback_url)
+                if video_dto is not None:
+                    break
+        if video_dto is None:
             # the user was left with a progress message that never finished
             await self._send_error_message()
             return
@@ -357,6 +364,15 @@ class SeekinAiController(YtDlpController):
             resolution_url=self._resolution.url,
         )
         await self._send_video(video_dto)
+
+    async def _fallback_media_urls(self, failed_url: str) -> list[str]:
+        """
+        Other links to the same file when the one from seekin.ai fails.
+
+        :param failed_url: The file link from seekin.ai that did not download.
+        :return: Links to try next, none by default.
+        """
+        return []
 
     async def _download_video_by_url(
         self,
@@ -458,6 +474,59 @@ def create_seekin_controller(source: SourceEnum) -> type[SeekinAiController]:
     return _SeekInController
 
 
-KwaiController = create_seekin_controller(SourceEnum.KWAI)
+KWAI_PAGE_MP4_RE = re.compile(r"https://[^\"'\s<>]+?\.mp4(?:\?[^\"'\s<>]*)?")
+KWAI_FALLBACK_LIMIT = 3
+
+
+def kwai_file_name(url: str) -> str:
+    """File name of a Kwai video link, the same on every CDN host."""
+    return urlparse(url).path.rsplit("/", 1)[-1]
+
+
+def pick_kwai_page_urls(page: str, failed_url: str) -> list[str]:
+    """
+    Links from the Kwai page to the same file as the one that failed.
+
+    Prod 23.11: seekin.ai gave a txmov2.a.kwimgs.com link that answered 404,
+    while the video page links the same file on ak-br-cdn.kwai.net and it
+    downloads. The page also links recommended videos, so only links with the
+    same file name are taken.
+
+    :param page: HTML of the Kwai video page.
+    :param failed_url: The file link from seekin.ai.
+    :return: Up to KWAI_FALLBACK_LIMIT other links to the same file.
+    """
+    name = kwai_file_name(failed_url)
+    if not name:
+        return []
+    text = html.unescape(page.replace("\\u002F", "/").replace("\\u0026", "&"))
+    urls: list[str] = []
+    for url in KWAI_PAGE_MP4_RE.findall(text):
+        if url != failed_url and kwai_file_name(url) == name and url not in urls:
+            urls.append(url)
+    return urls[:KWAI_FALLBACK_LIMIT]
+
+
+class KwaiController(SeekinAiController):
+    """Kwai via seekin.ai, with the video page as a second source of the file."""
+
+    SOURCE = SourceEnum.KWAI
+
+    async def _fallback_media_urls(self, failed_url: str) -> list[str]:
+        try:
+            response = await self._client.get(
+                self._resolution.url,
+                headers={"User-Agent": self._headers["User-Agent"]},
+                follow_redirects=True,
+                timeout=30,
+            )
+        except RequestError as e:
+            logging.warning("Kwai page did not open: %s", e)
+            return []
+        urls = pick_kwai_page_urls(response.text, failed_url)
+        logging.info("Kwai page gave %s other links to the file", len(urls))
+        return urls
+
+
 KuaishouController = create_seekin_controller(SourceEnum.KUAISHOU)
 DouyinController = create_seekin_controller(SourceEnum.DOUYIN)
