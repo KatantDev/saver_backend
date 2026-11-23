@@ -68,3 +68,13 @@ def test_tweet_without_video_gives_nothing() -> None:
 
     assert fxtwitter_info(payload, URL) is None
     assert fxtwitter_info({"code": 404, "message": "NOT_FOUND"}, URL) is None
+
+
+def test_multi_line_title_gives_a_one_line_file_name() -> None:
+    """Dev 23.11: a tweet's line break in the file name broke the upload."""
+    from saver_backend.services.downloaders.schema import VideoDTO
+
+    video = VideoDTO(url=URL, source_id="1", title="first line\nsecond\r\n\tthird")
+
+    assert not any(ord(char) < 32 for char in video.filename)
+    assert "first line" in video.filename
