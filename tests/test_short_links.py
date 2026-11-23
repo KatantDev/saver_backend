@@ -82,3 +82,84 @@ def test_resolves_short_and_embed_links(
 def test_ignores_pages_without_video_id(url: str) -> None:
     """Section pages without a video id are not taken for videos."""
     assert SourceResolver().resolve(url).source == SourceEnum.UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    ("url", "source", "expected_url", "code"),
+    [
+        (
+            "https://vt.tiktok.com/ZS9PAqC7VJdt9-Ljo6m/",
+            SourceEnum.TIKTOK,
+            "https://vt.tiktok.com/ZS9PAqC7VJdt9-Ljo6m/",
+            "ZS9PAqC7VJdt9-Ljo6m",
+        ),
+        (
+            "https://www.tiktok.com/t/ZS9PUobDBuQ5U-vX0wH/",
+            SourceEnum.TIKTOK,
+            "https://www.tiktok.com/t/ZS9PUobDBuQ5U-vX0wH/",
+            "ZS9PUobDBuQ5U-vX0wH",
+        ),
+        (
+            "https://www.facebook.com/share/r/14x8Uuc8Pxi/",
+            SourceEnum.FACEBOOK_YDL,
+            "https://www.facebook.com/share/r/14x8Uuc8Pxi/",
+            "14x8Uuc8Pxi",
+        ),
+        (
+            "https://vkvideo.ru/clip-217896273_456248899",
+            SourceEnum.VK_CLIPS_YDL,
+            "https://vkvideo.ru/clip-217896273_456248899",
+            "-217896273_456248899",
+        ),
+        (
+            "https://m.vk.ru/clips/club217731003/feed/clip-217731003_456239960?chc=0",
+            SourceEnum.VK_CLIPS_YDL,
+            "https://m.vk.ru/clip-217731003_456239960",
+            "-217731003_456239960",
+        ),
+        (
+            "https://fixupx.com/pigstube_/status/2123884336277848075",
+            SourceEnum.X_YDL,
+            "https://x.com/pigstube_/status/2123884336277848075",
+            "2123884336277848075",
+        ),
+        (
+            "https://vxtwitter.com/user/status/2123884336277848075?s=20",
+            SourceEnum.X_YDL,
+            "https://x.com/user/status/2123884336277848075",
+            "2123884336277848075",
+        ),
+        (
+            "https://www.instagram.com/tv/Cf1OIA7IVqq/?avpt=abc",
+            SourceEnum.INSTAGRAM_INDOWN,
+            "https://www.instagram.com/reel/Cf1OIA7IVqq/",
+            "Cf1OIA7IVqq",
+        ),
+    ],
+)
+def test_resolves_shapes_that_were_answered_not_supported(
+    url: str,
+    source: SourceEnum,
+    expected_url: str,
+    code: str,
+) -> None:
+    """Link shapes users sent on 21-23.11 and got «not supported» for."""
+    resolution = SourceResolver().resolve(url)
+
+    assert resolution.source == source
+    assert resolution.url == expected_url
+    assert resolution.metadata["code"] == code
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.tiktok.com/@floareamrcan?_r=1",
+        "https://vk.ru/album-122802848_236432361",
+        "https://fixupx.com/pigstube_",
+        "https://www.facebook.com/share/p/18cZyfHoC2/",
+    ],
+)
+def test_pages_without_one_video_stay_unsupported(url: str) -> None:
+    """Profiles, albums and text posts are still answered «not supported»."""
+    assert SourceResolver().resolve(url).source == SourceEnum.UNSUPPORTED
