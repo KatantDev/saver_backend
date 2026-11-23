@@ -15,6 +15,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from saver_backend.services.log_text import format_traceback, sanitize
+
 MAX_ERROR_LENGTH = 1000
 
 
@@ -24,6 +26,7 @@ class FailureMark:
 
     reason: str | None = None
     error: str | None = None
+    traceback: str | None = None
     delivered: bool = False
 
 
@@ -100,9 +103,10 @@ class _LastErrorHandler(logging.Handler):
             if record.exc_info and record.exc_info[1] is not None:
                 text = f"{text} | {type(record.exc_info[1]).__name__}: "
                 text += str(record.exc_info[1])
+            current.error = sanitize(text)[:MAX_ERROR_LENGTH]
+            current.traceback = format_traceback(record) or current.traceback
         except Exception:
             return
-        current.error = text[:MAX_ERROR_LENGTH]
 
 
 _HANDLER = _LastErrorHandler(level=logging.ERROR)

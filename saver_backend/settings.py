@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     environment: str = "local"
 
     log_level: LogLevel = LogLevel.INFO
+    # Folder for log files kept across deploys (one file per process per day);
+    # not set: logs go to stdout only.
+    log_dir: Optional[Path] = None
+    log_keep_days: int = 7
     # Variables for the database
     db_host: str = "localhost"
     db_port: int = 5432

@@ -28,6 +28,8 @@ services:
     volumes:
       - ./cookies:/app/src/cookies
       - ./downloads:/app/src/downloads
+      # Log files kept across deploys (the container log is lost on rollout)
+      - ./logs:/app/src/logs
     depends_on:
       db:
         condition: service_healthy
@@ -45,6 +47,7 @@ services:
       SAVER_BACKEND_DB_PASS: saver_backend
       SAVER_BACKEND_DB_BASE: saver_backend
       SAVER_BACKEND_REDIS_HOST: saver_backend-redis
+      SAVER_BACKEND_LOG_DIR: /app/src/logs
     healthcheck:
       test: curl -f http://localhost:8000/api/health || exit 1
       interval: 5s
