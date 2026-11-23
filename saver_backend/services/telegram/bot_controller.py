@@ -198,6 +198,32 @@ async def _download_to_temp_file(url: str, timeout: float = 600) -> Path:
     return path
 
 
+async def _send_video_cover_optional(
+    bot: Bot,
+    video_input: FSInputFile | URLInputFile,
+    kwargs: dict[str, Any],
+) -> Message:
+    """
+    Send a file we upload ourselves; drop the cover if Telegram cannot fetch it.
+
+    The cover is still a URL that Telegram downloads. When that fails, the whole
+    video is refused with «failed to get HTTP URL content» although the file
+    itself is fine (22 TikTok videos on prod on 21-23.11).
+
+    :param bot: Bot to send with.
+    :param video_input: File to send.
+    :param kwargs: Other send_video arguments.
+    :return: Sent message.
+    """
+    try:
+        return await bot.send_video(video=video_input, **kwargs)
+    except TelegramBadRequest as e:
+        if not isinstance(kwargs.get("cover"), str):
+            raise
+        logging.info("Telegram refused the video with its cover (%s), no cover", e)
+    return await bot.send_video(video=video_input, **{**kwargs, "cover": None})
+
+
 class TelegramBotController:
     """
     Telegram bot controller.
@@ -1195,17 +1221,19 @@ class TelegramBotController:
             path = await _download_to_temp_file(video.direct_download_url)
         except Exception as e:
             logging.warning("Could not download %s for upload: %s", filename, e)
-            return await self._bot.send_video(
-                video=URLInputFile(url=video.direct_download_url, filename=filename),
-                **kwargs,
+            return await _send_video_cover_optional(
+                self._bot,
+                URLInputFile(url=video.direct_download_url, filename=filename),
+                kwargs,
             )
         try:
             # Telegram does not read the frame size of an uploaded file,
             # without it the video is shown as a 320x320 square.
             await _fill_video_meta(str(path), kwargs)
-            return await self._bot.send_video(
-                video=FSInputFile(path=path, filename=filename),
-                **kwargs,
+            return await _send_video_cover_optional(
+                self._bot,
+                FSInputFile(path=path, filename=filename),
+                kwargs,
             )
         finally:
             path.unlink(missing_ok=True)
