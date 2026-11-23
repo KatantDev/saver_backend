@@ -150,6 +150,7 @@ async def test_failed_request_is_written_with_the_full_link() -> None:
         stage="download",
         reason="download_error",
         error="HTTP Error 403: Forbidden",
+        traceback=None,
     )
 
 

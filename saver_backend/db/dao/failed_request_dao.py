@@ -19,6 +19,7 @@ class FailedRequestDAO(BaseDAO):
         stage: str,
         reason: str,
         error: str | None = None,
+        traceback: str | None = None,
     ) -> None:
         """
         Record one request the user got an error for.
@@ -30,6 +31,7 @@ class FailedRequestDAO(BaseDAO):
         :param stage: Where it failed: video_info, download, inline, unsupported.
         :param reason: Kind of the error shown to the user.
         :param error: Last error logged while handling the request.
+        :param traceback: Stack trace of that error, when it had one.
         """
         model = FailedRequestModel(
             telegram_id=telegram_id,
@@ -39,6 +41,7 @@ class FailedRequestDAO(BaseDAO):
             stage=stage,
             reason=reason,
             error=error,
+            traceback=traceback,
         )
         self.session.add(model)
         await self._release()
