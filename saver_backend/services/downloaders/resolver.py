@@ -182,7 +182,8 @@ class TikTokDetector(Detector):
         "video": re.compile(r".*/video/(?P<code>\d+)"),
         "photo": re.compile(r".*/photo/(?P<code>\d+)"),
         "mobile": re.compile(r"^/v/(?P<code>\d+)\.html$"),
-        "short": re.compile(r"^/(?:t/)?(?P<code>[A-Za-z0-9]+)/?$"),
+        # since 11.2026 the share codes carry a hyphen: /ZS9PAqC7VJdt9-Ljo6m/
+        "short": re.compile(r"^/(?:t/)?(?P<code>[A-Za-z0-9_-]+)/?$"),
     }
 
     def match(self, url: str) -> Optional[Resolution]:
@@ -213,10 +214,17 @@ class InstagramInDownDetector(Detector):
             r"^/stories/(?P<user>[A-Za-z0-9._]+)/(?P<code>\d+)/?$",
         ),
     }
+    # old IGTV links: the same video opens as /reel/<code>/
+    _TV_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"^/(?:[^/]+/)?tv/([A-Za-z0-9_-]+)/?$",
+    )
 
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
             return None
+        tv = self._TV_RE.match(urlparse(self._clean_url(url)).path)
+        if tv:
+            url = f"https://www.instagram.com/reel/{tv.group(1)}/"
         return self._match_regex(url)
 
 
@@ -311,12 +319,17 @@ class VKClipsDetector(Detector):
         "www.vk.com",
         "vk.ru",
         "m.vk.ru",
+        "vkvideo.ru",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "clips": re.compile(r"^/clip(?P<code>-?\d+_\d+)/?$"),
     }
 
     _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"clip-?\d+_\d+")
+    # /clips/club217731003/feed/clip-217731003_456239960
+    _FEED_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"^/clips/.*/(clip-?\d+_\d+)/?$",
+    )
 
     def match(self, url: str) -> Optional[Resolution]:
         """
@@ -330,7 +343,10 @@ class VKClipsDetector(Detector):
 
         parsed = urlparse(url)
 
-        if parsed.query:
+        feed = self._FEED_RE.match(parsed.path)
+        if feed:
+            url = f"{parsed.scheme}://{parsed.netloc}/{feed.group(1)}"
+        elif parsed.query:
             match = self._CODE_RE.search(parsed.query)
             if match:
                 url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
@@ -370,13 +386,22 @@ class XDetector(Detector):
         "x.com",
         "twitter.com",
     )
+    # preview mirrors people share in chats; the tweet itself lives on x.com
+    MIRROR_HOSTS = (
+        "fixupx.com",
+        "fxtwitter.com",
+        "vxtwitter.com",
+        "fixvx.com",
+    )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "status": re.compile(r"^/(?:[^/]+)/status/(?P<code>\d+)"),
     }
 
     def match(self, url: str) -> Resolution | None:
         """Check if the url is a valid X status url."""
-        if not self._host_in(url, *self.HOSTS):
+        if self._host_in(url, *self.MIRROR_HOSTS):
+            url = f"https://x.com{urlparse(self._clean_url(url)).path}"
+        elif not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)
 
@@ -536,6 +561,7 @@ class AdultDetector(Detector):
     CONTROLLER = AdultYdlController
     HOSTS = (
         "pornhub.com",
+        "pornhub.org",
         "pornotube.com",
         "nuvid.com",
         "beeg.com",
@@ -555,6 +581,9 @@ class AdultDetector(Detector):
         "thisvid.com",
         "tnaflix.com",
         "txxx.com",
+        "xhamster.com",
+        "xhamster.desi",
+        "xhamster.one",
         "xnxx.com",
         "xvideos.com",
         "xxxymovies.com",
@@ -562,12 +591,25 @@ class AdultDetector(Detector):
         "youporn.com",
         "zenporn.com",
     )
+    # numbered mirrors: ru.xhamster46.desi, xhamster3.com
+    _MIRROR_HOST_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"^(?:[a-z0-9-]+\.)*xhamster\d+\.(?:com|desi)$",
+    )
+
+    def _is_mirror(self, url: str) -> bool:
+        if "://" not in url:
+            url = "https://" + url
+        try:
+            host = (urlparse(url).hostname or "").lower()
+        except ValueError:
+            return False
+        return bool(self._MIRROR_HOST_RE.match(host))
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is from a supported adult website."""
         if self._host_in(url, *self.BLOCKED_HOSTS):
             return Resolution(source=SourceEnum.UNSUPPORTED, url=url)
-        if not self._host_in(url, *self.HOSTS):
+        if not self._host_in(url, *self.HOSTS) and not self._is_mirror(url):
             return None
         return Resolution(source=self.SOURCE, url=url)
 
@@ -712,7 +754,8 @@ class FacebookDetector(Detector):
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "videos": re.compile(r"^/(?:[^/]+)/videos/(?P<code>\d+)/?$"),
         "reel": re.compile(r"^/reel/(?P<code>\d+)/?$"),
-        "share": re.compile(r"^/share/v/(?P<code>[^/]+)/?$"),
+        # share/v is a video, share/r a reel
+        "share": re.compile(r"^/share/[vr]/(?P<code>[^/]+)/?$"),
     }
     _WATCH_RE: ClassVar[re.Pattern[str]] = re.compile(r"v=(\d+)")
 
