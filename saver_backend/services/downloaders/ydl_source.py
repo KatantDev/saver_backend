@@ -44,8 +44,19 @@ def is_cookie_file(path: Path) -> bool:
         return False
 
 
-def _retry_backoff(attempt: int) -> float:
-    return float(min(2**attempt, 10))
+def _retry_backoff(n: int) -> float:
+    """
+    Pause before a repeated request of yt-dlp, in seconds.
+
+    yt-dlp calls it by keyword, ``sleep_func(n=...)``, so the parameter has to
+    be named ``n``: with another name every repeat after a network hiccup
+    raised TypeError and the download failed (24 on prod in 5 hours on 23.11,
+    mostly YouTube).
+
+    :param n: Number of the repeat, from 0.
+    :return: 1, 2, 4, 8 and then 10 seconds.
+    """
+    return float(min(2**n, 10))
 
 
 class YtDlpController(BaseSourceController, ABC):
