@@ -1,3 +1,4 @@
+import html
 import json
 import logging
 import math
@@ -74,6 +75,20 @@ def caption_title(title: str | None) -> str:
     if len(title) <= MAX_CAPTION_TITLE_LENGTH:
         return title
     return title[: MAX_CAPTION_TITLE_LENGTH - 1].rstrip() + "…"
+
+
+def html_text(text: str | None) -> str:
+    """
+    Text made safe for a message sent in HTML mode.
+
+    Titles come from the sites as plain text; one with «<3» in it made Telegram
+    refuse the whole message («can't parse entities: Unsupported start tag "3"»,
+    TikTok on prod on 22-23.11).
+
+    :param text: Plain text from a site.
+    :return: The text with «&», «<», «>» and quotes written as HTML entities.
+    """
+    return html.escape(text or "", quote=True)
 
 
 class BaseContentDTO(BaseModel):
@@ -305,29 +320,28 @@ class VideoDTO(BaseContentDTO):
                 quality = f"[{self.quality}]".replace("p", "")
         else:
             quality = ""
-        title = caption_title(self.title)
+        # Cut first, then escape: Telegram counts the limit on the shown text
+        title = html_text(caption_title(self.title))
+        url = html_text(self.url)
         if self.channel and self.channel_url:
             title_html = (
-                f'<b>{title}\u00a0<a href="{self.url}">{quality or "→"}</a></b>'
+                f'<b>{title}\u00a0<a href="{url}">{quality or "→"}</a></b>'
                 f"\n\n"
-                f"#{self.channel.replace(' ', '_')}"
-                f'<a href="{self.channel_url}">\u00a0→</a>'
+                f"#{html_text(self.channel.replace(' ', '_'))}"
+                f'<a href="{html_text(self.channel_url)}">\u00a0→</a>'
                 f"\n"
             )
         elif self.title:
             if quality:
-                title_html = f'<b>{title}\u00a0<a href="{self.url}">{quality}\n</a></b>'
+                title_html = f'<b>{title}\u00a0<a href="{url}">{quality}\n</a></b>'
             else:
-                title_html = f'<b>{title}\u00a0<a href="{self.url}">→\n</a></b>'
+                title_html = f'<b>{title}\u00a0<a href="{url}">→\n</a></b>'
 
-            title_html += f"› {self.season}\n" if self.season else ""  # noqa RUF001
-            title_html += f"› {self.episode}\n" if self.episode else ""  # noqa RUF001
-            title_html += (
-                f"› {self.translation}\n" if self.translation else ""  # noqa RUF001
-            )
+            for line in (self.season, self.episode, self.translation):
+                title_html += f"› {html_text(str(line))}\n" if line else ""  # noqa RUF001
 
         else:
-            title_html = f"{self.url}\n"
+            title_html = f"{url}\n"
         return title_html
 
     def get_format_by_id(self, format_id: str) -> FormatDTO | None:
@@ -844,9 +858,11 @@ class AudioDTO(BaseContentDTO):
         """Make html title string."""
         track_url = self.track_url
         if track_url:
-            _title_html = f"<a href='{self.track_url}'>{self.track}</a>"
+            _title_html = (
+                f"<a href='{html_text(track_url)}'>{html_text(self.track)}</a>"
+            )
         else:
-            _title_html = f"<a href='{self.url}'>{self.title}</a>"
+            _title_html = f"<a href='{html_text(self.url)}'>{html_text(self.title)}</a>"
         return _title_html
 
 
