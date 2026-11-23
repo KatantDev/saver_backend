@@ -523,11 +523,11 @@ class RutubeDetector(Detector):
 @register_detector()
 class AdultDetector(Detector):
     """
-    Recognise adult websites and refuse them.
+    Adult websites supported by yt-dlp.
 
-    Bulat asked on 11.11.2026 to stop supporting these sites. The detector stays
-    registered so their links get the usual «not supported» answer instead of
-    falling through to the generic M3U8 detector.
+    Bulat turned them off on 11.11.2026 and back on on 23.11.2026, except the gay
+    category: AdultYdlController refuses those videos. A bare .m3u8 stream from
+    these sites has no page to check, so it stays unsupported.
     """
 
     SOURCE = SourceEnum.ADULT_YDL
@@ -562,10 +562,12 @@ class AdultDetector(Detector):
     )
 
     def match(self, url: str) -> Optional[Resolution]:
-        """Mark links to adult websites as unsupported."""
+        """Check if the url is from a supported adult website."""
         if not self._host_in(url, *self.HOSTS):
             return None
-        return Resolution(source=SourceEnum.UNSUPPORTED, url=url)
+        if urlparse(url).path.lower().endswith(".m3u8"):
+            return Resolution(source=SourceEnum.UNSUPPORTED, url=url)
+        return Resolution(source=self.SOURCE, url=url)
 
 
 _INTERNAL_HOST_SUFFIXES = (".internal", ".local", ".localdomain")
