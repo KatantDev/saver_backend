@@ -34,9 +34,6 @@ msgstr ""
 msgid "video is live"
 msgstr ""
 
-msgid "content blocked"
-msgstr ""
-
 msgid "downloading progress"
 msgstr ""
 

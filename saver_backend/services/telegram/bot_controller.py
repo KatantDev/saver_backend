@@ -1521,24 +1521,6 @@ class TelegramBotController:
         )
         await self._send(coro)
 
-    async def send_content_blocked(
-        self,
-        telegram_id: int,
-        language: str | None = None,
-    ) -> None:
-        """
-        Tell the user that videos of this category are not downloaded.
-
-        :param telegram_id: Telegram ID of the user.
-        :param language: Language for message.
-        """
-        mark_failed("blocked_category")
-        coro = self._bot.send_message(
-            chat_id=telegram_id,
-            text=_("content blocked", locale=language or self.language),
-        )
-        await self._send(coro)
-
     async def edit_video_is_live(
         self,
         telegram_id: int,
