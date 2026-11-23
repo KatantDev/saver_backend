@@ -266,3 +266,66 @@ async def test_falls_back_to_url_upload_when_download_fails() -> None:
     assert message is sent
     retry = bot_controller._bot.send_video.await_args_list[1]  # noqa: SLF001
     assert isinstance(retry.kwargs["video"], URLInputFile)
+
+
+@pytest.mark.anyio
+async def test_video_is_sent_without_cover_when_cover_url_fails(
+    tmp_path: Path,
+) -> None:
+    """Prod 21-23.11: Telegram could not fetch the cover and refused the video."""
+    bot_controller = MagicMock()
+    sent = MagicMock()
+    refused = TelegramBadRequest(
+        method=MagicMock(),
+        message="Bad Request: failed to get HTTP URL content",
+    )
+    bot_controller._bot.send_video = AsyncMock(  # noqa: SLF001
+        side_effect=[refused, refused, sent],
+    )
+    video = VideoDTO(url=URL, source_id="1", direct_download_url="https://v/1.mp4")
+    downloaded = tmp_path / "video.mp4"
+    downloaded.write_bytes(b"video")
+
+    with (
+        patch.object(
+            bot_controller_module,
+            "_download_to_temp_file",
+            AsyncMock(return_value=downloaded),
+        ),
+        patch.object(
+            bot_controller_module,
+            "_probe_video",
+            AsyncMock(return_value={"width": 576, "height": 1024, "duration": 12}),
+        ),
+    ):
+        message = await TelegramBotController._send_video_or_upload(  # noqa: SLF001
+            bot_controller,
+            video=video,
+            video_input="https://v/1.mp4",
+            chat_id=1,
+            cover="https://p16/cover.webp",
+        )
+
+    assert message is sent
+    calls = bot_controller._bot.send_video.await_args_list  # noqa: SLF001
+    assert calls[1].kwargs["cover"] == "https://p16/cover.webp"
+    assert isinstance(calls[2].kwargs["video"], FSInputFile)
+    assert calls[2].kwargs["cover"] is None
+
+
+def test_long_tiktok_description_fits_the_caption() -> None:
+    """Prod 21-23.11: «message caption is too long» on 24 TikTok videos."""
+    video = VideoDTO(url=URL, source_id="1", title="слово #tag " * 300)
+
+    caption = video.title_html
+
+    assert len(caption) < 1024 - 100
+    assert "…" in caption
+
+
+def test_short_title_is_kept_whole() -> None:
+    """A usual title is not cut."""
+    video = VideoDTO(url=URL, source_id="1", title="Короткое описание")
+
+    assert "Короткое описание" in video.title_html
+    assert "…" not in video.title_html

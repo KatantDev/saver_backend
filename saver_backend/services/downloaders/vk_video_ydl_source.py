@@ -24,7 +24,10 @@ class VKVideoYdlController(YtDlpController):
         self._yt_dlp.params.update(vk_params)
 
         if self._selected_format_id is None:
-            vk_params["format"] = "best[protocol!=https]"
+            # Streams first; some videos have only plain https files (url144 ...
+            # url720) and without the second choice they failed with «Requested
+            # format is not available» (44 on prod on 21-23.11).
+            vk_params["format"] = "best[protocol!=https]/best"
             self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
                 format_spec=vk_params["format"],
             )

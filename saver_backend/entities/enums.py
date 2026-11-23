@@ -87,3 +87,4 @@ class FsmKeysEnum(str, Enum):
     DOUYIN = -101
     INSTAGRAM_INDOWN = -102
     INDOWN_LIMITS = -103
+    YOUTUBE_BLOCKED_PROXIES = -104

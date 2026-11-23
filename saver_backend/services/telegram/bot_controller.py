@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.entities.enums import ContentTypeEnum
+from saver_backend.services.consts import TELEGRAM_UPLOAD_LIMIT_BYTES
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
     PhotoDTO,
@@ -196,6 +197,32 @@ async def _download_to_temp_file(url: str, timeout: float = 600) -> Path:
         path.unlink(missing_ok=True)
         raise
     return path
+
+
+async def _send_video_cover_optional(
+    bot: Bot,
+    video_input: FSInputFile | URLInputFile,
+    kwargs: dict[str, Any],
+) -> Message:
+    """
+    Send a file we upload ourselves; drop the cover if Telegram cannot fetch it.
+
+    The cover is still a URL that Telegram downloads. When that fails, the whole
+    video is refused with «failed to get HTTP URL content» although the file
+    itself is fine (22 TikTok videos on prod on 21-23.11).
+
+    :param bot: Bot to send with.
+    :param video_input: File to send.
+    :param kwargs: Other send_video arguments.
+    :return: Sent message.
+    """
+    try:
+        return await bot.send_video(video=video_input, **kwargs)
+    except TelegramBadRequest as e:
+        if not isinstance(kwargs.get("cover"), str):
+            raise
+        logging.info("Telegram refused the video with its cover (%s), no cover", e)
+    return await bot.send_video(video=video_input, **{**kwargs, "cover": None})
 
 
 class TelegramBotController:
@@ -395,12 +422,12 @@ class TelegramBotController:
                 if settings.environment == "local":
                     logging.debug("Ignoring benign TelegramBadRequest: %s", e)
                 return
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             capture_exception(e)
         except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             capture_exception(e)
 
     async def set_fsm_data(
@@ -829,8 +856,8 @@ class TelegramBotController:
             )
             return None
         except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             with new_scope() as scope:
                 scope.set_tag("url", audio.url)
                 capture_exception(e)
@@ -1195,17 +1222,19 @@ class TelegramBotController:
             path = await _download_to_temp_file(video.direct_download_url)
         except Exception as e:
             logging.warning("Could not download %s for upload: %s", filename, e)
-            return await self._bot.send_video(
-                video=URLInputFile(url=video.direct_download_url, filename=filename),
-                **kwargs,
+            return await _send_video_cover_optional(
+                self._bot,
+                URLInputFile(url=video.direct_download_url, filename=filename),
+                kwargs,
             )
         try:
             # Telegram does not read the frame size of an uploaded file,
             # without it the video is shown as a 320x320 square.
             await _fill_video_meta(str(path), kwargs)
-            return await self._bot.send_video(
-                video=FSInputFile(path=path, filename=filename),
-                **kwargs,
+            return await _send_video_cover_optional(
+                self._bot,
+                FSInputFile(path=path, filename=filename),
+                kwargs,
             )
         finally:
             path.unlink(missing_ok=True)
@@ -1246,6 +1275,16 @@ class TelegramBotController:
             )
             thumbnail_input = video.thumbnail_url
         elif video.path and video.path.exists():
+            if video.path.stat().st_size > TELEGRAM_UPLOAD_LIMIT_BYTES:
+                # Telegram would refuse it with FILE_PARTS_INVALID after the
+                # whole upload; the size was unknown before the download.
+                logging.error(
+                    "The file of %s is over Telegram's limit: %s bytes",
+                    video.source_id,
+                    video.path.stat().st_size,
+                )
+                await self.send_file_too_large(telegram_id, message_id, language)
+                return None
             logging.info(
                 "Sending video via file upload: %s, user_id=%s", video.path, telegram_id
             )
@@ -1290,8 +1329,8 @@ class TelegramBotController:
             )
             return None
         except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             with new_scope() as scope:
                 scope.set_tag("url", video.url)
                 capture_exception(e)
@@ -1368,8 +1407,8 @@ class TelegramBotController:
             # the caller drops the cache entry and downloads the video again.
             raise
         except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             with new_scope() as scope:
                 scope.set_tag("url", cache_item.meta_data_dto.url)
                 capture_exception(e)
@@ -1388,12 +1427,37 @@ class TelegramBotController:
         :param fixed_url: The URL with the domain replaced by 'fixupx.com'.
         :param language: The language for the message.
         """
+        mark_failed("x_fallback_link")
         text = _("result direct message", locale=language or self.language).format(
             url=fixed_url,
             title="",
         )
         coro = self._bot.send_message(chat_id=telegram_id, text=text)
         await self._send(coro)
+
+    async def send_file_too_large(
+        self,
+        telegram_id: int,
+        message_id: int | None = None,
+        language: str | None = None,
+    ) -> None:
+        """
+        Tell the user the file is over Telegram's 2 GB limit.
+
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Progress message to remove.
+        :param language: Language for the message.
+        """
+        mark_failed("file_too_large")
+        coro = self._bot.send_message(
+            chat_id=telegram_id,
+            text=_("file too large", locale=language or self.language),
+        )
+        await self._send(coro)
+        if message_id is not None:
+            await self._send(
+                self._bot.delete_message(chat_id=telegram_id, message_id=message_id),
+            )
 
     async def send_content_not_found_error(
         self,

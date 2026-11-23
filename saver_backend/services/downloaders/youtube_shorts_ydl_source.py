@@ -44,9 +44,11 @@ class YouTubeShortsYdlController(YouTubeClientRotationMixin, YtDlpController):
         :param url: URL of the video.
         :return: Dictionary with video information or None on failure.
         """
+        await self._prepare_routes()
         try:
             return await super().get_video_info(url)
         except DownloadError as e:
+            await self._note_bot_check(e)
             if "Video unavailable" in str(e):
                 await self.delete_processing_message()
                 await self._telegram_bot_controller.send_content_not_found_error(

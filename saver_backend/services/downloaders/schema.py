@@ -56,6 +56,26 @@ def is_live_error(error: BaseException) -> bool:
     return any(hint in message for hint in LIVE_ERROR_HINTS)
 
 
+# Telegram refuses a caption over 1024 characters («message caption is too
+# long», 24 TikTok videos on prod on 21-23.11: the title there is the whole
+# description with hashtags). The rest of the caption (link, channel, signature)
+# needs under 200.
+MAX_CAPTION_TITLE_LENGTH = 800
+
+
+def caption_title(title: str | None) -> str:
+    """
+    Title as it is shown in a caption, cut so the caption fits Telegram's limit.
+
+    :param title: Full title of the content.
+    :return: The title, at most MAX_CAPTION_TITLE_LENGTH characters.
+    """
+    title = title or ""
+    if len(title) <= MAX_CAPTION_TITLE_LENGTH:
+        return title
+    return title[: MAX_CAPTION_TITLE_LENGTH - 1].rstrip() + "…"
+
+
 class BaseContentDTO(BaseModel):
     """Base DTO for any cachable content."""
 
@@ -68,8 +88,14 @@ class BaseContentDTO(BaseModel):
     def filename(self) -> str:
         """Generate a sanitized filename for tg upload with length constraints."""
 
+        # Line breaks and other control characters too: the name goes into an
+        # upload header, and with one in it the request is refused before it is
+        # sent («Forbidden control character detected in headers», dev 23.11, a
+        # tweet with a multi-line text).
         filename = re.sub(
-            r'[\\/*?:"<>|;]', " ", self.title or self.source_id or "media_file"
+            r'[\\/*?:"<>|;\x00-\x1f\x7f]',
+            " ",
+            self.title or self.source_id or "media_file",
         )
         len_filename = len(filename)
         len_suffix = len(settings.telegram_filename_sufix)
@@ -170,6 +196,10 @@ class FormatDTO(BaseModel):
         """
         format_id = format_info.get("format_id")
         resolution = format_info.get("resolution")
+        height = format_info.get("height")
+        if isinstance(height, int) and (not resolution or "x" not in resolution):
+            # VK's plain https files say «720p» and no width: still a quality
+            resolution = f"{format_info.get('width') or 0}x{height}"
         if not resolution or len(resolution.split("x")) != 2:
             return None
         if not format_id:
@@ -275,9 +305,10 @@ class VideoDTO(BaseContentDTO):
                 quality = f"[{self.quality}]".replace("p", "")
         else:
             quality = ""
+        title = caption_title(self.title)
         if self.channel and self.channel_url:
             title_html = (
-                f'<b>{self.title}\u00a0<a href="{self.url}">{quality or "→"}</a></b>'
+                f'<b>{title}\u00a0<a href="{self.url}">{quality or "→"}</a></b>'
                 f"\n\n"
                 f"#{self.channel.replace(' ', '_')}"
                 f'<a href="{self.channel_url}">\u00a0→</a>'
@@ -285,11 +316,9 @@ class VideoDTO(BaseContentDTO):
             )
         elif self.title:
             if quality:
-                title_html = (
-                    f'<b>{self.title}\u00a0<a href="{self.url}">{quality}\n</a></b>'
-                )
+                title_html = f'<b>{title}\u00a0<a href="{self.url}">{quality}\n</a></b>'
             else:
-                title_html = f'<b>{self.title}\u00a0<a href="{self.url}">→\n</a></b>'
+                title_html = f'<b>{title}\u00a0<a href="{self.url}">→\n</a></b>'
 
             title_html += f"› {self.season}\n" if self.season else ""  # noqa RUF001
             title_html += f"› {self.episode}\n" if self.episode else ""  # noqa RUF001

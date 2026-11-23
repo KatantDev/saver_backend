@@ -1,10 +1,12 @@
 import asyncio
+import hashlib
 import logging
+import time
 from typing import Any, ClassVar
 
 from yt_dlp.utils import DownloadError
 
-from saver_backend.entities.enums import SourceEnum
+from saver_backend.entities.enums import FsmKeysEnum, SourceEnum
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
@@ -17,10 +19,25 @@ YOUTUBE_H264_FORMAT = (
 )
 
 
-# yt-dlp player clients tried in turn. On 20.11 the default client got 403/400
-# on media through 6-7 of 8 prod routes for a video, tv_simply passed 21 of 24
-# (video x route) checks in 1080p H.264; the default stays as the next try.
-YOUTUBE_PLAYER_CLIENTS: tuple[tuple[str, ...], ...] = (("tv_simply",), ("default",))
+# yt-dlp player clients tried in turn. Prod 23.11: tv_simply (put first on 20.11)
+# now returns a single 360p format, so the menu offered only 360p and a quality
+# picked from a menu built by another client was «not available» (59 failures in
+# two days). The default client and web_embedded return up to 1080p and their
+# files download; the «Sign in to confirm you're not a bot» answer depends on the
+# proxy, not on the client.
+YOUTUBE_PLAYER_CLIENTS: tuple[tuple[str, ...], ...] = (
+    ("default",),
+    ("web_embedded",),
+)
+
+# What YouTube answers through an address it has flagged.
+BOT_CHECK_TEXT = "Sign in to confirm"
+# How long a flagged proxy is left out for YouTube.
+BLOCKED_PROXY_PAUSE_SECONDS = 3 * 60 * 60
+# Proxies tried for one request before the server's own address.
+MAX_PROXY_SWITCHES = 2
+# A levelled «-drc» audio track loses to the original of the same bitrate.
+DRC_PENALTY_KBPS = 1
 
 
 def youtube_extractor_args(clients: tuple[str, ...]) -> dict[str, Any]:
@@ -36,11 +53,34 @@ def youtube_extractor_args(clients: tuple[str, ...]) -> dict[str, Any]:
     }
 
 
+def proxy_key(proxy: str | None) -> str:
+    """Short hash of a proxy, so the shared state never keeps its address."""
+    return hashlib.sha1((proxy or "direct").encode()).hexdigest()[:12]  # noqa: S324
+
+
+def is_bot_check(error: BaseException) -> bool:
+    """Whether YouTube refused the request because of the address it came from."""
+    return BOT_CHECK_TEXT in str(error)
+
+
 class YouTubeClientRotationMixin:
-    """Switch the yt-dlp player client on every retry of a YouTube download."""
+    """
+    Routes and player clients for YouTube.
+
+    On prod 4 of 12 proxies got «Sign in to confirm you're not a bot» for every
+    video and every client (23.11), while the other proxies and the server's own
+    address worked. A flagged proxy is remembered for a few hours and left out,
+    so a request does not spend its tries on it.
+    """
 
     _yt_dlp: Any
+    _proxy: str | None
+    _proxies: list[str]
+    _telegram_bot_controller: Any
+    DIRECT_FALLBACK: ClassVar[bool]
     _client_index: int = 0
+    _routes_ready: bool = False
+    _route_switches: int = 0
 
     def _next_player_client(self) -> None:
         self._client_index = (self._client_index + 1) % len(YOUTUBE_PLAYER_CLIENTS)
@@ -50,6 +90,70 @@ class YouTubeClientRotationMixin:
     def _switch_proxy_for_retry(self) -> None:
         super()._switch_proxy_for_retry()  # type: ignore[misc]
         self._next_player_client()
+
+    async def _blocked_proxies(self) -> set[str]:
+        data = await self._telegram_bot_controller.get_fsm_data(
+            user_id=int(FsmKeysEnum.YOUTUBE_BLOCKED_PROXIES),
+            chat_id=int(FsmKeysEnum.YOUTUBE_BLOCKED_PROXIES),
+        )
+        now = time.time()
+        return {
+            key
+            for key, until in (data or {}).items()
+            if isinstance(until, (int, float)) and until > now
+        }
+
+    async def _prepare_routes(self) -> None:
+        """Leave out the proxies YouTube flagged recently; done once per request."""
+        if self._routes_ready:
+            return
+        self._routes_ready = True
+        if not self._proxy:
+            return
+        blocked = await self._blocked_proxies()
+        pool = [self._proxy, *self._proxies]
+        fresh = [proxy for proxy in pool if proxy_key(proxy) not in blocked]
+        if len(fresh) == len(pool):
+            return
+        logging.info(
+            "YouTube: %s of %s proxies are flagged, left out",
+            len(pool) - len(fresh),
+            len(pool),
+        )
+        if fresh:
+            self._proxies = fresh
+            self._set_proxy()  # type: ignore[attr-defined]
+        elif self.DIRECT_FALLBACK:
+            self._switch_to_direct()  # type: ignore[attr-defined]
+
+    async def _note_bot_check(self, error: BaseException) -> None:
+        """Remember the proxy YouTube has just refused."""
+        if not self._proxy or not is_bot_check(error):
+            return
+        logging.warning("YouTube flagged a proxy, it is left out for a while")
+        await self._telegram_bot_controller.update_fsm_data(
+            user_id=int(FsmKeysEnum.YOUTUBE_BLOCKED_PROXIES),
+            chat_id=int(FsmKeysEnum.YOUTUBE_BLOCKED_PROXIES),
+            data={proxy_key(self._proxy): time.time() + BLOCKED_PROXY_PAUSE_SECONDS},
+        )
+
+    def _next_route(self) -> bool:
+        """
+        Move to another proxy, then to the server's own address.
+
+        :return: False when the request already goes from the server's address.
+        """
+        if not self._proxy:
+            return False
+        if self._proxies and self._route_switches < MAX_PROXY_SWITCHES:
+            self._route_switches += 1
+            self._set_proxy()  # type: ignore[attr-defined]
+        elif self.DIRECT_FALLBACK:
+            self._switch_to_direct()  # type: ignore[attr-defined]
+        else:
+            return False
+        self._next_player_client()
+        return True
 
 
 def _is_combined(fmt: dict[str, Any]) -> bool:
@@ -65,6 +169,35 @@ def _is_combined(fmt: dict[str, Any]) -> bool:
         None,
         "none",
     )
+
+
+def _pick_audio(formats: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """
+    Pick the m4a audio track to merge with video-only formats.
+
+    The higher bitrate wins. The «-drc» twin of a track is the same audio with
+    its loudness levelled (140-drc was picked over 140 on prod): the original
+    comes first.
+
+    :param formats: Formats from yt-dlp.
+    :return: The audio format, None when the video has no m4a audio.
+    """
+    best_audio = None
+    best_audio_priority = 0.0
+    for fmt in formats:
+        if (
+            fmt.get("acodec") != "none"
+            and fmt.get("vcodec") == "none"
+            and fmt.get("video_ext") == "none"
+            and fmt.get("audio_ext") == "m4a"
+        ):
+            abr = fmt.get("abr") or 0
+            if "drc" in str(fmt.get("format_id")):
+                abr -= DRC_PENALTY_KBPS
+            if abr > best_audio_priority:
+                best_audio_priority = abr
+                best_audio = fmt
+    return best_audio
 
 
 def _is_h264(fmt: dict[str, Any]) -> bool:
@@ -119,27 +252,16 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
         if formats is None:
             return info_dict
 
-        best_audio = None
-        best_audio_priority = 0
-
-        for fmt in formats:
-            if (
-                fmt.get("acodec") != "none"
-                and fmt.get("vcodec") == "none"
-                and fmt.get("video_ext") == "none"
-                and fmt.get("audio_ext") == "m4a"
-            ):
-                # Priority: higher bitrate is better, if available
-                abr = fmt.get("abr") or 0
-                if abr > best_audio_priority:
-                    best_audio_priority = abr
-                    best_audio = fmt
+        best_audio = _pick_audio(formats)
 
         if not best_audio:
             logging.warning("[youtup] Video dont have audio")
             return info_dict
 
         best_audio_id = best_audio.get("format_id")
+        audio_size = (
+            best_audio.get("filesize") or best_audio.get("filesize_approx") or 0
+        )
         best_audio_codec = best_audio.get("acodec")
 
         # Keep only H.264 qualities if available
@@ -160,6 +282,11 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
                 original_format_id = fmt.get("format_id", "")
                 modified_fmt["format_id"] = f"{original_format_id}+{best_audio_id}"
                 modified_fmt["acodec"] = best_audio_codec
+                # The file the user gets is video plus audio: both go into the
+                # size shown in the menu and checked against Telegram's limit.
+                for key in ("filesize", "filesize_approx"):
+                    if modified_fmt.get(key):
+                        modified_fmt[key] += audio_size
                 modified_formats.append(modified_fmt)
             else:
                 modified_formats.append(fmt)
@@ -175,6 +302,7 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
         :param url: URL of the video.
         :return: Dictionary with video information or None on failure.
         """
+        await self._prepare_routes()
         try:
             info_dict = await asyncio.to_thread(
                 self._yt_dlp.extract_info,
@@ -206,17 +334,16 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
                 or "Unable to connect to proxy" in e.msg
                 or "SOCKS server failure" in e.msg
                 or "403: Forbidden" in str(e)
+                or is_bot_check(e)
             ):
                 logging.warning(
-                    f"[youtup] proxy: {self._yt_dlp.params['proxy']};"
-                    f" url: {self._resolution.url}; error: {e!s}"
+                    "[youtube] the route failed for %s: %s",
+                    self._resolution.url,
+                    e,
                 )
-                if self.DIRECT_FALLBACK and self._proxy and not self._proxies:
-                    self._switch_to_direct()
-                else:
-                    self._set_proxy()
-                self._next_player_client()
-                return await self.get_video_info(url=url)
+                await self._note_bot_check(e)
+                if self._next_route():
+                    return await self.get_video_info(url=url)
             if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):
                 await self.delete_processing_message()
                 await self._telegram_bot_controller.send_content_not_found_error(
@@ -242,7 +369,8 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
                 self._set_cookies(force_set=self._cookie_fallback)
                 params.pop("proxy")
                 self._yt_dlp = self._create_yt_dlp(params)
-                self._set_proxy()
+                if self._proxies:
+                    self._set_proxy()
                 return await self.get_video_info(url=url)
             raise
 
