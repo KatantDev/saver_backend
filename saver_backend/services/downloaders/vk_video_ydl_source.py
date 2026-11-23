@@ -3,7 +3,10 @@ from typing import Any, ClassVar
 from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import ProxyType, SourceEnum
+from saver_backend.services.downloaders.vk_ydl_patch import apply_vk_subtitle_patch
 from saver_backend.services.downloaders.ydl_source import YtDlpController
+
+apply_vk_subtitle_patch()
 
 
 class VKVideoYdlController(YtDlpController):
