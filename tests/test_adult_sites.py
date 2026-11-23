@@ -11,6 +11,9 @@ from saver_backend.services.downloaders.resolver import SourceResolver
         "https://www.pornhub.com/gay/video?viewkey=abc",
         "https://xvideos.com/video123/title",
         "https://www.redgifs.com/watch/x",
+        "https://fr.pornhub.org/view_video.php?viewkey=abc",
+        "https://xhamster.com/videos/title-xhPYisO",
+        "https://ru.xhamster46.desi/videos/title-xhPYisO",
     ],
 )
 def test_adult_sites_are_supported(url: str) -> None:
