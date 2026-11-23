@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import secrets
 from abc import ABC
 from pathlib import Path
@@ -21,6 +22,27 @@ from saver_backend.settings import settings
 
 DOWNLOAD_RETRIES = 10
 RETRY_PAUSE_SECONDS = 2
+
+
+COOKIE_FILE_HEADER_RE = re.compile(r"#( Netscape)? HTTP Cookie File")
+
+
+def is_cookie_file(path: Path) -> bool:
+    """
+    Whether yt-dlp can load the cookie file.
+
+    Prod 23.11: cookies/adult_ydl/cookies1.txt was empty, and yt-dlp refused to
+    start («does not look like a Netscape format cookies file»), so every adult
+    link failed. Such a file is skipped and the video is read without cookies.
+
+    :param path: Cookie file.
+    :return: True when the file starts with the Netscape cookie header.
+    """
+    try:
+        with path.open(encoding="utf-8", errors="replace") as file:
+            return COOKIE_FILE_HEADER_RE.match(file.readline()) is not None
+    except OSError:
+        return False
 
 
 def _retry_backoff(attempt: int) -> float:
@@ -123,10 +145,17 @@ class YtDlpController(BaseSourceController, ABC):
 
         base_dir = Path(__file__).resolve().parent.parent.parent.parent
         cookie_dir = base_dir / "cookies" / self.SOURCE.value
-        cookie_files = list(cookie_dir.glob("cookies*.txt"))
+        found = list(cookie_dir.glob("cookies*.txt"))
+        cookie_files = [path for path in found if is_cookie_file(path)]
+        if len(cookie_files) < len(found):
+            logging.warning(
+                "Skipped %s empty or broken cookie files in %s",
+                len(found) - len(cookie_files),
+                cookie_dir,
+            )
         if not cookie_files:
-            logging.error(
-                "Cookies enabled for %s, but no files found in %s",
+            logging.warning(
+                "Cookies enabled for %s, but no usable files found in %s",
                 self.SOURCE,
                 cookie_dir,
             )
