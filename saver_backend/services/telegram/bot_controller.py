@@ -1388,6 +1388,7 @@ class TelegramBotController:
         :param fixed_url: The URL with the domain replaced by 'fixupx.com'.
         :param language: The language for the message.
         """
+        mark_failed("x_fallback_link")
         text = _("result direct message", locale=language or self.language).format(
             url=fixed_url,
             title="",
