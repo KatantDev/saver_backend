@@ -9,6 +9,7 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from sentry_sdk.integrations.stdlib import StdlibIntegration
 
 from saver_backend.log import configure_logging
+from saver_backend.services.sentry_limits import MAX_VALUE_LENGTH, shrink_event
 from saver_backend.settings import settings
 from saver_backend.web.api.router import api_router
 from saver_backend.web.lifespan import lifespan_setup
@@ -43,6 +44,8 @@ def get_app() -> FastAPI:
                 RedisIntegration(),
             ],
             enable_tracing=True,
+            max_value_length=MAX_VALUE_LENGTH,
+            before_send=shrink_event,
             profile_session_sample_rate=1.0,
             profile_lifecycle="trace",
         )
