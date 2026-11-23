@@ -88,8 +88,14 @@ class BaseContentDTO(BaseModel):
     def filename(self) -> str:
         """Generate a sanitized filename for tg upload with length constraints."""
 
+        # Line breaks and other control characters too: the name goes into an
+        # upload header, and with one in it the request is refused before it is
+        # sent («Forbidden control character detected in headers», dev 23.11, a
+        # tweet with a multi-line text).
         filename = re.sub(
-            r'[\\/*?:"<>|;]', " ", self.title or self.source_id or "media_file"
+            r'[\\/*?:"<>|;\x00-\x1f\x7f]',
+            " ",
+            self.title or self.source_id or "media_file",
         )
         len_filename = len(filename)
         len_suffix = len(settings.telegram_filename_sufix)
