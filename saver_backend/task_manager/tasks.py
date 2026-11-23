@@ -55,6 +55,7 @@ async def _record_failure(
             stage=stage,
             reason=reason,
             error=mark.error,
+            traceback=mark.traceback,
         )
     except Exception as error:
         logging.warning("Could not record failed request %s: %s", resolution.url, error)

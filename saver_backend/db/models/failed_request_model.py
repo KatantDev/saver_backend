@@ -31,3 +31,4 @@ class FailedRequestModel(DbBaseModel):
     stage: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str] = mapped_column(String(64), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    traceback: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -5,6 +5,7 @@ from taskiq import TaskiqEvents, TaskiqState
 
 from saver_backend.db.lifespan import init_db, shutdown_db
 from saver_backend.services.downloaders.instagram_session import request_session_check
+from saver_backend.services.error_journal import start_error_journal, stop_error_journal
 from saver_backend.services.telegram.bot_controller import TelegramBotController
 from saver_backend.tkq import broker
 
@@ -18,7 +19,11 @@ async def startup(state: TaskiqState) -> None:
 
     :param state: taskiq state.
     """
-    init_db(state)
+    session_factory = init_db(state)
+    state.error_journal, state.error_journal_task = start_error_journal(
+        "worker",
+        session_factory,
+    )
 
     i18n = I18n(path="locales", default_locale="en", domain="messages")
     state.i18n = i18n
@@ -44,6 +49,12 @@ async def shutdown(state: TaskiqState) -> None:
 
     :param state: taskiq state.
     """
+    if hasattr(state, "error_journal"):
+        await stop_error_journal(
+            state.error_journal,
+            state.error_journal_task,
+            state.db_session_factory,
+        )
     await shutdown_db(state)
 
     if hasattr(state, "telegram_bot_controller"):
