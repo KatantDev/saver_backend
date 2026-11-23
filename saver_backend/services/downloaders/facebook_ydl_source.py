@@ -14,6 +14,10 @@ class FacebookYdlController(YtDlpController):
     SOURCE: ClassVar[SourceEnum] = SourceEnum.FACEBOOK_YDL
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.ALL
     COOKIES: ClassVar[bool] = False
+    # Prod 21-23.11: some proxies time out on facebook.com while the server's
+    # own address opens the same reel, so try another proxy, then go direct.
+    RETRIES_ON_ERROR: ClassVar[int] = 1
+    DIRECT_FALLBACK: ClassVar[bool] = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the controller with optimal yt-dlp parameters for Facebook."""
