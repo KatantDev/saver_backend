@@ -421,12 +421,12 @@ class TelegramBotController:
                 if settings.environment == "local":
                     logging.debug("Ignoring benign TelegramBadRequest: %s", e)
                 return
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             capture_exception(e)
         except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             capture_exception(e)
 
     async def set_fsm_data(
@@ -855,8 +855,8 @@ class TelegramBotController:
             )
             return None
         except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             with new_scope() as scope:
                 scope.set_tag("url", audio.url)
                 capture_exception(e)
@@ -1318,8 +1318,8 @@ class TelegramBotController:
             )
             return None
         except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             with new_scope() as scope:
                 scope.set_tag("url", video.url)
                 capture_exception(e)
@@ -1396,8 +1396,8 @@ class TelegramBotController:
             # the caller drops the cache entry and downloads the video again.
             raise
         except Exception as e:
-            if settings.environment == "local":
-                logging.exception(e)
+            # Logged on every stand: failed_request keeps the last error text
+            logging.exception("Telegram request failed: %s", e)
             with new_scope() as scope:
                 scope.set_tag("url", cache_item.meta_data_dto.url)
                 capture_exception(e)
