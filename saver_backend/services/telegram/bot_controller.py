@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from saver_backend.db.models.cache_model import CacheModel
 from saver_backend.entities.enums import ContentTypeEnum
+from saver_backend.services.consts import TELEGRAM_UPLOAD_LIMIT_BYTES
 from saver_backend.services.downloaders.schema import (
     AudioDTO,
     PhotoDTO,
@@ -1274,6 +1275,16 @@ class TelegramBotController:
             )
             thumbnail_input = video.thumbnail_url
         elif video.path and video.path.exists():
+            if video.path.stat().st_size > TELEGRAM_UPLOAD_LIMIT_BYTES:
+                # Telegram would refuse it with FILE_PARTS_INVALID after the
+                # whole upload; the size was unknown before the download.
+                logging.error(
+                    "The file of %s is over Telegram's limit: %s bytes",
+                    video.source_id,
+                    video.path.stat().st_size,
+                )
+                await self.send_file_too_large(telegram_id, message_id, language)
+                return None
             logging.info(
                 "Sending video via file upload: %s, user_id=%s", video.path, telegram_id
             )
@@ -1423,6 +1434,30 @@ class TelegramBotController:
         )
         coro = self._bot.send_message(chat_id=telegram_id, text=text)
         await self._send(coro)
+
+    async def send_file_too_large(
+        self,
+        telegram_id: int,
+        message_id: int | None = None,
+        language: str | None = None,
+    ) -> None:
+        """
+        Tell the user the file is over Telegram's 2 GB limit.
+
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Progress message to remove.
+        :param language: Language for the message.
+        """
+        mark_failed("file_too_large")
+        coro = self._bot.send_message(
+            chat_id=telegram_id,
+            text=_("file too large", locale=language or self.language),
+        )
+        await self._send(coro)
+        if message_id is not None:
+            await self._send(
+                self._bot.delete_message(chat_id=telegram_id, message_id=message_id),
+            )
 
     async def send_content_not_found_error(
         self,
