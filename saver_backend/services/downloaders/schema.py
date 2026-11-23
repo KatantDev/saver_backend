@@ -190,6 +190,10 @@ class FormatDTO(BaseModel):
         """
         format_id = format_info.get("format_id")
         resolution = format_info.get("resolution")
+        height = format_info.get("height")
+        if isinstance(height, int) and (not resolution or "x" not in resolution):
+            # VK's plain https files say «720p» and no width: still a quality
+            resolution = f"{format_info.get('width') or 0}x{height}"
         if not resolution or len(resolution.split("x")) != 2:
             return None
         if not format_id:

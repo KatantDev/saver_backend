@@ -34,6 +34,9 @@ msgstr ""
 msgid "video is live"
 msgstr ""
 
+msgid "file too large"
+msgstr ""
+
 msgid "downloading progress"
 msgstr ""
 

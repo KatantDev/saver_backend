@@ -63,6 +63,9 @@ msgstr "⚠️ No formats available for download. Please try again later."
 msgid "video is live"
 msgstr "This is a live stream that has not started or ended yet. You can download the recording after the broadcast ends."
 
+msgid "file too large"
+msgstr "The file is over 2 GB and Telegram does not accept such files. Please choose a lower quality."
+
 msgid "downloading progress"
 msgstr "Downloading... {percent}%"
 

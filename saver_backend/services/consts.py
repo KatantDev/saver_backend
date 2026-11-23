@@ -6,3 +6,5 @@ BASE_DOWNLOAD_PATH = Path("downloads")
 # videos on prod on 21-23.11 while the limit here was 3 GB). The margin covers
 # the container overhead and sizes that are only estimates.
 MAX_FILE_SIZE_BYTES = 1950 * 1024 * 1024
+# The limit itself, for a file that is already downloaded.
+TELEGRAM_UPLOAD_LIMIT_BYTES = 2000 * 1024 * 1024
