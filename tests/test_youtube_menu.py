@@ -137,8 +137,8 @@ async def test_without_proxies_there_is_no_extra_attempt() -> None:
     assert controller._fetch_and_send.await_count == 2  # noqa: SLF001
 
 
-def test_first_try_uses_tv_simply() -> None:
-    """Prod 20.11: tv_simply passed 21 of 24 checks, the default client 2 of 16."""
+def test_first_try_uses_the_default_client() -> None:
+    """Prod 23.11: tv_simply returns only 360p, the default client up to 1080p."""
     from saver_backend.services.downloaders.youtube_video_ydl_source import (
         YOUTUBE_PLAYER_CLIENTS,
         youtube_extractor_args,
@@ -146,8 +146,9 @@ def test_first_try_uses_tv_simply() -> None:
 
     args = youtube_extractor_args(YOUTUBE_PLAYER_CLIENTS[0])
 
-    assert args["youtube"]["player_client"] == ["tv_simply"]
+    assert args["youtube"]["player_client"] == ["default"]
     assert "youtubepot-bgutilhttp" in args
+    assert all("tv_simply" not in clients for clients in YOUTUBE_PLAYER_CLIENTS)
 
 
 def test_each_retry_switches_the_player_client() -> None:
@@ -161,5 +162,5 @@ def test_each_retry_switches_the_player_client() -> None:
         controller._switch_proxy_for_retry()  # noqa: SLF001
         second = controller._yt_dlp.params["extractor_args"]["youtube"]  # noqa: SLF001
 
-    assert first["player_client"] == ["default"]
-    assert second["player_client"] == ["tv_simply"]
+    assert first["player_client"] == ["web_embedded"]
+    assert second["player_client"] == ["default"]
