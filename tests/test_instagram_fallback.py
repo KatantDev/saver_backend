@@ -359,4 +359,15 @@ async def test_file_is_asked_directly_when_the_proxy_fails(tmp_path: Path) -> No
 
     assert len(calls) == 2
     assert (tmp_path / "1.jpg").read_bytes() == b"data"
+
+    # the next file of the same request does not wait for the dead proxy
+    with patch.object(
+        InstagramInDownController,
+        "_stream_to_file",
+        staticmethod(stream),
+    ):
+        await controller._download_file("https://cdn/2.jpg", "2.jpg")  # noqa: SLF001
+
+    assert len(calls) == 3
+    assert calls[-1] is not controller._client  # noqa: SLF001
     controller._client = None  # noqa: SLF001
