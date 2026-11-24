@@ -20,6 +20,9 @@ from saver_backend.services.downloaders.dzen_ydl import (
 from saver_backend.services.downloaders.facebook_ydl_source import (
     FacebookYdlController,
 )
+from saver_backend.services.downloaders.generic_ydl_source import (
+    GenericYdlController,
+)
 from saver_backend.services.downloaders.instagram_indown_source import (
     InstagramInDownController,
 )
@@ -853,6 +856,53 @@ class OkDetector(Detector):
         if not self._host_in(url, *self.HOSTS):
             return None
         return self._match_regex(url)
+
+
+@register_detector()
+class GenericYdlDetector(Detector):
+    """
+    Detector for sites that need nothing but yt-dlp: Twitch and medal.tv.
+
+    Only links to one video are taken: a channel or a game page is not a
+    download.
+    """
+
+    SOURCE = SourceEnum.GENERIC_YDL
+    CONTROLLER = GenericYdlController
+    TWITCH_HOSTS = ("twitch.tv",)
+    MEDAL_HOSTS = ("medal.tv",)
+    REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        "twitch_clip": re.compile(r"^/[^/]+/clip/(?P<code>[A-Za-z0-9_-]+)/?$"),
+        "twitch_video": re.compile(r"^/videos/(?P<code>\d+)/?$"),
+        "medal_clip": re.compile(
+            r"^/(?:[a-z]{2}/)?(?:games/[^/]+/)?clips/(?P<code>[A-Za-z0-9_-]+)/?",
+        ),
+    }
+    _SHORT_CLIP_RE: ClassVar[re.Pattern[str]] = re.compile(r"^/([A-Za-z0-9_-]+)/?$")
+
+    def match(self, url: str) -> Optional[Resolution]:
+        """Check if the url is a single video of a supported site."""
+        parsed = urlparse(self._clean_url(url))
+        host = (parsed.hostname or "").lower()
+        if self._host_in(url, *self.TWITCH_HOSTS):
+            if host == "clips.twitch.tv":
+                short = self._SHORT_CLIP_RE.match(parsed.path)
+                if not short:
+                    return None
+                return Resolution(
+                    source=self.SOURCE,
+                    url=f"https://clips.twitch.tv/{short.group(1)}",
+                    metadata={"type": "twitch_clip", "code": short.group(1)},
+                )
+            resolution = self._match_regex(url)
+            if resolution and str(resolution.metadata["type"]).startswith("twitch"):
+                return resolution
+            return None
+        if self._host_in(url, *self.MEDAL_HOSTS):
+            resolution = self._match_regex(url)
+            if resolution and resolution.metadata["type"] == "medal_clip":
+                return resolution
+        return None
 
 
 @register_detector()
