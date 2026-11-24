@@ -1,3 +1,5 @@
+import base64
+import binascii
 import ipaddress
 import re
 from abc import ABC, abstractmethod
@@ -237,6 +239,10 @@ class InstagramInDownDetector(Detector):
         InstagramContentTypeEnum.POST: re.compile(
             r"^/(?:[^/]+/)?p/(?P<code>[A-Za-z0-9_-]+)/?$",
         ),
+        # before «stories»: «highlights» is not a user name
+        InstagramContentTypeEnum.HIGHLIGHTS: re.compile(
+            r"^/stories/highlights/(?P<code>\d+)/?$",
+        ),
         InstagramContentTypeEnum.STORIES: re.compile(
             r"^/stories/(?P<user>[A-Za-z0-9._]+)/(?P<code>\d+)/?$",
         ),
@@ -245,14 +251,55 @@ class InstagramInDownDetector(Detector):
     _TV_RE: ClassVar[re.Pattern[str]] = re.compile(
         r"^/(?:[^/]+/)?tv/([A-Za-z0-9_-]+)/?$",
     )
+    # The share button of a highlight: /s/<base64 of «highlight:<id>»>
+    # with ?story_media_id=<media id>_<user id> for the story being watched
+    _SHARED_RE: ClassVar[re.Pattern[str]] = re.compile(r"^/s/([A-Za-z0-9_=-]+)/?$")
+    _HIGHLIGHT_RE: ClassVar[re.Pattern[str]] = re.compile(r"^highlight:(\d+)$")
 
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
             return None
-        tv = self._TV_RE.match(urlparse(self._clean_url(url)).path)
+        parsed = urlparse(self._clean_url(url))
+        tv = self._TV_RE.match(parsed.path)
         if tv:
             url = f"https://www.instagram.com/reel/{tv.group(1)}/"
-        return self._match_regex(url)
+        shared = self._SHARED_RE.match(parsed.path)
+        if shared:
+            return self._match_shared_highlight(url, shared.group(1))
+        resolution = self._match_regex(url)
+        if resolution and resolution.metadata.get("type") == (
+            InstagramContentTypeEnum.HIGHLIGHTS
+        ):
+            resolution.metadata["story"] = self._story_in_query(url)
+        return resolution
+
+    @staticmethod
+    def _story_in_query(url: str) -> str:
+        query = urlparse(url if "://" in url else "https://" + url).query
+        story = (parse_qs(query).get("story_media_id") or [""])[0].split("_")[0]
+        return story if story.isdigit() else ""
+
+    def _match_shared_highlight(self, url: str, code: str) -> Optional[Resolution]:
+        try:
+            decoded = base64.urlsafe_b64decode(code + "=" * (-len(code) % 4)).decode()
+        except binascii.Error, UnicodeDecodeError, ValueError:
+            return None
+        highlight = self._HIGHLIGHT_RE.match(decoded)
+        if not highlight:
+            return None
+        story = self._story_in_query(url)
+        link = f"https://www.instagram.com/s/{code}"
+        if story:
+            link += f"?story_media_id={story}"
+        return Resolution(
+            source=self.SOURCE,
+            url=link,
+            metadata={
+                "type": InstagramContentTypeEnum.HIGHLIGHTS,
+                "code": highlight.group(1),
+                "story": story,
+            },
+        )
 
 
 # @register_detector()

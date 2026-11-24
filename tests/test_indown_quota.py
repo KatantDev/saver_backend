@@ -67,6 +67,7 @@ async def test_limit_page_moves_to_the_next_proxy() -> None:
     source._mark_exhausted = AsyncMock()  # noqa: SLF001
     source._send_media_result = AsyncMock()  # noqa: SLF001
     source._is_story = MagicMock(return_value=False)  # noqa: SLF001
+    source._is_highlight = MagicMock(return_value=False)  # noqa: SLF001
     source._try_ydl = AsyncMock(return_value="failed")  # noqa: SLF001
     source._ask_indown = lambda url, sid: InstagramInDownController._ask_indown(  # noqa: SLF001
         source, url, sid
