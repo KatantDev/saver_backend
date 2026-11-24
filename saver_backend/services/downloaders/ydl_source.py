@@ -427,6 +427,7 @@ class YtDlpController(BaseSourceController, ABC):
                 url=url,
                 download=False,
             )
+            info_dict = self._prepare_info(info_dict)
 
             video_id = info_dict.get("id")
             video_ext = info_dict.get("ext")
@@ -459,6 +460,17 @@ class YtDlpController(BaseSourceController, ABC):
                 )
                 return None
             raise
+
+    def _prepare_info(self, info_dict: dict[str, Any]) -> dict[str, Any]:
+        """
+        Adjust what yt-dlp returned before the bot reads it.
+
+        A source overrides this when its formats need fixing.
+
+        :param info_dict: The dictionary from yt_dlp.extract_info.
+        :return: The dictionary to use.
+        """
+        return info_dict
 
     def cleanup_files(self, dtos: Sequence[VideoDTO | PhotoDTO | AudioDTO]) -> None:
         """
