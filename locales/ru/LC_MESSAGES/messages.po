@@ -160,3 +160,11 @@ msgstr "➕ Подписаться на @{channel}"
 msgid "check subscriptions"
 msgstr "✅ Проверить подписки"
 
+msgid "inline start bot button"
+msgstr "Запустить бота"
+
+msgid "inline query preparing title"
+msgstr "Видео ещё готовится"
+
+msgid "inline query preparing text"
+msgstr "Видео ещё готовится. Повторите запрос через несколько секунд."

@@ -1,17 +1,41 @@
 import asyncio
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from aiogram.client.session.middlewares.base import (
     BaseRequestMiddleware,
     NextRequestMiddlewareType,
 )
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods.base import TelegramType
 
 if TYPE_CHECKING:
     from aiogram.client.bot import Bot
     from aiogram.methods import Response, TelegramMethod
+# The local Bot API server reports the flood pause of an upload as a plain
+# "400 Bad Request: too Many Requests: retry after 8", without the retry_after
+# parameter, so aiogram raises TelegramBadRequest instead of TelegramRetryAfter
+FLOOD_IN_BAD_REQUEST_RE = re.compile(
+    r"too many requests: retry after (\d+)",
+    re.IGNORECASE,
+)
+
+
+def flood_pause(error: Exception) -> float | None:
+    """
+    Pause Telegram asked for, in seconds.
+
+    :param error: Error raised by a Telegram request.
+    :return: Seconds to wait, None when the error is not flood control.
+    """
+    if isinstance(error, TelegramRetryAfter):
+        return float(error.retry_after)
+    if isinstance(error, TelegramBadRequest):
+        found = FLOOD_IN_BAD_REQUEST_RE.search(error.message or "")
+        if found:
+            return float(found.group(1))
+    return None
 
 
 class RetryAfterMiddleware(BaseRequestMiddleware):
@@ -35,7 +59,7 @@ class RetryAfterMiddleware(BaseRequestMiddleware):
         method: "TelegramMethod[TelegramType]",
     ) -> "Response[TelegramType]":
         """
-        Send the request, waiting and repeating it on TelegramRetryAfter.
+        Send the request, waiting and repeating it on flood control.
 
         :param make_request: Next step of the request chain.
         :param bot: Bot that sends the request.
@@ -46,13 +70,16 @@ class RetryAfterMiddleware(BaseRequestMiddleware):
         while True:
             try:
                 return await make_request(bot, method)
-            except TelegramRetryAfter as e:
-                if attempt >= self.max_attempts or e.retry_after > self.max_wait:
+            except (TelegramRetryAfter, TelegramBadRequest) as e:
+                pause = flood_pause(e)
+                if pause is None:
+                    raise
+                if attempt >= self.max_attempts or pause > self.max_wait:
                     raise
                 logging.info(
                     "Telegram flood control on %s, retrying in %s s",
                     type(method).__name__,
-                    e.retry_after,
+                    pause,
                 )
-                await asyncio.sleep(e.retry_after)
+                await asyncio.sleep(pause)
                 attempt += 1

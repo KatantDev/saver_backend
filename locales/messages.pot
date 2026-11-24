@@ -82,3 +82,11 @@ msgstr ""
 msgid "check subscriptions"
 msgstr ""
 
+msgid "inline start bot button"
+msgstr ""
+
+msgid "inline query preparing title"
+msgstr ""
+
+msgid "inline query preparing text"
+msgstr ""
