@@ -66,7 +66,11 @@ async def test_limit_page_moves_to_the_next_proxy() -> None:
     source._get_form_fields = AsyncMock(return_value=["t", "r", "z", "z"])  # noqa: SLF001
     source._mark_exhausted = AsyncMock()  # noqa: SLF001
     source._send_media_result = AsyncMock()  # noqa: SLF001
-    source._fallback = AsyncMock()  # noqa: SLF001
+    source._is_story = MagicMock(return_value=False)  # noqa: SLF001
+    source._try_ydl = AsyncMock(return_value="failed")  # noqa: SLF001
+    source._ask_indown = lambda url, sid: InstagramInDownController._ask_indown(  # noqa: SLF001
+        source, url, sid
+    )
     pages = iter(["Too many requests You can download maximum 50", "<media/>"])
     clients: list[MagicMock] = []
 
@@ -86,4 +90,20 @@ async def test_limit_page_moves_to_the_next_proxy() -> None:
 
     source._mark_exhausted.assert_awaited_once_with("http://spent")  # noqa: SLF001
     source._send_media_result.assert_awaited_once()  # noqa: SLF001
-    source._fallback.assert_not_awaited()  # noqa: SLF001
+    source._try_ydl.assert_awaited_once()  # noqa: SLF001
+
+
+@pytest.mark.anyio
+async def test_a_few_spent_proxies_are_still_tried() -> None:
+    """With every proxy marked as spent, three are tried, not one."""
+    spent = {indown._proxy_key(p): time.time() + 3600 for p in PROXIES}  # noqa: SLF001
+    source = _controller(spent)
+
+    with (
+        patch.object(indown.settings, "proxies", PROXIES[:7]),
+        patch.object(indown.settings, "proxies_ru", PROXIES[7:]),
+    ):
+        routes = await InstagramInDownController._indown_routes(source)  # noqa: SLF001
+
+    assert len(routes) == indown.INDOWN_SPENT_ATTEMPTS
+    assert set(routes) <= set(PROXIES)

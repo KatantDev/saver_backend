@@ -7,12 +7,14 @@ import random
 import re
 import time
 import uuid
+from pathlib import Path
 from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
 import ffmpeg
 import httpx
 from httpx import AsyncClient
+from yt_dlp import DownloadError
 
 from saver_backend.entities.enums import (
     FsmKeysEnum,
@@ -27,11 +29,13 @@ from saver_backend.services.downloaders.instagram_instaloader_source import (
     InstagramInstaloaderController,
 )
 from saver_backend.services.downloaders.instagram_session import (
+    YDL_COOKIES_FILE,
     is_login_required_error,
     request_session_check,
 )
 from saver_backend.services.downloaders.instagram_ydl_source import (
     InstagramYdlController,
+    is_content_unavailable,
 )
 from saver_backend.services.downloaders.schema import (
     PhotoDTO,
@@ -45,6 +49,10 @@ from saver_backend.settings import settings
 INDOWN_LIMIT_TEXT = "Too many requests"
 INDOWN_LIMIT_PAUSE_SECONDS = 3 * 60 * 60
 INDOWN_MAX_ATTEMPTS = 6
+# When every proxy is marked as spent, a few are still tried: the mark is a
+# guess (the reset time is unknown) and 64 of 353 such tries on prod on
+# 23.11 went through.
+INDOWN_SPENT_ATTEMPTS = 3
 
 
 def _proxy_key(proxy: str | None) -> str:
@@ -279,19 +287,38 @@ class InstagramInDownController(BaseSourceController):
         if self._client is None:
             return
         try:
-            async with self._client.stream("GET", url) as response:
-                response.raise_for_status()
-                # Используем стандартный open для записи в чанках,
-                # чтобы не загружать память для больших видео.
-                # Блокировка IO минимальна при записи чанками.
-                with file_path.open("wb") as f:
-                    async for chunk in response.aiter_bytes():
-                        f.write(chunk)
+            await self._stream_to_file(self._client, url, file_path)
+            return
         except Exception as e:
-            logging.error(f"Failed to download file {url}: {e}")
+            # A warning: the file is asked for once more below
+            logging.warning(
+                "Download of %s through the proxy failed (%s), trying directly",
+                filename,
+                type(e).__name__,
+            )
+        # The files are on a CDN that does not care where the request comes
+        # from, while a slow or dead proxy lost 128 of them on prod on 23.11
+        try:
+            async with httpx.AsyncClient(
+                headers={"User-Agent": self.USER_AGENT},
+                timeout=30,
+                follow_redirects=True,
+            ) as direct_client:
+                await self._stream_to_file(direct_client, url, file_path)
+        except Exception as e:
+            logging.error(f"Failed to download file {url}: {type(e).__name__}: {e}")
             if file_path.exists():
                 file_path.unlink()
             raise
+
+    @staticmethod
+    async def _stream_to_file(client: AsyncClient, url: str, file_path: Path) -> None:
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+            # Written in chunks so a big video is not held in memory
+            with file_path.open("wb") as f:
+                async for chunk in response.aiter_bytes():
+                    f.write(chunk)
 
     async def _set_proxy_type_from_fsm(self) -> None:
         fsm_data = await self._telegram_bot_controller.get_fsm_data(
@@ -317,7 +344,16 @@ class InstagramInDownController(BaseSourceController):
         )
 
     async def download_video(self) -> None:
-        """Main execution flow."""
+        """
+        Main execution flow.
+
+        Posts and reels are first read the way a guest sees them: that needs
+        no indown.io quota (50 a day per address, 600 for the whole pool against
+        about 1000 Instagram requests a day) and returns photos and carousels
+        as well as videos. indown.io comes second and keeps its quota for what
+        only it can get: stories and posts hidden from guests. The service
+        account, when its session exists, is the last resort.
+        """
         await self._set_proxy_type_from_fsm()
 
         original_url = self._resolution.url
@@ -328,18 +364,129 @@ class InstagramInDownController(BaseSourceController):
             return
 
         self._process_percent(10)
-        for proxy in await self._indown_routes():
-            outcome = await self._try_indown(proxy, original_url, source_id)
-            if outcome == "done":
-                return
-            if outcome == "not_found":
-                # indown.io has no login, so content for logged-in users looks
-                # missing to it; the service account may still see it
-                await self._fallback(not_found=True)
+        is_story = self._is_story()
+        guest_outcome = "skipped"
+        if not is_story:
+            guest_outcome = await self._try_ydl(source_id, use_session=False)
+            if guest_outcome == "done":
                 return
 
+        indown_outcome = await self._ask_indown(original_url, source_id)
+        if indown_outcome == "done":
+            return
+
+        if is_story:
+            await self._fallback_to_instaloader()
+            return
+        if YDL_COOKIES_FILE.exists():
+            account_outcome = await self._try_ydl(source_id, use_session=True)
+            if account_outcome == "done":
+                return
+        logging.error(
+            "Instagram content not received: %s; user_id=%s; guest: %s, indown.io: %s",
+            original_url,
+            self._telegram_id,
+            guest_outcome,
+            indown_outcome,
+        )
+        # A guest request is refused for posts that exist too (age limit, rate
+        # limit), so "private or deleted" needs indown.io's word: either it
+        # says so, or it was asked and has nothing while the guest request
+        # says the post is unavailable. When indown.io could not be asked
+        # (the quota is spent), the user gets the general error.
+        not_found = indown_outcome == "not_found" or (
+            indown_outcome == "empty" and guest_outcome == "unavailable"
+        )
+        if not_found and not self._inline_query_id:
+            await self._send_not_found_message()
+        else:
+            await self._send_error_message()
+
+    def _is_story(self) -> bool:
+        content_type = self._resolution.metadata.get("type")
+        return content_type == InstagramContentTypeEnum.STORIES
+
+    async def _ask_indown(self, original_url: str, source_id: str) -> str:
+        """
+        Ask indown.io through the proxies that still have their daily quota.
+
+        :param original_url: Link the user sent.
+        :param source_id: Cache key of the content.
+        :return: "done" when the content was sent, "not_found" when indown.io
+            says it is missing or private, "empty" when it answered without
+            any media, "failed" when it could not be asked or its files could
+            not be downloaded.
+        """
+        answered_empty = False
+        for proxy in await self._indown_routes():
+            outcome = await self._try_indown(proxy, original_url, source_id)
+            if outcome == "empty":
+                answered_empty = True
+            elif outcome != "next":
+                return outcome
         logging.warning("No media found in indown.io response.")
-        await self._fallback()
+        return "empty" if answered_empty else "failed"
+
+    async def _try_ydl(self, source_id: str, use_session: bool) -> str:
+        """
+        Read the post through yt-dlp and send what it has.
+
+        :param source_id: Cache key of the content.
+        :param use_session: Read as the service account instead of a guest.
+        :return: "done" when the content was sent to the user, "unavailable"
+            when Instagram says the post is closed or gone, "failed" otherwise.
+        """
+        url = self._resolution.url
+        controller = InstagramYdlController(
+            resolution=self._resolution,
+            telegram_bot_controller=self._telegram_bot_controller,
+            telegram_id=self._telegram_id,
+            user_dao=self._user_dao,
+            history_dao=self._history_dao,
+            cache_dao=self._cache_dao,
+            message_id=self._message_id,
+            inline_query_id=self._inline_query_id,
+            use_session=use_session,
+        )
+        who = "the service account" if use_session else "a guest"
+        try:
+            media_items = await controller.fetch_media(url)
+        except DownloadError as error:
+            logging.warning("Instagram refused %s as %s: %s", url, who, error.msg)
+            if use_session and is_login_required_error(error):
+                await request_session_check()
+            return "unavailable" if is_content_unavailable(error) else "failed"
+        except Exception as error:
+            logging.warning(
+                "Reading %s as %s failed: %s: %s",
+                url,
+                who,
+                type(error).__name__,
+                error,
+            )
+            return "failed"
+        finally:
+            await controller.close()
+        if not media_items:
+            logging.warning("Instagram returned no media for %s as %s", url, who)
+            return "failed"
+
+        logging.info("Instagram %s read as %s: %s items", url, who, len(media_items))
+        if len(media_items) == 1 and isinstance(media_items[0], VideoDTO):
+            # Telegram takes a short video by its link, nothing is downloaded
+            video = media_items[0]
+            video.source_id = source_id
+            await self._send_video(video)
+            return "done"
+        for item in media_items:
+            item.source_id = source_id
+        try:
+            await self._init_httpx(self._proxy)
+            await self._send_media_result(media_items)
+        except InstaIndownError:
+            self.cleanup_files(media_items)
+            return "failed"
+        return "done"
 
     async def _try_indown(  # noqa: PLR0911 - one return per indown.io outcome
         self,
@@ -353,9 +500,11 @@ class InstagramInDownController(BaseSourceController):
         :param proxy: Proxy to use, None for the server's own address.
         :param original_url: Link the user sent.
         :param source_id: Cache key of the content.
-        :return: "done" when the request is finished (sent or handed to the
-            fallback), "not_found" when indown.io says the content is missing,
-            "next" to try the next proxy.
+        :return: "done" when the content was sent, "not_found" when indown.io
+            says the content is missing, "failed" when its files could not be
+            downloaded, "empty" when it answered without media (the next proxy
+            is still tried), "next" when it could not be asked through this
+            proxy.
         """
         referer_url = f"{self.BASE_URL}/reels/"
         await self._init_httpx(proxy)
@@ -397,12 +546,12 @@ class InstagramInDownController(BaseSourceController):
         media_items = self._extract_media_dtos(html, original_url, source_id)
         if not media_items:
             logging.warning("indown.io failed to parse media")
-            return "next"
+            return "empty"
         try:
             await self._send_media_result(media_items)
         except InstaIndownError:
             self.cleanup_files(media_items)
-            await self._fallback()
+            return "failed"
         return "done"
 
     async def _indown_routes(self) -> list[str | None]:
@@ -423,7 +572,7 @@ class InstagramInDownController(BaseSourceController):
         routes.extend(fresh[:INDOWN_MAX_ATTEMPTS])
         if not routes:
             logging.warning("All indown.io proxies are over the daily limit")
-            routes = [pool[0]] if pool else [None]
+            routes = [*pool[:INDOWN_SPENT_ATTEMPTS]] if pool else [None]
         return routes
 
     async def _exhausted_proxies(self) -> set[str]:
@@ -446,20 +595,6 @@ class InstagramInDownController(BaseSourceController):
             data={_proxy_key(proxy): time.time() + INDOWN_LIMIT_PAUSE_SECONDS},
         )
 
-    async def _fallback(self, not_found: bool = False) -> None:
-        """
-        Retry the download with the service account session when indown.io fails.
-
-        Stories go to instaloader, which picks the exact story item; the rest go
-        to yt-dlp with the session cookies.
-
-        :param not_found: indown.io reported the content as missing or private.
-        """
-        if self._resolution.metadata.get("type") == InstagramContentTypeEnum.STORIES:
-            await self._fallback_to_instaloader()
-            return
-        await self._fallback_to_ydl(not_found=not_found)
-
     async def _fallback_to_instaloader(self) -> None:
         logging.warning(
             "indown.io failed, falling back to instaloader: %s; user_id=%s",
@@ -478,36 +613,6 @@ class InstagramInDownController(BaseSourceController):
         )
         try:
             await controller.download_video()
-        finally:
-            await controller.close()
-
-    async def _fallback_to_ydl(self, not_found: bool = False) -> None:
-        logging.warning(
-            "indown.io failed, falling back to yt-dlp: %s; user_id=%s",
-            self._resolution.url,
-            self._telegram_id,
-        )
-        controller = InstagramYdlController(
-            resolution=self._resolution,
-            telegram_bot_controller=self._telegram_bot_controller,
-            telegram_id=self._telegram_id,
-            user_dao=self._user_dao,
-            history_dao=self._history_dao,
-            cache_dao=self._cache_dao,
-            message_id=self._message_id,
-            inline_query_id=self._inline_query_id,
-        )
-        try:
-            await controller.download_video()
-        except Exception as error:
-            logging.exception("yt-dlp fallback failed: %s", self._resolution.url)
-            self._message_id = controller.message_id
-            if not_found and not self._inline_query_id:
-                await self._send_not_found_message()
-            else:
-                await self._send_error_message()
-            if is_login_required_error(error):
-                await request_session_check()
         finally:
             await controller.close()
 
