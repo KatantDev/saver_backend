@@ -392,14 +392,30 @@ class PinterestDetector(Detector):
         "pinterest.com",
         "pin.it",
     )
+    # The same site under country domains: pinterest.ru, pinterest.co.uk, ...
+    _COUNTRY_HOST_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"(?:^|\.)pinterest\.(?:[a-z]{2,3}|co\.[a-z]{2}|com\.[a-z]{2})$",
+    )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "pin": re.compile(r"/pin/(?P<code>\d+)"),
         "short": re.compile(r"^/(?P<code>[a-zA-Z0-9]+)$"),
     }
+    # /pin/123/ and /pin/some-title--123/
+    _PIN_RE: ClassVar[re.Pattern[str]] = re.compile(r"^/pin/(?:[^/]*--)?(\d+)(?:/|$)")
 
     def match(self, url: str) -> Optional[Resolution]:
         """Check if the url is a valid Pinterest pin url."""
-        if not self._host_in(url, *self.HOSTS):
+        parsed = urlparse(url if "://" in url else "https://" + url)
+        host = (parsed.hostname or "").lower()
+        if not self._host_in(url, *self.HOSTS) and not self._COUNTRY_HOST_RE.search(
+            host,
+        ):
+            return None
+        pin = self._PIN_RE.match(parsed.path)
+        if pin:
+            # One shape for every country domain and for links with a title
+            url = f"https://www.pinterest.com/pin/{pin.group(1)}/"
+        elif not self._host_in(url, "pin.it"):
             return None
         return self._match_regex(url)
 
