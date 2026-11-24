@@ -5,7 +5,10 @@ import pytest
 from yt_dlp.utils import DownloadError
 
 from saver_backend.services.downloaders import ok_ydl_source
-from saver_backend.services.downloaders.ok_ydl_source import OkYdlController
+from saver_backend.services.downloaders.ok_ydl_source import (
+    PLAYER_ATTEMPTS,
+    OkYdlController,
+)
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
@@ -110,7 +113,7 @@ async def test_other_errors_and_the_last_attempt_are_not_hidden() -> None:
         pytest.raises(DownloadError),
     ):
         await OkYdlController.get_video_info(source, URL)
-    assert read.await_count == 3
+    assert read.await_count == PLAYER_ATTEMPTS
 
 
 def test_download_is_retried_twice() -> None:

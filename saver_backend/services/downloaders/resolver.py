@@ -2,7 +2,7 @@ import ipaddress
 import re
 from abc import ABC, abstractmethod
 from typing import Callable, ClassVar, Iterable, Optional, Type, TypeVar
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qs, urlparse, urlunparse
 
 from saver_backend.entities.enums import (
     InstagramContentTypeEnum,
@@ -147,6 +147,33 @@ class Detector(ABC):
         p = urlparse(url)
 
         return urlunparse((p.scheme or "https", p.netloc, p.path, "", "", ""))
+
+
+_ACCESS_KEY_RE = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
+
+
+def _with_access_key(
+    resolution: Optional[Resolution],
+    query: str,
+    name: str,
+) -> Optional[Resolution]:
+    """
+    Put the access key of an «access by link» video back into the link.
+
+    The query is dropped when a link is cleaned, and without the key such a
+    video looks closed («Access restricted» on VK, 403 on Rutube).
+
+    :param resolution: What the detector found, None when nothing.
+    :param query: Query of the link the user sent.
+    :param name: Name of the parameter that carries the key.
+    :return: The resolution, with the key in its link when there was one.
+    """
+    if resolution is None:
+        return None
+    key = (parse_qs(query).get(name) or [""])[0]
+    if _ACCESS_KEY_RE.match(key):
+        resolution.url = f"{resolution.url}?{name}={key}"
+    return resolution
 
 
 _REGISTRY: list[Detector] = []
@@ -352,7 +379,7 @@ class VKClipsDetector(Detector):
             if match:
                 url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
 
-        return self._match_regex(url)
+        return _with_access_key(self._match_regex(url), parsed.query, "list")
 
 
 @register_detector()
@@ -482,6 +509,8 @@ class VKVideoDetector(Detector):
         r"/playlist/[^/?#]+/(video-?\d+_\d+)",
     )
     _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"video-?\d+_\d+")
+    # A finished broadcast keeps its «live» link and is an ordinary video
+    _LIVE_RE: ClassVar[re.Pattern[str]] = re.compile(r"^/live(-?\d+_\d+)/?$")
 
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
@@ -495,7 +524,10 @@ class VKVideoDetector(Detector):
         match = self._CODE_RE.search(parsed.query)
         if match:
             url = f"{parsed.scheme}://{parsed.netloc}/{match.group(0)}"
-        return self._match_regex(url)
+        live = self._LIVE_RE.match(parsed.path)
+        if live:
+            url = f"{parsed.scheme}://{parsed.netloc}/video{live.group(1)}"
+        return _with_access_key(self._match_regex(url), parsed.query, "list")
 
 
 @register_detector()
@@ -523,9 +555,17 @@ class VKAPIDetector(Detector):
         "photo": re.compile(r"^/photo(?P<code>-?\d+_\d+)"),
     }
 
+    # A photo opened over a page: vk.com/feed?z=photo-1_2%2Falbum-1_0
+    _PHOTO_IN_QUERY_RE: ClassVar[re.Pattern[str]] = re.compile(r"photo(-?\d+_\d+)")
+
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
             return None
+        parsed = urlparse(url)
+        opened = (parse_qs(parsed.query).get("z") or [""])[0]
+        photo = self._PHOTO_IN_QUERY_RE.match(opened)
+        if photo:
+            url = f"{parsed.scheme}://{parsed.netloc}/photo{photo.group(1)}"
         return self._match_regex(url)
 
 
@@ -540,6 +580,8 @@ class RutubeDetector(Detector):
         "www.rutube.ru",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
+        # First: otherwise «private» itself is taken for the video id
+        "private": re.compile(r"^/video/private/(?P<code>[a-zA-Z0-9]+)/?"),
         "video": re.compile(r"^/video/(?P<code>[a-zA-Z0-9]+)/?"),
         "embed": re.compile(r"^/play/embed/(?P<code>[a-zA-Z0-9]+)/?"),
     }
@@ -549,10 +591,11 @@ class RutubeDetector(Detector):
         """Check if the url is a valid Rutube video url."""
         if not self._host_in(url, *self.HOSTS):
             return None
+        query = urlparse(url if "://" in url else "https://" + url).query
         shorts = self._SHORTS_RE.match(urlparse(self._clean_url(url)).path)
         if shorts:
             url = f"https://rutube.ru/video/{shorts.group(1)}/"
-        return self._match_regex(url)
+        return _with_access_key(self._match_regex(url), query, "p")
 
 
 @register_detector()

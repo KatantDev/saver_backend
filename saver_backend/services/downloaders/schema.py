@@ -424,6 +424,9 @@ class VideoDTO(BaseContentDTO):
         duration = info.get("duration")
 
         available_formats = []
+        # Qualities whose stream is over Telegram's limit: the plain file of
+        # the same quality has no size of its own and is as big
+        oversized_heights = set()
         for format_info in info.get("formats", []):
             vcodec = format_info.get("vcodec")
             acodec = format_info.get("acodec")
@@ -442,9 +445,21 @@ class VideoDTO(BaseContentDTO):
                     dto.filesize,
                     MAX_FILE_SIZE_BYTES,
                 )
+                if dto.height:
+                    oversized_heights.add(dto.height)
                 continue
 
             available_formats.append(dto)
+
+        available_formats = [
+            fmt
+            for fmt in available_formats
+            if not (
+                fmt.resolution.startswith("0x")
+                and not fmt.filesize
+                and fmt.height in oversized_heights
+            )
+        ]
 
         # VK lists a plain https file (no width) next to the stream of the same
         # quality. Both landed under one button, and after picking a quality

@@ -1257,9 +1257,11 @@ class TelegramBotController:
             return None
         try:
             await _fill_video_meta(str(path), kwargs)
-            return await self._bot.send_video(
-                video=FSInputFile(path=path, filename=video_input.filename),
-                **kwargs,
+            # The cover is still a link Telegram fetches; without it when that fails
+            return await _send_video_cover_optional(
+                self._bot,
+                FSInputFile(path=path, filename=video_input.filename),
+                kwargs,
             )
         finally:
             path.unlink(missing_ok=True)
