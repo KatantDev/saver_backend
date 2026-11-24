@@ -135,6 +135,18 @@ def test_ignores_pages_without_video_id(url: str) -> None:
             "https://www.instagram.com/reel/Cf1OIA7IVqq/",
             "Cf1OIA7IVqq",
         ),
+        (
+            "https://youtube.com/playlist?list=RD0QEsdm12qeM&playnext=1&si=abc",
+            SourceEnum.YOUTUBE_VIDEO_YDL,
+            "https://youtu.be/0QEsdm12qeM",
+            "0QEsdm12qeM",
+        ),
+        (
+            "https://music.youtube.com/watch?v=0QEsdm12qeM&si=abc",
+            SourceEnum.YOUTUBE_VIDEO_YDL,
+            "https://youtu.be/0QEsdm12qeM",
+            "0QEsdm12qeM",
+        ),
     ],
 )
 def test_resolves_shapes_that_were_answered_not_supported(
@@ -158,6 +170,8 @@ def test_resolves_shapes_that_were_answered_not_supported(
         "https://vk.ru/album-122802848_236432361",
         "https://fixupx.com/pigstube_",
         "https://www.facebook.com/share/p/18cZyfHoC2/",
+        "https://youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf",
+        "https://youtube.com/playlist?list=RDEMc9FbyB7dAJ5Hxk8JEFbyBQ&playnext=1",
     ],
 )
 def test_pages_without_one_video_stay_unsupported(url: str) -> None:

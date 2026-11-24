@@ -89,4 +89,6 @@ msgid "inline query preparing title"
 msgstr ""
 
 msgid "inline query preparing text"
+
+msgid "age restricted error"
 msgstr ""

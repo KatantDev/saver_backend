@@ -63,6 +63,26 @@ def _retry_backoff(n: int) -> float:
     return float(min(2**n, 10))
 
 
+# A proxy that stopped answering: the request did not reach the site at all.
+# 45 menu requests in three days ended this way (VK 22, YouTube 14, OK 6,
+# Facebook 2), in bursts when one proxy was down, although the next proxy
+# would have answered.
+CONNECTION_FAILURE_HINTS = (
+    "timed out",
+    "connection refused",
+    "connection reset",
+    "remote end closed connection",
+)
+# Other proxies tried for one request after such a failure
+MAX_CONNECTION_RETRIES = 2
+
+
+def is_connection_failure(error: BaseException) -> bool:
+    """Whether the request died on the way, before the site answered."""
+    text = str(error).lower()
+    return any(hint in text for hint in CONNECTION_FAILURE_HINTS)
+
+
 class YtDlpController(BaseSourceController, ABC):
     """Asynchronous controller for downloading videos through yt-dlp."""
 
@@ -92,6 +112,8 @@ class YtDlpController(BaseSourceController, ABC):
         # Bytes on disk per file of the current download (video and audio
         # streams are separate files), for the size check in the progress hook
         self._bytes_by_file: dict[str, int] = {}
+        # Proxies already changed because the previous one did not answer
+        self._connection_retries = 0
 
         self._base_options: dict[str, Any] = {
             "proxy": self._proxy,
@@ -317,9 +339,10 @@ class YtDlpController(BaseSourceController, ABC):
         except DownloadError as e:
             error_message = str(e)
             if "HTTP Error 403: Forbidden" in error_message:
+                # Not cookies: the file server refused this one request
                 logging.error(
-                    f"[{self.SOURCE.value}]"
-                    f"  download failed due to expired cookies (403)."
+                    f"[{self.SOURCE.value}] the file server answered 403 to"
+                    f" {self._resolution.url}"
                 )
             raise e
         except Exception as e:
@@ -451,6 +474,20 @@ class YtDlpController(BaseSourceController, ABC):
                 or "Unable to connect to proxy" in e.msg
                 or "SOCKS server failure" in e.msg
             ):
+                self._set_proxy()
+                return await self.get_video_info(url=url)
+            if (
+                is_connection_failure(e)
+                and self._proxies
+                and self._connection_retries < MAX_CONNECTION_RETRIES
+            ):
+                self._connection_retries += 1
+                logging.warning(
+                    "[%s] no answer through the proxy for %s, trying another: %s",
+                    self.SOURCE.value,
+                    url,
+                    e,
+                )
                 self._set_proxy()
                 return await self.get_video_info(url=url)
             if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):
