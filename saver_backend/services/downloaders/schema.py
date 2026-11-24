@@ -441,6 +441,21 @@ class VideoDTO(BaseContentDTO):
 
             available_formats.append(dto)
 
+        # VK lists a plain https file (no width) next to the stream of the same
+        # quality. Both landed under one button, and after picking a quality
+        # the bot asked to choose between two «Default» languages (dev and prod
+        # on 24.11). The stream stays: it is faster and its size is known.
+        stream_heights = {
+            fmt.height
+            for fmt in available_formats
+            if not fmt.resolution.startswith("0x")
+        }
+        available_formats = [
+            fmt
+            for fmt in available_formats
+            if not (fmt.resolution.startswith("0x") and fmt.height in stream_heights)
+        ]
+
         unique_formats = list(
             {(f.resolution, f.language): f for f in available_formats}.values(),
         )
