@@ -18,7 +18,8 @@ from saver_backend.task_manager import tasks
         ({"is_live": True}, True),
         ({"live_status": "is_live"}, True),
         ({"live_status": "is_upcoming"}, True),
-        ({"live_status": "post_live"}, True),
+        # the broadcast is over, its recording downloads like a video
+        ({"live_status": "post_live"}, False),
         ({"live_status": "was_live", "is_live": False}, False),
         ({"live_status": "not_live"}, False),
         ({}, False),

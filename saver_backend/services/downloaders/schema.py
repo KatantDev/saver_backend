@@ -25,8 +25,11 @@ if TYPE_CHECKING:
     from aiogram.types import Video as TgVideo
 
 
-# yt-dlp ``live_status`` values for a stream that has no finished recording yet
-LIVE_STATUSES = frozenset({"is_live", "is_upcoming", "post_live"})
+# yt-dlp ``live_status`` values for a stream that cannot be saved yet.
+# «post_live» is not one of them: the broadcast is over and YouTube already
+# gives its recording while it prepares the final file, sometimes for hours.
+# 31 of 34 «the broadcast is not over» answers on prod on 21-23.11 were such.
+LIVE_STATUSES = frozenset({"is_live", "is_upcoming"})
 
 
 def is_live_stream(info: dict[str, Any]) -> bool:
@@ -315,7 +318,9 @@ class VideoDTO(BaseContentDTO):
                 for fmt in formats:
                     qualities[fmt.format_id] = key
             if qualities:
-                quality = f"[{qualities.get(self.quality, '')}]".replace("p", "")
+                # Empty when the file came under another id than the menu had
+                label = qualities.get(self.quality, "")
+                quality = f"[{label}]".replace("p", "") if label else ""
             else:
                 quality = f"[{self.quality}]".replace("p", "")
         else:

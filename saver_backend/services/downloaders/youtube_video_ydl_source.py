@@ -2,13 +2,18 @@ import asyncio
 import hashlib
 import logging
 import time
+from pathlib import Path
 from typing import Any, ClassVar
 
 from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import FsmKeysEnum, SourceEnum
 from saver_backend.services.downloaders.schema import VideoDTO
-from saver_backend.services.downloaders.ydl_source import YtDlpController
+from saver_backend.services.downloaders.ydl_source import (
+    YtDlpController,
+    is_connection_failure,
+    is_cookie_file,
+)
 
 # H.264 + AAC in mp4, up to 1080p (vertical too)
 YOUTUBE_H264_FORMAT = (
@@ -32,12 +37,119 @@ YOUTUBE_PLAYER_CLIENTS: tuple[tuple[str, ...], ...] = (
 
 # What YouTube answers through an address it has flagged.
 BOT_CHECK_TEXT = "Sign in to confirm"
+# What it answers for an age-restricted video, through any address.
+AGE_CHECK_TEXT = "confirm your age"
 # How long a flagged proxy is left out for YouTube.
 BLOCKED_PROXY_PAUSE_SECONDS = 3 * 60 * 60
 # Proxies tried for one request before the server's own address.
 MAX_PROXY_SWITCHES = 2
 # A levelled «-drc» audio track loses to the original of the same bitrate.
 DRC_PENALTY_KBPS = 1
+
+
+# The same picture under three ids: the https stream of the default client, the
+# HLS stream and the HLS file with sound that web_embedded returns instead.
+# By itag, not by height: itag 299 of a vertical video is 1920 pixels high.
+FORMAT_TWINS: dict[str, tuple[str, str]] = {
+    "160": ("269", "91"),
+    "133": ("229", "92"),
+    "134": ("230", "93"),
+    "135": ("231", "94"),
+    "136": ("232", "95"),
+    "137": ("270", "96"),
+    "298": ("311", "300"),
+    "299": ("312", "301"),
+}
+STREAM_OF_COMBINED = {
+    combined: stream for stream, (_hls, combined) in FORMAT_TWINS.items()
+}
+PICTURE_HEIGHTS = {
+    "160": 144,
+    "133": 240,
+    "134": 360,
+    "135": 480,
+    "136": 720,
+    "137": 1080,
+    "298": 720,
+    "299": 1080,
+}
+
+# What YouTube answers when the video exists but not for the country of the
+# address the request came from. Some proxies are seen as Russian addresses,
+# the server itself is in the Netherlands: 21 such refusals in three days were
+# for videos that open from the server.
+REGION_REFUSAL_HINTS = (
+    "available in your country",
+    "claimed content",
+    "video is not available",
+    "video unavailable",
+)
+# Answers that mean the video is closed or gone for everyone
+GONE_HINTS = (
+    "private video",
+    "video unavailable",
+    "has been removed",
+    "has been terminated",
+    "video is not available",
+)
+
+
+def is_region_refusal(error: BaseException) -> bool:
+    """Whether the refusal may depend on the country of the address."""
+    text = str(error).lower()
+    return any(hint in text for hint in REGION_REFUSAL_HINTS)
+
+
+def is_gone(error: BaseException) -> bool:
+    """Whether YouTube says the video is private, removed or blocked."""
+    text = str(error).lower()
+    # a country block and a passing «try again later» are not about the video
+    if "available in your country" in text or "try again later" in text:
+        return False
+    return any(hint in text for hint in GONE_HINTS)
+
+
+def download_format_chain(selected: str) -> str:
+    """
+    Formats to try for a quality picked in the menu, the picked one first.
+
+    The menu and the download are two separate requests to YouTube and may get
+    different format lists: a repeated request after a 403 went through another
+    player client, which has neither the picked id nor the «-N» suffix yt-dlp
+    adds to audio tracks of dubbed videos, and failed with «Requested format is
+    not available» (66 failures in three days). The same quality is therefore
+    also asked for under its other ids.
+
+    :param selected: Format id from the menu («137+140-0», «96», «95-0»).
+    :return: A yt-dlp format string.
+    """
+    video, _plus, audio = selected.partition("+")
+    itag = video.split("-")[0]
+    chain = [selected]
+    if audio and itag in FORMAT_TWINS:
+        hls, combined = FORMAT_TWINS[itag]
+        chain += [
+            f"{video}+ba[ext=m4a]",
+            f"{hls}+ba[ext=m4a]",
+            f"b[format_id^={combined}]",
+        ]
+    elif not audio and itag in STREAM_OF_COMBINED:
+        stream = STREAM_OF_COMBINED[itag]
+        chain += [
+            f"b[format_id^={itag}]",
+            f"{stream}+ba[ext=m4a]",
+            f"{FORMAT_TWINS[stream][0]}+ba[ext=m4a]",
+        ]
+    else:
+        return selected
+    height = PICTURE_HEIGHTS[itag if audio else STREAM_OF_COMBINED[itag]]
+    # Last resort: the closest H.264 picture not above the picked quality.
+    # Limited on both sides, the smaller side of a vertical video is its width.
+    chain.append(
+        f"bv*[vcodec^=avc1][height<={height}]+ba[ext=m4a]"
+        f"/bv*[vcodec^=avc1][width<={height}]+ba[ext=m4a]",
+    )
+    return "/".join(dict.fromkeys(chain))
 
 
 def youtube_extractor_args(clients: tuple[str, ...]) -> dict[str, Any]:
@@ -59,8 +171,20 @@ def proxy_key(proxy: str | None) -> str:
 
 
 def is_bot_check(error: BaseException) -> bool:
-    """Whether YouTube refused the request because of the address it came from."""
-    return BOT_CHECK_TEXT in str(error)
+    """
+    Whether YouTube refused the request because of the address it came from.
+
+    «Sign in to confirm your age» starts the same way but is about the video:
+    counted as a bot check, every age-restricted video took three proxies out
+    of use for three hours.
+    """
+    text = str(error)
+    return BOT_CHECK_TEXT in text and AGE_CHECK_TEXT not in text
+
+
+def is_age_restricted(error: BaseException) -> bool:
+    """Whether YouTube gives the video only to a signed-in adult account."""
+    return AGE_CHECK_TEXT in str(error)
 
 
 class YouTubeClientRotationMixin:
@@ -89,7 +213,30 @@ class YouTubeClientRotationMixin:
 
     def _switch_proxy_for_retry(self) -> None:
         super()._switch_proxy_for_retry()  # type: ignore[misc]
+        if getattr(self, "_selected_format_id", None):
+            # The quality was picked from the menu of this client; another
+            # client has other format ids, and the usual reason of a failed
+            # download is a passing 403, not the client.
+            return
         self._next_player_client()
+
+    def _retry_from_server(self, error: BaseException) -> bool:
+        """
+        Go to the server's own address when the proxy's country may be the reason.
+
+        :param error: The refusal YouTube gave through the proxy.
+        :return: True when the request should be repeated.
+        """
+        if not self._proxy or not self.DIRECT_FALLBACK:
+            return False
+        if not is_region_refusal(error):
+            return False
+        logging.warning(
+            "YouTube refused the request through a proxy, trying the server: %s",
+            error,
+        )
+        self._switch_to_direct()  # type: ignore[attr-defined]
+        return True
 
     async def _blocked_proxies(self) -> set[str]:
         data = await self._telegram_bot_controller.get_fsm_data(
@@ -230,6 +377,11 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
         )
         self._yt_dlp.params.update(youtube_params)
 
+    def _has_cookie_files(self) -> bool:
+        base_dir = Path(__file__).resolve().parent.parent.parent.parent
+        cookie_dir = base_dir / "cookies" / self.SOURCE.value
+        return any(is_cookie_file(path) for path in cookie_dir.glob("cookies*.txt"))
+
     def _remove_combined_formats(
         self, formats: list[dict[str, Any]]
     ) -> list[dict[str, Any]] | None:
@@ -335,6 +487,7 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
                 or "SOCKS server failure" in e.msg
                 or "403: Forbidden" in str(e)
                 or is_bot_check(e)
+                or is_connection_failure(e)
             ):
                 logging.warning(
                     "[youtube] the route failed for %s: %s",
@@ -344,9 +497,22 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
                 await self._note_bot_check(e)
                 if self._next_route():
                     return await self.get_video_info(url=url)
-            if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e):
+            if self._retry_from_server(e):
+                return await self.get_video_info(url=url)
+            if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e) or is_gone(e):
+                logging.info("YouTube video is closed or gone: %s (%s)", url, e)
                 await self.delete_processing_message()
                 await self._telegram_bot_controller.send_content_not_found_error(
+                    telegram_id=self._telegram_id,
+                )
+                return None
+            if is_age_restricted(e) and (
+                self._cookie_fallback or not self._has_cookie_files()
+            ):
+                # Only an account opens it; say so instead of the general error
+                logging.error("YouTube video is age-restricted: %s", url)
+                await self.delete_processing_message()
+                await self._telegram_bot_controller.send_age_restricted_error(
                     telegram_id=self._telegram_id,
                 )
                 return None
@@ -382,10 +548,10 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
         Otherwise, it proceeds with the full download process.
         """
 
-        if self._selected_format_id and "+" in self._selected_format_id:
+        if self._selected_format_id:
             self._yt_dlp.params.update(
                 {
-                    "format": self._selected_format_id,
+                    "format": download_format_chain(self._selected_format_id),
                     "merge_output_format": "mp4",
                 }
             )
