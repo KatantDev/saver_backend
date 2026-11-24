@@ -24,6 +24,11 @@ LAST_CHECK_REQUEST_FILE = (
 LOGIN_FAILED_FILE = (
     COOKIES_DIR / SourceEnum.INSTAGRAM_INSTALOADER.value / ".login_failed"
 )
+# Set when a browser sends a working session; its age shows how long sessions last
+SESSION_RECEIVED_FILE = (
+    COOKIES_DIR / SourceEnum.INSTAGRAM_INSTALOADER.value / ".session_received"
+)
+INSTAGRAM_COOKIE_DOMAIN = ".instagram.com"
 # Logging in from a server IP too often gets the account flagged
 MIN_LOGIN_INTERVAL = 60 * 60
 # After a failed login (wrong password, checkpoint) wait for a person instead of
@@ -35,6 +40,10 @@ LOGIN_REQUIRED_HINTS = ("login required", "log in", "empty media response")
 
 class InstagramSessionError(Exception):
     """The session cannot be restored without a person (checkpoint, bad password)."""
+
+
+class InstagramSessionRejectedError(Exception):
+    """Cookies sent from a browser are not a working session of the account."""
 
 
 def session_path(login: str) -> Path:
@@ -69,6 +78,19 @@ def _credentials() -> tuple[str, str] | None:
     if not login or not password or login == "username":
         return None
     return login, password
+
+
+def _account_login() -> str | None:
+    login = settings.instagram_account.partition(":")[0]
+    if not login or login == "username":
+        return None
+    return login
+
+
+def _session_is_pushed() -> bool:
+    # Instagram flags password logins from server IPs, so when a browser sends
+    # the session the bot never logs in by itself
+    return bool(settings.instagram_session_token)
 
 
 def _new_loader() -> instaloader.Instaloader:
@@ -124,6 +146,12 @@ def _try_login(loader: instaloader.Instaloader, login: str, password: str) -> No
 def _export_ydl_cookies(loader: instaloader.Instaloader) -> None:
     jar = MozillaCookieJar()
     for cookie in loader.context._session.cookies:  # noqa: SLF001
+        # Cookies loaded from a session file have no domain, and yt-dlp only
+        # sends cookies whose domain matches the site
+        if not cookie.domain:
+            cookie.domain = INSTAGRAM_COOKIE_DOMAIN
+            cookie.domain_specified = True
+            cookie.domain_initial_dot = True
         jar.set_cookie(cookie)
     YDL_COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
     jar.save(str(YDL_COOKIES_FILE), ignore_discard=True, ignore_expires=True)
@@ -138,11 +166,10 @@ def refresh_session() -> bool:
     :raises InstagramSessionError: when a person has to step in.
     :return: True if a valid session is in place.
     """
-    credentials = _credentials()
-    if credentials is None:
+    login = _account_login()
+    if login is None:
         logging.info("Instagram account is not configured, skipping session refresh")
         return False
-    login, password = credentials
     path = session_path(login)
     loader = _new_loader()
     try:
@@ -151,27 +178,106 @@ def refresh_session() -> bool:
             if loader.test_login() == login:
                 _export_ydl_cookies(loader)
                 return True
-            logging.warning("Instagram session for %s has expired", login)
-
-        if not _login_allowed():
             logging.warning(
-                "Instagram login for %s skipped: tried recently or the last "
-                "login failed (pause %s h, delete %s to retry now)",
+                "Instagram session for %s has expired (%s)",
                 login,
-                LOGIN_PAUSE_AFTER_FAILURE // 3600,
-                LOGIN_FAILED_FILE,
+                _session_age_note(),
             )
-            return False
 
-        logging.info("Logging in to Instagram as %s", login)
-        _login(loader, login, password)
+        if _session_is_pushed():
+            return _wait_for_pushed_session(login)
+        return _login_with_password(loader, login)
+    finally:
+        loader.close()
+
+
+def _session_age_note() -> str:
+    age = _age(SESSION_RECEIVED_FILE)
+    if age is None:
+        return "no session was received from a browser"
+    return f"received from a browser {age / 3600:.1f} h ago"
+
+
+def _wait_for_pushed_session(login: str) -> bool:
+    # A person has to open Instagram in the browser with the extension; one alert
+    # a day is enough
+    failed_age = _age(LOGIN_FAILED_FILE)
+    if failed_age is not None and failed_age < LOGIN_PAUSE_AFTER_FAILURE:
+        logging.warning(
+            "No working Instagram session for %s, waiting for a browser to send one",
+            login,
+        )
+        return False
+    LOGIN_FAILED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LOGIN_FAILED_FILE.touch()
+    raise InstagramSessionError(
+        f"no working session for {login}, open instagram.com in the browser "
+        "with the Saver extension",
+    )
+
+
+def _login_with_password(loader: instaloader.Instaloader, login: str) -> bool:
+    credentials = _credentials()
+    if credentials is None:
+        logging.info("Instagram password is not set, skipping login")
+        return False
+    password = credentials[1]
+    path = session_path(login)
+    if not _login_allowed():
+        logging.warning(
+            "Instagram login for %s skipped: tried recently or the last "
+            "login failed (pause %s h, delete %s to retry now)",
+            login,
+            LOGIN_PAUSE_AFTER_FAILURE // 3600,
+            LOGIN_FAILED_FILE,
+        )
+        return False
+
+    logging.info("Logging in to Instagram as %s", login)
+    _login(loader, login, password)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    loader.save_session_to_file(str(path))
+    _export_ydl_cookies(loader)
+    logging.info("Instagram session for %s renewed", login)
+    return True
+
+
+def save_pushed_session(cookies: dict[str, str]) -> str:
+    """
+    Save a session sent from a browser where a person is logged in.
+
+    Instagram trusts a session created by a person far more than a password
+    login from a server, so this is how the service account stays logged in.
+
+    :param cookies: instagram.com cookies by name.
+    :raises InstagramSessionRejectedError: when the cookies are not a working
+        session of the service account.
+    :return: Login of the saved session.
+    """
+    missing = [name for name in ("sessionid", "csrftoken") if not cookies.get(name)]
+    if missing:
+        raise InstagramSessionRejectedError(f"cookies {', '.join(missing)} missing")
+    expected = _account_login()
+    loader = _new_loader()
+    try:
+        loader.load_session(expected or "", cookies)
+        login = loader.test_login()
+        if login is None:
+            raise InstagramSessionRejectedError("Instagram did not accept the session")
+        if expected and login != expected:
+            raise InstagramSessionRejectedError(
+                f"the session belongs to {login}, expected {expected}",
+            )
+        path = session_path(login)
         path.parent.mkdir(parents=True, exist_ok=True)
         loader.save_session_to_file(str(path))
         _export_ydl_cookies(loader)
-        logging.info("Instagram session for %s renewed", login)
-        return True
     finally:
         loader.close()
+    LOGIN_FAILED_FILE.unlink(missing_ok=True)
+    SESSION_RECEIVED_FILE.touch()
+    logging.info("Instagram session for %s received from a browser", login)
+    return login
 
 
 def is_login_required_error(error: BaseException) -> bool:
