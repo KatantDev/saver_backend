@@ -160,3 +160,11 @@ msgstr "➕ Subscribe to @{channel}"
 msgid "check subscriptions"
 msgstr "✅ Check subscriptions"
 
+msgid "inline start bot button"
+msgstr "Start the bot"
+
+msgid "inline query preparing title"
+msgstr "The video is not ready yet"
+
+msgid "inline query preparing text"
+msgstr "The video is not ready yet. Repeat the request in a few seconds."

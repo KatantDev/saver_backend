@@ -573,6 +573,7 @@ class BaseSourceController(ABC):
             await self._telegram_bot_controller.answer_inline_query_error(
                 inline_query_id=self._inline_query_id,
                 error_text=_("inline mode blocked error"),
+                start_button=True,
             )
 
     def cleanup_files(self, dtos: Sequence[VideoDTO | PhotoDTO | AudioDTO]) -> None:

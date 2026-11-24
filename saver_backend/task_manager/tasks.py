@@ -1,3 +1,4 @@
+import asyncio
 import html
 import json
 import logging
@@ -129,6 +130,11 @@ async def save_video(
         await _record_failure(db, mark, resolution, telegram_id, "download")
 
 
+# Telegram refuses an inline answer that comes later than about ten seconds
+# after the query; before that the user is told to repeat the query
+INLINE_ANSWER_DEADLINE = 7
+
+
 @broker.task(
     result_timeout=60,
     time_limit=120,
@@ -171,11 +177,27 @@ async def process_inline_query(
     )
     await controller.set_user_language()
     mark = failure_log.start()
+    download = asyncio.create_task(controller.download_video())
     try:
-        await controller.download_video()
+        finished, _pending = await asyncio.wait(
+            {download},
+            timeout=INLINE_ANSWER_DEADLINE,
+        )
+        if not finished:
+            logging.warning(
+                "[inline] %s is not ready in %s s, the user is asked to repeat",
+                resolution.url,
+                INLINE_ANSWER_DEADLINE,
+            )
+            await state.telegram_bot_controller.answer_inline_query_preparing(
+                inline_query_id,
+            )
+        await download
     except Exception as error:
         logging.exception(error)
     finally:
+        if not download.done():
+            download.cancel()
         await controller.close()
         await _record_failure(db, mark, resolution, telegram_id, "inline")
 

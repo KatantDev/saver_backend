@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 import uuid
 from contextvars import ContextVar
 from pathlib import Path
@@ -11,7 +12,6 @@ from typing import Any, Awaitable, Sequence, cast
 import aiohttp
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 from aiogram.exceptions import (
@@ -29,6 +29,7 @@ from aiogram.types import (
     FSInputFile,
     InlineQueryResultArticle,
     InlineQueryResultCachedVideo,
+    InlineQueryResultsButton,
     InlineQueryResultVideo,
     InputFile,
     InputTextMessageContent,
@@ -55,6 +56,7 @@ from saver_backend.services.failure_log import mark_failed
 from saver_backend.services.i18n import gettext as _
 from saver_backend.services.telegram.delivery import DeliveryMiddleware
 from saver_backend.services.telegram.retry_after import RetryAfterMiddleware
+from saver_backend.services.telegram.upload_session import UploadSession
 from saver_backend.services.telegram.video_meta import (
     BrokenCachedVideoError,
     is_broken_video,
@@ -199,6 +201,27 @@ async def _download_to_temp_file(url: str, timeout: float = 600) -> Path:
     return path
 
 
+# How long a closed inline query is remembered; its download ends much sooner
+INLINE_CLOSED_MEMORY_SECONDS = 15 * 60
+
+
+def _cover_is_to_blame(cover: Any, error: TelegramBadRequest) -> bool:
+    """
+    Whether sending the same video again without the cover is worth a try.
+
+    :param cover: Cover passed to send_video.
+    :param error: Telegram's refusal.
+    :return: True when the cover may be the reason of the refusal.
+    """
+    if cover is None:
+        return False
+    if isinstance(cover, str):
+        # a URL Telegram downloads itself; any refusal may come from it
+        return True
+    # a cover file Telegram could not read as a picture (Pinterest, 21.11)
+    return "IMAGE_PROCESS_FAILED" in (error.message or "")
+
+
 async def _send_video_cover_optional(
     bot: Bot,
     video_input: FSInputFile | URLInputFile,
@@ -219,7 +242,7 @@ async def _send_video_cover_optional(
     try:
         return await bot.send_video(video=video_input, **kwargs)
     except TelegramBadRequest as e:
-        if not isinstance(kwargs.get("cover"), str):
+        if not _cover_is_to_blame(kwargs.get("cover"), e):
             raise
         logging.info("Telegram refused the video with its cover (%s), no cover", e)
     return await bot.send_video(video=video_input, **{**kwargs, "cover": None})
@@ -243,7 +266,9 @@ class TelegramBotController:
         **kwargs: Any,
     ) -> None:
         self._i18n = i18n
-        self._session = AiohttpSession(
+        # inline queries that already got the "still preparing" answer
+        self._closed_inline_queries: dict[str, float] = {}
+        self._session = UploadSession(
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
             timeout=180,
         )
@@ -601,12 +626,59 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param percent: Percent of the video.
         """
-        coro = self._bot.edit_message_text(
-            chat_id=telegram_id,
-            message_id=message_id,
-            text=_("downloading progress", locale=self.language).format(
-                percent=percent,
-            ),
+        try:
+            await self._bot.edit_message_text(
+                chat_id=telegram_id,
+                message_id=message_id,
+                text=_("downloading progress", locale=self.language).format(
+                    percent=percent,
+                ),
+            )
+        except Exception as e:
+            # The progress line is decoration: the message may be gone or
+            # replaced already. Not logged as an error, otherwise this text
+            # replaces the real reason of a failed request in the journal.
+            logging.debug("Progress message was not updated: %s", e)
+
+    def _inline_is_closed(self, inline_query_id: str) -> bool:
+        """
+        Whether the inline query already got the "still preparing" answer.
+
+        :param inline_query_id: ID of the inline query.
+        :return: True when another answer would only be refused by Telegram.
+        """
+        return inline_query_id in self._closed_inline_queries
+
+    async def answer_inline_query_preparing(self, inline_query_id: str) -> None:
+        """
+        Tell the user the video is not ready yet and close the inline query.
+
+        Telegram takes an answer only for a few seconds. A download that needs
+        longer used to end with «query is too old» and an empty list on the
+        user's side. The download goes on and fills the cache, so the same
+        query repeated a moment later is answered at once.
+
+        :param inline_query_id: ID of the inline query.
+        """
+        now = time.monotonic()
+        self._closed_inline_queries = {
+            query_id: closed_at
+            for query_id, closed_at in self._closed_inline_queries.items()
+            if now - closed_at < INLINE_CLOSED_MEMORY_SECONDS
+        }
+        self._closed_inline_queries[inline_query_id] = now
+        mark_failed("inline_slow")
+        text = _("inline query preparing text")
+        result = InlineQueryResultArticle(
+            id=str(uuid.uuid4()),
+            title=_("inline query preparing title"),
+            description=text,
+            input_message_content=InputTextMessageContent(message_text=text),
+        )
+        coro = self._bot.answer_inline_query(
+            inline_query_id=inline_query_id,
+            results=[result],
+            cache_time=0,
         )
         await self._send(coro)
 
@@ -623,6 +695,8 @@ class TelegramBotController:
         :param video_dto: DTO of the video.
         :param file_id: ID of the file.
         """
+        if self._inline_is_closed(inline_query_id):
+            return
         result = InlineQueryResultCachedVideo(
             id=str(uuid.uuid4()),
             video_file_id=file_id,
@@ -651,6 +725,8 @@ class TelegramBotController:
         :param inline_query_id: ID of the inline query.
         :param video_dto: DTO of the video.
         """
+        if self._inline_is_closed(inline_query_id):
+            return
         if not video_dto.direct_download_url or not video_dto.thumbnail_url:
             await self.answer_inline_query_error(inline_query_id)
             return
@@ -675,14 +751,19 @@ class TelegramBotController:
         self,
         inline_query_id: str,
         error_text: str | None = None,
+        start_button: bool = False,
     ) -> None:
         """
         Answer an inline query with an error message.
 
         :param inline_query_id: ID of the inline query.
         :param error_text: Error message.
+        :param start_button: Show the button that opens the chat with the bot,
+            for a user who has not started the bot or has blocked it.
         """
-        mark_failed("inline_error")
+        if self._inline_is_closed(inline_query_id):
+            return
+        mark_failed("bot_not_started" if start_button else "inline_error")
         text = error_text or _("error downloading inline query")
 
         result = InlineQueryResultArticle(
@@ -694,10 +775,19 @@ class TelegramBotController:
                 parse_mode=self._bot.default.parse_mode,
             ),
         )
+        button = (
+            InlineQueryResultsButton(
+                text=_("inline start bot button"),
+                start_parameter="inline",
+            )
+            if start_button
+            else None
+        )
         coro = self._bot.answer_inline_query(
             inline_query_id=inline_query_id,
             results=[result],
             cache_time=0,
+            button=button,
         )
         await self._send(coro)
 
@@ -1208,7 +1298,16 @@ class TelegramBotController:
                 return sent
         try:
             return await self._bot.send_video(video=video_input, **kwargs)
-        except TelegramBadRequest:
+        except TelegramBadRequest as e:
+            if not isinstance(video_input, str) and _cover_is_to_blame(
+                kwargs.get("cover"),
+                e,
+            ):
+                logging.info("Telegram refused the cover (%s), sending without it", e)
+                return await self._bot.send_video(
+                    video=video_input,
+                    **{**kwargs, "cover": None},
+                )
             if not isinstance(video_input, str) or not video.direct_download_url:
                 raise
         # Telegram fetches files by URL only up to 20 MB,
