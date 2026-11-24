@@ -33,6 +33,13 @@ tasks:
           echo "⚙️ Containers not running, starting with docker compose up..."
           {{.DOCKER_COMPOSE}} up --build -d
         fi
+      - |
+        # Every build leaves the previous image and its layers on disk: on dev
+        # they filled 79 GB and the deploy failed with «no space left on
+        # device» (23.11). Remove images no container uses and build cache
+        # older than two days; a failure here must not fail the deploy.
+        docker image prune -f || true
+        docker builder prune -f --filter until=48h || true
 
   migrate:
     desc: "Run migrations manually"

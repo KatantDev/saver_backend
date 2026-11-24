@@ -14,6 +14,12 @@ class CleanupService:
     """
 
     DEFAULT_AGE_LIMIT: ClassVar[int] = 3600 * 72  # 72 hour in seconds
+    # Unfinished downloads (yt-dlp's .part, fragment and .ytdl files). A running
+    # download writes to them all the time; one untouched for two hours was
+    # abandoned, usually by a worker restart on deploy. With the 72-hour limit
+    # they took 22 GB on prod on 24.11.
+    PARTIAL_AGE_LIMIT: ClassVar[int] = 3600 * 2
+    PARTIAL_SUFFIXES: ClassVar[tuple[str, ...]] = (".part", ".ytdl")
 
     def __init__(
         self,
@@ -76,10 +82,21 @@ class CleanupService:
 
         try:
             file_age = now - file_path.stat().st_mtime
-            return file_age > self._age_limit
+            return file_age > self._age_limit_for(file_path)
         except OSError as e:
             logging.error("Failed to get file stats for %s: %s", file_path, e)
             return False
+
+    def _age_limit_for(self, file_path: Path) -> int:
+        """
+        Age limit of a file: shorter for an unfinished download.
+
+        :param file_path: Path to file.
+        :return: Age limit in seconds.
+        """
+        if file_path.name.endswith(self.PARTIAL_SUFFIXES):
+            return min(self._age_limit, self.PARTIAL_AGE_LIMIT)
+        return self._age_limit
 
     def _delete_file(self, file_path: Path) -> None:
         """
