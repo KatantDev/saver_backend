@@ -5,12 +5,15 @@ from typing import Any, ClassVar
 from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import ProxyType, SourceEnum
+from saver_backend.services.downloaders.vk_common import fill_plain_file_sizes
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 
 # ok.ru answers about every fifth request with a page that has no player in it;
 # the next request for the same video works (14 of 72 on prod on 24.11).
+# About one fresh session in ten lands on a login form instead of the video
+# and keeps getting it, so a few more sessions are tried (7 of 60 on prod).
 PLAYER_ERROR = "Unable to extract player"
-PLAYER_ATTEMPTS = 3
+PLAYER_ATTEMPTS = 5
 PLAYER_RETRY_PAUSE = 1.0
 
 # Plain https files of ok.ru: yt-dlp gives them a name and no size of the frame.
@@ -60,6 +63,9 @@ class OkYdlController(YtDlpController):
             if height and not format_info.get("height"):
                 format_info["height"] = height
         return info_dict
+
+    async def _complete_info(self, info_dict: dict[str, Any]) -> dict[str, Any]:
+        return await fill_plain_file_sizes(info_dict, self._proxy)
 
     async def get_video_info(self, url: str) -> dict[str, Any] | None:
         """

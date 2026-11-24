@@ -1,9 +1,12 @@
 import asyncio
 import logging
+import re
 import time
+import uuid
 from pathlib import Path
 from typing import Any, ClassVar
 
+import yt_dlp
 from httpx import AsyncClient, HTTPError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -12,6 +15,7 @@ from saver_backend.entities.enums import ProxyType, SourceEnum
 from saver_backend.services.consts import BASE_DOWNLOAD_PATH
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.schema import (
+    PhotoDTO,
     PhotoListDTO,
     TikWMData,
     TikWMResponse,
@@ -39,6 +43,17 @@ TIKWM_FAILS_WINDOW = 120
 TIKWM_FAILS_TO_SKIP = 2
 TIKWM_DOWN_KEY = "tikwm:down"
 TIKWM_SKIP_SECONDS = 180
+# An inline answer is accepted for about ten seconds, the whole wait cannot go
+# to tikwm.com there
+TIKWM_INLINE_TIMEOUT = 4
+
+# A photo post: yt-dlp answers «Unsupported URL» for it, so without tikwm.com
+# the user was told the post does not exist (26 such answers and 10 empty
+# inline answers on prod on 21-23.11). TikTok's own page has the pictures.
+PHOTO_POST_RE = re.compile(r"/photo/(\d+)")
+SHORT_LINK_HOSTS = ("vt.tiktok.com", "vm.tiktok.com")
+SHORT_LINK_PATH_RE = re.compile(r"tiktok\.com/t/")
+TIKTOK_PAGE_TIMEOUT = 15
 
 
 class TikTokAPIController(BaseSourceController):
@@ -133,7 +148,9 @@ class TikTokAPIController(BaseSourceController):
                 response = await self._client.post(
                     self._api_url,
                     data={"url": url},
-                    timeout=TIKWM_TIMEOUT,
+                    timeout=(
+                        TIKWM_INLINE_TIMEOUT if self._inline_query_id else TIKWM_TIMEOUT
+                    ),
                 )
                 response.raise_for_status()
                 api_response = TikWMResponse.model_validate(response.json())
@@ -161,8 +178,164 @@ class TikTokAPIController(BaseSourceController):
                 return None
         return None
 
+    async def _photo_post_url(self) -> str | None:
+        """
+        Full link of the post when it is a photo post, None for a video.
+
+        A short link does not say what it leads to, so it is followed first.
+
+        :return: Link with «/photo/<id>» in it or None.
+        """
+        url = self._resolution.url
+        if PHOTO_POST_RE.search(url):
+            return url
+        host_is_short = any(host in url for host in SHORT_LINK_HOSTS)
+        if not host_is_short and not SHORT_LINK_PATH_RE.search(url):
+            return None
+        try:
+            response = await self._client.get(
+                url,
+                follow_redirects=True,
+                timeout=TIKTOK_PAGE_TIMEOUT,
+            )
+        except HTTPError as e:
+            logging.warning("Could not follow %s: %s", url, type(e).__name__)
+            return None
+        target = str(response.url)
+        return target if PHOTO_POST_RE.search(target) else None
+
+    def _read_photo_post(self, url: str) -> TikWMData | None:
+        """
+        Pictures and music of a photo post from TikTok's own page.
+
+        :param url: Full link of the photo post.
+        :return: The post in the shape tikwm.com gives, None when it has no
+            pictures (deleted, private or a changed page).
+        """
+        found = PHOTO_POST_RE.search(url)
+        if not found:
+            return None
+        post_id = found.group(1)
+        params = {
+            "quiet": True,
+            "no_warnings": True,
+            "proxy": self._proxy or "",
+            "socket_timeout": TIKTOK_PAGE_TIMEOUT,
+        }
+        with yt_dlp.YoutubeDL(params) as ydl:
+            extractor = ydl.get_info_extractor("TikTok")
+            page_url = url.split("?", maxsplit=1)[0].replace("/photo/", "/video/")
+            # The page reader of yt-dlp's TikTok extractor; the extractor
+            # itself stops at «Unsupported URL» for photo posts
+            post, _status = extractor._extract_web_data_and_status(  # noqa: SLF001
+                page_url,
+                post_id,
+                fatal=False,
+            )
+        post = post or {}
+        images = []
+        for image in (post.get("imagePost") or {}).get("images") or []:
+            links = (image.get("imageURL") or {}).get("urlList") or []
+            if links:
+                images.append(str(links[0]))
+        if not images:
+            return None
+        return TikWMData(
+            id=post_id,
+            title=post.get("desc"),
+            images=images,
+            music=(post.get("music") or {}).get("playUrl") or None,
+        )
+
+    async def _download_photos(self, photos: list[PhotoDTO]) -> None:
+        """
+        Save the pictures to the disk: Telegram does not fetch TikTok's links.
+
+        :param photos: Photos with direct links, updated in place.
+        """
+        for index, photo in enumerate(photos):
+            if not photo.media_url:
+                continue
+            path = self._download_directory / (
+                f"{photo.source_id}_{index}_{uuid.uuid4().hex[:6]}.jpg"
+            )
+            try:
+                response = await self._client.get(
+                    photo.media_url,
+                    headers={"Referer": "https://www.tiktok.com/"},
+                    follow_redirects=True,
+                    timeout=TIKTOK_PAGE_TIMEOUT,
+                )
+                response.raise_for_status()
+            except HTTPError as e:
+                logging.warning(
+                    "TikTok picture %s was not downloaded: %s",
+                    index,
+                    type(e).__name__,
+                )
+                continue
+            path.write_bytes(response.content)
+            photo.path = path
+            photo.media_url = None
+
+    async def _send_photo_post_without_tikwm(self) -> bool:
+        """
+        Send a photo post read from TikTok itself.
+
+        :return: True when the request is finished here (sent or answered),
+            False when the link is not a photo post or could not be read.
+        """
+        url = await self._photo_post_url()
+        if not url:
+            return False
+        try:
+            data = await asyncio.to_thread(self._read_photo_post, url)
+        except Exception as e:
+            logging.warning(
+                "TikTok photo post %s was not read: %s: %s",
+                url,
+                type(e).__name__,
+                e,
+            )
+            return False
+        if not data:
+            return False
+        logging.info(
+            "TikTok photo post read without tikwm: %s pictures; user_id=%s",
+            len(data.images or []),
+            self._telegram_id,
+        )
+        if self._inline_query_id:
+            await self._handle_slideshow(data)
+            return True
+        slideshow = PhotoListDTO.from_tikwm(
+            data=data,
+            resolution_url=self._resolution.url,
+        )
+        await self._download_photos(slideshow.photos)
+        photos = [photo for photo in slideshow.photos if photo.path]
+        if not photos:
+            return False
+        try:
+            await self._telegram_bot_controller.send_finish_downloading_group(
+                files=photos,
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+            )
+            if slideshow.audio:
+                await self._telegram_bot_controller.send_finish_downloading_audio(
+                    audio=slideshow.audio,
+                    telegram_id=self._telegram_id,
+                )
+            await self._create_history_entry()
+        finally:
+            self.cleanup_files(photos)
+        return True
+
     async def _fallback_to_ydl(self) -> None:
         """Retry the download through yt-dlp when tikwm.com fails."""
+        if await self._send_photo_post_without_tikwm():
+            return
         logging.warning(
             "tikwm failed, falling back to yt-dlp: %s; user_id=%s",
             self._resolution.url,

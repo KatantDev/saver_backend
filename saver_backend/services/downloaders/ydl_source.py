@@ -451,6 +451,7 @@ class YtDlpController(BaseSourceController, ABC):
                 download=False,
             )
             info_dict = self._prepare_info(info_dict)
+            info_dict = await self._complete_info(info_dict)
 
             video_id = info_dict.get("id")
             video_ext = info_dict.get("ext")
@@ -503,6 +504,17 @@ class YtDlpController(BaseSourceController, ABC):
         Adjust what yt-dlp returned before the bot reads it.
 
         A source overrides this when its formats need fixing.
+
+        :param info_dict: The dictionary from yt_dlp.extract_info.
+        :return: The dictionary to use.
+        """
+        return info_dict
+
+    async def _complete_info(self, info_dict: dict[str, Any]) -> dict[str, Any]:
+        """
+        Add what the page did not say and a request of its own can tell.
+
+        A source overrides this when it needs the network, e.g. to ask file sizes.
 
         :param info_dict: The dictionary from yt_dlp.extract_info.
         :return: The dictionary to use.
