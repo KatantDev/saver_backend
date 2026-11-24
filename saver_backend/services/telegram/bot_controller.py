@@ -1576,6 +1576,24 @@ class TelegramBotController:
         )
         await self._send(coro)
 
+    async def send_age_restricted_error(
+        self,
+        telegram_id: int,
+        language: str | None = None,
+    ) -> None:
+        """
+        Tell the user the video is age-restricted and needs an account.
+
+        :param telegram_id: Telegram ID of the user.
+        :param language: Language for the message.
+        """
+        mark_failed("age_restricted")
+        coro = self._bot.send_message(
+            chat_id=telegram_id,
+            text=_("age restricted error", locale=language or self.language),
+        )
+        await self._send(coro)
+
     async def send_tiktok_error_downloading(
         self,
         telegram_id: int,

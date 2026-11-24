@@ -168,3 +168,6 @@ msgstr "The video is not ready yet"
 
 msgid "inline query preparing text"
 msgstr "The video is not ready yet. Repeat the request in a few seconds."
+
+msgid "age restricted error"
+msgstr "This video is age-restricted: YouTube gives it only to signed-in accounts, so it cannot be downloaded."

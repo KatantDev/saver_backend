@@ -1,3 +1,4 @@
+import logging
 from typing import Any, ClassVar
 
 from yt_dlp import DownloadError
@@ -8,6 +9,7 @@ from saver_backend.services.downloaders.youtube_video_ydl_source import (
     YOUTUBE_H264_FORMAT,
     YOUTUBE_PLAYER_CLIENTS,
     YouTubeClientRotationMixin,
+    is_gone,
     youtube_extractor_args,
 )
 
@@ -49,7 +51,13 @@ class YouTubeShortsYdlController(YouTubeClientRotationMixin, YtDlpController):
             return await super().get_video_info(url)
         except DownloadError as e:
             await self._note_bot_check(e)
-            if "Video unavailable" in str(e):
+            # Through a proxy seen as a Russian address music shorts answer
+            # «blocked due to the claimed content»; 6 of 8 such shorts opened
+            # from the server (prod 21-23.11)
+            if self._retry_from_server(e):
+                return await self.get_video_info(url)
+            if is_gone(e):
+                logging.info("YouTube short is closed or gone: %s (%s)", url, e)
                 await self.delete_processing_message()
                 await self._telegram_bot_controller.send_content_not_found_error(
                     telegram_id=self._telegram_id,

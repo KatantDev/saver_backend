@@ -287,6 +287,7 @@ class YouTubeShortsDetector(Detector):
         "youtube.com",
         "www.youtube.com",
         "m.youtube.com",
+        "music.youtube.com",
         "youtu.be",
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
@@ -416,6 +417,7 @@ class YouTubeVideoDetector(Detector):
         "youtube.com",
         "www.youtube.com",
         "m.youtube.com",
+        "music.youtube.com",
         "youtu.be",
         "youtube-nocookie.com",
     )
@@ -427,6 +429,11 @@ class YouTubeVideoDetector(Detector):
     _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"v=([A-Za-z0-9_-]{11})")
     _EMBED_RE: ClassVar[re.Pattern[str]] = re.compile(
         r"^/embed/([a-zA-Z0-9_-]{11})/?$",
+    )
+    # A mix («radio») built from one video: its id is the list id without «RD».
+    # The share button of a mix gives /playlist?list=RD<video id>&playnext=1.
+    _MIX_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"(?:^|&)list=RD(?:MM)?([A-Za-z0-9_-]{11})(?:&|$)",
     )
 
     def match(self, url: str) -> Optional[Resolution]:
@@ -446,6 +453,9 @@ class YouTubeVideoDetector(Detector):
         embed = self._EMBED_RE.match(parsed.path)
         if embed:
             url = f"https://youtu.be/{embed.group(1)}"
+        mix = self._MIX_RE.search(parsed.query)
+        if mix and not match and parsed.path.rstrip("/") == "/playlist":
+            url = f"https://youtu.be/{mix.group(1)}"
 
         return self._match_regex(url)
 
