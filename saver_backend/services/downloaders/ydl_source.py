@@ -11,9 +11,13 @@ import yt_dlp
 from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import SourceEnum
-from saver_backend.services.consts import BASE_DOWNLOAD_PATH
+from saver_backend.services.consts import (
+    BASE_DOWNLOAD_PATH,
+    TELEGRAM_UPLOAD_LIMIT_BYTES,
+)
 from saver_backend.services.downloaders.base_source import BaseSourceController
 from saver_backend.services.downloaders.exceptions import (
+    FileTooLargeError,
     IPAddressBlockedError,
     VideoInfoNotSetError,
 )
@@ -85,6 +89,9 @@ class YtDlpController(BaseSourceController, ABC):
         # in different qualities). Without it, yt-dlp's HLS fragments from
         # parallel downloads can overwrite each other and produce empty files.
         self._download_token = secrets.token_hex(4)
+        # Bytes on disk per file of the current download (video and audio
+        # streams are separate files), for the size check in the progress hook
+        self._bytes_by_file: dict[str, int] = {}
 
         self._base_options: dict[str, Any] = {
             "proxy": self._proxy,
@@ -290,9 +297,23 @@ class YtDlpController(BaseSourceController, ABC):
         :param info_dict: The dictionary from yt_dlp.extract_info.
         """
         self._process_percent(percent=16)
+        self._bytes_by_file = {}
 
         try:
             await asyncio.to_thread(self._yt_dlp.process_info, info_dict)
+        except FileTooLargeError as e:
+            logging.error(
+                "The file of %s is over Telegram's limit, download stopped: %s",
+                self._video.source_id if self._video else self._resolution.url,
+                e,
+            )
+            self._remove_partial_files()
+            await self._telegram_bot_controller.send_file_too_large(
+                telegram_id=self._telegram_id,
+                message_id=self._message_id,
+            )
+            self._message_id = None
+            return
         except DownloadError as e:
             error_message = str(e)
             if "HTTP Error 403: Forbidden" in error_message:
@@ -310,6 +331,7 @@ class YtDlpController(BaseSourceController, ABC):
                 self._resolution.url,
                 e,
             )
+            self._remove_partial_files()
             await self._send_error_message()
             sentry_sdk.capture_exception(e)
             return
@@ -336,9 +358,46 @@ class YtDlpController(BaseSourceController, ABC):
         )
         self.cleanup_files([self._video])
 
+    def _remove_partial_files(self) -> None:
+        """
+        Delete what a stopped download left on disk.
+
+        yt-dlp keeps ``.part``, fragment and ``.ytdl`` files to resume later; this
+        download will not be resumed, and such files filled the disk (prod
+        24.11: 22 GB of abandoned VK files).
+        """
+        for path in self._download_directory.glob(f"*.{self._download_token}.*"):
+            try:
+                path.unlink()
+            except OSError as e:
+                logging.warning("Could not delete %s: %s", path, e)
+
+    def _check_size(self, d: Dict[str, Any]) -> None:
+        """
+        Stop the download once the file is known to be over Telegram's limit.
+
+        The size of some files is unknown until the download starts (VK's plain
+        https files, streams). The bot used to download them whole and only then
+        answer «file too large»: a 21-hour VK video, 3.9 GB, took 4.5 hours of
+        downloading on prod on 23.11. The exact size comes with the first
+        progress report of a plain file; for a stream the bytes already
+        downloaded are counted (its estimate is too rough to trust).
+
+        :param d: Progress report of yt-dlp.
+        :raises FileTooLargeError: The file cannot be sent to Telegram.
+        """
+        name = str(d.get("filename") or "")
+        known = int(d.get("total_bytes") or 0)
+        done = int(d.get("downloaded_bytes") or 0)
+        self._bytes_by_file[name] = max(known, done)
+        size = sum(self._bytes_by_file.values())
+        if size > TELEGRAM_UPLOAD_LIMIT_BYTES:
+            raise FileTooLargeError(size)
+
     def _progress_hook(self, d: Dict[str, Any]) -> None:
-        """This hook's only job is to report download progress."""
+        """Report download progress and stop a download that is too large."""
         if d["status"] == "downloading":
+            self._check_size(d)
             total_bytes = d.get("total_bytes") or d.get("total_bytes_estimate")
             downloaded_bytes = d.get("downloaded_bytes")
             if not total_bytes or not downloaded_bytes or total_bytes <= 0:

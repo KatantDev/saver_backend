@@ -21,6 +21,14 @@ class IPAddressBlockedError(DownloaderError):
     """Exception for ip address blocked."""
 
 
+class FileTooLargeError(DownloaderError):
+    """The file is over Telegram's upload limit, the download is stopped."""
+
+    def __init__(self, size: int) -> None:
+        super().__init__(f"the file is over Telegram's limit: {size} bytes")
+        self.size = size
+
+
 class TikTokYtDlpDownloaderError(YtDlpDownloaderError):
     """Exception for TikTok yt-dlp."""
 
