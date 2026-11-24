@@ -9,7 +9,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, ClassVar
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import ffmpeg
 import httpx
@@ -78,6 +78,34 @@ def story_media_id(url: str) -> int | None:
         raw = base64.urlsafe_b64decode(head + "=" * (-len(head) % 4)).decode()
     except binascii.Error, UnicodeDecodeError, ValueError:
         return None
+    return int(raw) if raw.isdigit() else None
+
+
+CACHE_KEY_RE = re.compile(r"ig_cache_key=([A-Za-z0-9_=-]+)")
+# Items of a highlight sent when the link does not say which story was open
+HIGHLIGHT_ITEMS_WITHOUT_STORY = 10
+
+
+def media_id_in(text: str) -> int | None:
+    """
+    Instagram media id from the last ``ig_cache_key`` in a piece of indown.io HTML.
+
+    Every item of the answer has a picture: the photo itself or the poster of
+    a video, behind indown.io's own address. Its ``ig_cache_key`` is the base64
+    media id, so a video is matched as exactly as a photo.
+
+    :param text: HTML around one item.
+    :return: Media id or None.
+    """
+    keys = CACHE_KEY_RE.findall(unquote(unquote(text.replace("&amp;", "&"))))
+    if not keys:
+        return None
+    head = keys[-1].split(".")[0]
+    try:
+        raw = base64.urlsafe_b64decode(head + "=" * (-len(head) % 4)).decode()
+    except binascii.Error, UnicodeDecodeError, ValueError:
+        return None
+    raw = raw.split("_")[0]
     return int(raw) if raw.isdigit() else None
 
 
@@ -270,6 +298,10 @@ class InstagramInDownController(BaseSourceController):
 
     def _extract_source_id(self, url: str) -> str:
         """Extract generic ID from URL for cache keys."""
+        if self._is_highlight():
+            # one highlight holds many stories: the key names the story too
+            code = self._resolution.metadata.get("code")
+            return f"hl{code}_{self._resolution.metadata.get('story') or 'all'}"
         path = urlparse(url).path.rstrip("/")
         return path.split("/")[-1]
 
@@ -365,8 +397,10 @@ class InstagramInDownController(BaseSourceController):
 
         self._process_percent(10)
         is_story = self._is_story()
+        is_highlight = self._is_highlight()
         guest_outcome = "skipped"
-        if not is_story:
+        # Stories and highlights are not shown to a guest at all
+        if not is_story and not is_highlight:
             guest_outcome = await self._try_ydl(source_id, use_session=False)
             if guest_outcome == "done":
                 return
@@ -378,7 +412,7 @@ class InstagramInDownController(BaseSourceController):
         if is_story:
             await self._fallback_to_instaloader()
             return
-        if YDL_COOKIES_FILE.exists():
+        if YDL_COOKIES_FILE.exists() and not is_highlight:
             account_outcome = await self._try_ydl(source_id, use_session=True)
             if account_outcome == "done":
                 return
@@ -397,6 +431,9 @@ class InstagramInDownController(BaseSourceController):
         not_found = indown_outcome == "not_found" or (
             indown_outcome == "empty" and guest_outcome == "unavailable"
         )
+        if is_highlight and indown_outcome == "empty":
+            # indown.io names a missing highlight in words of its own
+            not_found = True
         if not_found and not self._inline_query_id:
             await self._send_not_found_message()
         else:
@@ -405,6 +442,10 @@ class InstagramInDownController(BaseSourceController):
     def _is_story(self) -> bool:
         content_type = self._resolution.metadata.get("type")
         return content_type == InstagramContentTypeEnum.STORIES
+
+    def _is_highlight(self) -> bool:
+        content_type = self._resolution.metadata.get("type")
+        return content_type == InstagramContentTypeEnum.HIGHLIGHTS
 
     async def _ask_indown(self, original_url: str, source_id: str) -> str:
         """
@@ -672,27 +713,55 @@ class InstagramInDownController(BaseSourceController):
             media_url=clean_url,
         )
 
-    def _extract_carousel_links(self, html: str) -> list[str]:
-        """Extract links from button groups (used for carousels)."""
-        button_groups = re.findall(
+    def _extract_items(self, html: str) -> list[tuple[str, int | None]]:
+        """
+        Links of the answer with the media id of each item.
+
+        :param html: indown.io answer.
+        :return: (link, media id) per item, in indown.io order.
+        """
+        items: list[tuple[str, int | None]] = []
+        position = 0
+        for group in re.finditer(
             r'<div class="btn-group-vertical">([\s\S]*?)</div>',
             html,
-        )
-        found_urls: list[str] = []
-
-        for group_html in button_groups:
-            # Внутри группы ищем все ссылки (обычно Server 1 и Server 2)
-            # Нам достаточно первой рабочей ссылки из группы
-            hrefs = re.findall(r'href="([^"]+)"', group_html)
-
-            for href in hrefs:
+        ):
+            # the picture of an item stands before its buttons
+            before = html[position : group.start()]
+            position = group.end()
+            for href in re.findall(r'href="([^"]+)"', group.group(1)):
                 clean = self._extract_clean_url(href)
-                # Пропускаем пустые или уже добавленные ссылки
-                if clean and clean not in found_urls:
-                    found_urls.append(clean)
+                if clean and clean not in [link for link, _id in items]:
+                    items.append((clean, media_id_in(before) or media_id_in(href)))
                     break
+        return items
 
-        return found_urls
+    def _pick_by_media_id(
+        self,
+        items: list[tuple[str, int | None]],
+    ) -> list[str] | None:
+        """
+        Keep the one story the link points to, when its id is in the answer.
+
+        :param items: (link, media id) per item.
+        :return: The picked links, None when the links should be picked the
+            old way.
+        """
+        wanted = self._story_id()
+        links = [link for link, _id in items]
+        if wanted is not None:
+            for link, media_id in items:
+                if media_id == wanted:
+                    return [link]
+        if self._is_highlight():
+            if wanted is not None:
+                logging.warning(
+                    "Story %s is not among %s items of the highlight",
+                    wanted,
+                    len(items),
+                )
+            return links[:HIGHLIGHT_ITEMS_WITHOUT_STORY]
+        return None
 
     def _extract_media_dtos(
         self,
@@ -701,9 +770,19 @@ class InstagramInDownController(BaseSourceController):
         source_id: str,
     ) -> list[PhotoDTO | VideoDTO]:
         """Main parsing logic converting HTML to DTOs."""
-        clean_links = self._extract_carousel_links(html)
+        items = self._extract_items(html)
+        clean_links = [link for link, _id in items]
         story_id = self._story_id()
-        if story_id is not None and len(clean_links) > 1:
+        picked_by_id = self._pick_by_media_id(items) if len(items) > 1 else None
+        if picked_by_id is not None:
+            logging.info(
+                "Story %s: %s of %s indown.io items kept by media id",
+                story_id,
+                len(picked_by_id),
+                len(clean_links),
+            )
+            clean_links = picked_by_id
+        elif story_id is not None and len(clean_links) > 1:
             picked = pick_story_links(clean_links, story_id)
             logging.info(
                 "Story %s: %s of %s indown.io items kept",
@@ -721,7 +800,10 @@ class InstagramInDownController(BaseSourceController):
         return media_items
 
     def _story_id(self) -> int | None:
-        """Media id from a /stories/<user>/<id>/ link, None for other links."""
+        """Media id of the story a story or highlight link points to."""
+        if self._is_highlight():
+            story = str(self._resolution.metadata.get("story") or "")
+            return int(story) if story.isdigit() else None
         if self._resolution.metadata.get("type") != InstagramContentTypeEnum.STORIES:
             return None
         code = str(self._resolution.metadata.get("code") or "")

@@ -56,6 +56,7 @@ class InstagramContentTypeEnum(str, Enum):
     POST = "post"
     IGTV = "igtv"
     STORIES = "stories"
+    HIGHLIGHTS = "highlights"
     REELS = "reels"
 
 
