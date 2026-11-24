@@ -81,6 +81,8 @@ def story_media_id(url: str) -> int | None:
     return int(raw) if raw.isdigit() else None
 
 
+# A proxy that does not answer is given up on quickly, the file itself may be slow
+FILE_TIMEOUT = httpx.Timeout(30, connect=8)
 CACHE_KEY_RE = re.compile(r"ig_cache_key=([A-Za-z0-9_=-]+)")
 # Items of a highlight sent when the link does not say which story was open
 HIGHLIGHT_ITEMS_WITHOUT_STORY = 10
@@ -164,6 +166,8 @@ class InstagramInDownController(BaseSourceController):
 
         self._proxy_type = self.PROXY_TYPE
         self._client: AsyncClient | None = None
+        # Set once a file could not be downloaded through the proxy
+        self._proxy_lost_a_file = False
 
     async def _init_httpx(self, proxy: str | None) -> None:
         if self._client:
@@ -318,16 +322,21 @@ class InstagramInDownController(BaseSourceController):
 
         if self._client is None:
             return
-        try:
-            await self._stream_to_file(self._client, url, file_path)
-            return
-        except Exception as e:
-            # A warning: the file is asked for once more below
-            logging.warning(
-                "Download of %s through the proxy failed (%s), trying directly",
-                filename,
-                type(e).__name__,
-            )
+        if not self._proxy_lost_a_file:
+            try:
+                await self._stream_to_file(self._client, url, file_path)
+                return
+            except Exception as e:
+                # A warning: the file is asked for once more below. The other
+                # files of this request skip the proxy: with a dead one every
+                # file of an album waited for its own timeout (5 files took
+                # 2.5 minutes on prod on 24.11).
+                self._proxy_lost_a_file = True
+                logging.warning(
+                    "Download of %s through the proxy failed (%s), trying directly",
+                    filename,
+                    type(e).__name__,
+                )
         # The files are on a CDN that does not care where the request comes
         # from, while a slow or dead proxy lost 128 of them on prod on 23.11
         try:
@@ -345,7 +354,7 @@ class InstagramInDownController(BaseSourceController):
 
     @staticmethod
     async def _stream_to_file(client: AsyncClient, url: str, file_path: Path) -> None:
-        async with client.stream("GET", url) as response:
+        async with client.stream("GET", url, timeout=FILE_TIMEOUT) as response:
             response.raise_for_status()
             # Written in chunks so a big video is not held in memory
             with file_path.open("wb") as f:
