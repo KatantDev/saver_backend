@@ -700,6 +700,7 @@ class AdultDetector(Detector):
         "thisvid.com",
         "tnaflix.com",
         "txxx.com",
+        "tubepornclassic.com",
         "xhamster.com",
         "xhamster.desi",
         "xhamster.one",
