@@ -14,7 +14,12 @@ class TikTokYdlController(YtDlpController):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._yt_dlp.params["format"] = "bv*+ba/best"
+        # H.264 first, as tikwm.com gives it: TikTok's best file is H.265, and
+        # that one does not play on a part of the devices (task 20)
+        self._yt_dlp.params["format"] = "b[vcodec^=h264]/b[vcodec^=avc]/b"
+        self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
+            format_spec=self._yt_dlp.params["format"],
+        )
 
     async def get_video_info(self, url: str) -> Dict[str, Any] | None:
         """Override to raise a specific error for slideshows (which return no info)."""

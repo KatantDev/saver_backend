@@ -2,6 +2,7 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, URLInputFile
@@ -13,6 +14,7 @@ from saver_backend.services.downloaders import tiktok_api_source
 from saver_backend.services.downloaders.resolver import TikTokDetector
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.downloaders.tiktok_api_source import TikTokAPIController
+from saver_backend.services.downloaders.tiktok_ydl_source import TikTokYdlController
 from saver_backend.services.telegram import bot_controller as bot_controller_module
 from saver_backend.services.telegram.bot_controller import TelegramBotController
 
@@ -68,6 +70,7 @@ def _controller() -> tuple[TikTokAPIController, AsyncMock]:
         cache_dao=cache_dao,
         message_id=1,
     )
+    controller._redis = FakeRedis()  # noqa: SLF001
     return controller, telegram
 
 
@@ -91,6 +94,107 @@ async def test_retries_when_tikwm_rate_limits() -> None:
     assert info is not None
     assert info["id"] == "7047596209028074758"
     assert wait.await_count == 2
+    await controller.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "failure",
+    [
+        httpx.ReadTimeout("no answer in 8 seconds"),
+        httpx.HTTPStatusError(
+            "Server error '502 Bad Gateway'",
+            request=MagicMock(),
+            response=MagicMock(),
+        ),
+        httpx.ConnectError("refused"),
+    ],
+)
+async def test_slow_or_failing_tikwm_gives_way_to_ydl(failure: Exception) -> None:
+    """Prod 23.11: 502 answers were not caught, slow ones were waited for 30 s."""
+    controller, _ = _controller()
+    with (
+        patch.object(controller, "_wait_for_slot", AsyncMock()),
+        patch.object(controller._client, "post", AsyncMock(side_effect=failure)),  # noqa: SLF001
+    ):
+        info = await controller.get_video_info(URL)
+
+    assert info is None
+    await controller.close()
+
+
+@pytest.mark.anyio
+async def test_tikwm_is_left_out_after_two_failures_in_a_row() -> None:
+    """While tikwm.com is down, requests go straight to yt-dlp without waiting."""
+    controller, _ = _controller()
+    post = AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+    with (
+        patch.object(controller, "_wait_for_slot", AsyncMock()),
+        patch.object(controller._client, "post", post),  # noqa: SLF001
+    ):
+        assert await controller.get_video_info(URL) is None
+        assert await controller.get_video_info(URL) is None
+        assert post.await_count == 2
+        assert await controller.get_video_info(URL) is None
+
+    assert post.await_count == 2
+    await controller.close()
+
+
+@pytest.mark.anyio
+async def test_one_slow_answer_does_not_switch_tikwm_off() -> None:
+    """A single failure is forgotten once tikwm.com answers again."""
+    controller, _ = _controller()
+    post = AsyncMock(
+        side_effect=[
+            httpx.ReadTimeout("slow"),
+            _response(SUCCESS),
+            httpx.ReadTimeout("slow"),
+            _response(SUCCESS),
+        ],
+    )
+    with (
+        patch.object(controller, "_wait_for_slot", AsyncMock()),
+        patch.object(controller._client, "post", post),  # noqa: SLF001
+    ):
+        results = [await controller.get_video_info(URL) for _ in range(4)]
+
+    assert [result is not None for result in results] == [False, True, False, True]
+    assert post.await_count == 4
+    await controller.close()
+
+
+@pytest.mark.anyio
+async def test_ydl_fallback_prefers_h264() -> None:
+    """The fallback sends the same H.264 file tikwm.com does, not H.265."""
+    controller = TikTokYdlController(
+        resolution=Resolution(source=SourceEnum.TIKTOK, url=URL, metadata={}),
+        telegram_bot_controller=AsyncMock(),
+        telegram_id=1,
+        user_dao=AsyncMock(),
+        history_dao=AsyncMock(),
+        cache_dao=AsyncMock(),
+        message_id=1,
+    )
+    formats = [
+        {"format_id": "h264_540p", "vcodec": "h264", "acodec": "aac", "height": 576},
+        {
+            "format_id": "bytevc1_1080p",
+            "vcodec": "h265",
+            "acodec": "aac",
+            "height": 1080,
+        },
+    ]
+    for fmt in formats:
+        fmt.update(url="https://v/1.mp4", ext="mp4", protocol="https")
+
+    picked = list(
+        controller._yt_dlp.format_selector(  # noqa: SLF001
+            {"formats": formats, "incomplete_formats": False},
+        ),
+    )
+
+    assert [fmt["format_id"] for fmt in picked] == ["h264_540p"]
     await controller.close()
 
 
