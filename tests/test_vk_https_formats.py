@@ -38,6 +38,37 @@ def test_menu_of_an_https_only_video_lists_every_quality() -> None:
     assert sorted(fmt.height for fmt in video.formats) == [144, 240, 360, 480, 720]
 
 
+def test_plain_file_does_not_double_a_stream_of_the_same_quality() -> None:
+    """Dev and prod 24.11: «144p» led to a choice between two «Default» buttons."""
+    streams = [
+        {
+            "format_id": f"hls-{height}",
+            "protocol": "m3u8_native",
+            "resolution": f"{height * 16 // 9}x{height}",
+            "height": height,
+            "tbr": 300,
+        }
+        for height in (144, 240)
+    ]
+    video = VideoDTO.from_yt_dlp(
+        info={
+            "id": "1",
+            "title": "t",
+            "duration": 60,
+            "formats": [*VK_HTTPS_FORMATS, *streams],
+        },
+    )
+
+    by_label = {
+        label: [f.format_id for f in fs] for label, fs in video.unique_formats.items()
+    }
+
+    assert by_label["144p"] == ["hls-144"]
+    assert by_label["240p"] == ["hls-240"]
+    # Qualities that exist only as plain files stay in the menu
+    assert by_label["720p"] == ["url720"]
+
+
 def test_usual_format_is_read_as_before() -> None:
     """A WxH resolution keeps working."""
     dto = FormatDTO.from_yt_dlp(
