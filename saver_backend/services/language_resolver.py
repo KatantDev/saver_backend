@@ -13,6 +13,34 @@ LANG_CODE_COUNTRY = {
     "te": "IN",
     "uk": "ua",
     "fil": "ph",
+    # languages whose code is not the code of a country («Unsupported flag
+    # 'kk'», «'fa'» for dubbed YouTube videos on prod)
+    "kk": "KZ",
+    "fa": "IR",
+    "ar": "SA",
+    "he": "IL",
+    "el": "GR",
+    "cs": "CZ",
+    "da": "DK",
+    "sv": "SE",
+    "et": "EE",
+    "vi": "VN",
+    "ms": "MY",
+    "ur": "PK",
+    "bn": "BD",
+    "ta": "IN",
+    "sr": "RS",
+    "sl": "SI",
+    "ka": "GE",
+    "hy": "AM",
+    "be": "BY",
+    "sq": "AL",
+    "ky": "KG",
+    "tg": "TJ",
+    "ne": "NP",
+    "km": "KH",
+    "sw": "KE",
+    "af": "ZA",
 }
 
 
@@ -55,7 +83,10 @@ class LanguageResolver:
         try:
             return flag_safe(country_code)
         except UnsupportedFlag:
-            logging.error(f"Unsupported flag '{country_code} ({self.language_name})'")
+            # Not an error: the button is shown without a flag
+            logging.warning(
+                f"Unsupported flag '{country_code} ({self.language_name})'",
+            )
             return ""
 
     @property
