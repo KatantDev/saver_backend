@@ -12,8 +12,9 @@ FINGERPRINT_TEXT_LENGTH = 200
 CREDENTIALS_RE = re.compile(
     r"[a-z0-9+]+://[^\s/@:]+:[^\s/@]+@[^\s/'\")]+", re.IGNORECASE
 )
-# 123456789:AA... — a Telegram bot token, also inside api.telegram.org links
-BOT_TOKEN_RE = re.compile(r"\d{6,}:[A-Za-z0-9_-]{30,}")
+# 123456789:AA... — a Telegram bot token, also inside api.telegram.org links and,
+# with the colon written as %3A, in the webhook address of the access log
+BOT_TOKEN_RE = re.compile(r"\d{6,}(?::|%3A)[A-Za-z0-9_-]{30,}", re.IGNORECASE)
 URL_RE = re.compile(r"https?://\S+")
 ID_RE = re.compile(r"\b(?=\w*\d)[\w-]{8,}\b")
 NUMBER_RE = re.compile(r"\d+")

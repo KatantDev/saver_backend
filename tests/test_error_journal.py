@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 import time
@@ -6,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from loguru import logger
 
 from saver_backend import log
 from saver_backend.services import failure_log
@@ -150,3 +152,53 @@ def test_unwritable_log_folder_does_not_stop_the_start(
     monkeypatch.setattr(log.settings, "log_dir", blocker / "logs")
 
     log.add_file_log()
+
+
+WEBHOOK_LINE = (
+    '172.18.0.10:42928 - "POST /api/webhook/telegram/'
+    + TOKEN.replace(":", "%3A")
+    + ' HTTP/1.1" 204'
+)
+
+
+def test_token_in_the_webhook_address_is_removed() -> None:
+    """Dev and prod 24.11: the access log kept the bot token in every line."""
+    text = sanitize(WEBHOOK_LINE)
+
+    assert TOKEN.split(":")[1] not in text
+    assert "/api/webhook/telegram/<token> HTTP/1.1" in text
+
+
+def test_log_stream_writes_lines_without_secrets() -> None:
+    """Everything that goes to the container log passes the same filter."""
+    stream = io.StringIO()
+    safe = log.SafeStream(stream)
+
+    safe.write(f"{WEBHOOK_LINE}\nproxy {PROXY} failed\n")
+    safe.flush()
+
+    written = stream.getvalue()
+    assert TOKEN.split(":")[1] not in written
+    assert "secretpass" not in written
+    assert "POST /api/webhook/telegram/<token>" in written
+
+
+def test_file_log_is_clean_and_named_by_day(tmp_path: Path) -> None:
+    """The file log keeps its names and gets no secrets, a new day a new file."""
+    sink_id = logger.add(log.DailyLogFile(tmp_path, "api"), format="{message}")
+    try:
+        logger.info(WEBHOOK_LINE)
+    finally:
+        logger.remove(sink_id)
+
+    files = list(tmp_path.glob("api.*.log"))
+    assert [path.name for path in files] == [f"api.{time.strftime('%Y-%m-%d')}.log"]
+    text = files[0].read_text()
+    assert TOKEN.split(":")[1] not in text
+    assert "<token>" in text
+
+    other_day = log.DailyLogFile(tmp_path, "api")
+    other_day._open("2026-01-01")  # noqa: SLF001
+    other_day.write("line of another day\n")
+    other_day.stop()
+    assert (tmp_path / "api.2026-01-01.log").read_text() == "line of another day\n"
