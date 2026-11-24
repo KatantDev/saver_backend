@@ -713,6 +713,7 @@ async def on_flac_select(
             SourceEnum.DZEN_YDL,
             SourceEnum.ADULT_YDL,
             SourceEnum.FACEBOOK_YDL,
+            SourceEnum.GENERIC_YDL,
             SourceEnum.VK_API_YDL,
             SourceEnum.YMDANTIC,
             SourceEnum.REDDIT_YDL,

@@ -40,6 +40,7 @@ class SourceEnum(str, Enum):
     DZEN_YDL = "dzen_ydl"
     ADULT_YDL = "adult_ydl"
     FACEBOOK_YDL = "facebook_ydl"
+    GENERIC_YDL = "generic_ydl"
     UNSUPPORTED = "unsupported"
     M3U8_YDL = "m3u8_ydl"
     KINOVOD_YDL = "kinovod_ydl"
