@@ -11,11 +11,15 @@ itself.
 import json
 import logging
 import re
+import secrets
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException
+
+from saver_backend.settings import settings
 
 YANDEX_VIDEO_RE = re.compile(
     r"^https?://(?:www\.|m\.)?(?:yandex\.(?:ru|kz|uz|by|com|com\.tr)|ya\.ru)"
@@ -27,6 +31,8 @@ VIDEO_URL_RE = re.compile(r'"videoUrl":"((?:[^"\\]|\\.)+)"')
 URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
 UNWRAP_TIMEOUT = 8
+# Two tries have to fit into the time a user waits for the first answer
+YANDEX_TIMEOUT = 6
 # share.google answers with a redirect to google.com, which redirects on
 MAX_GOOGLE_HOPS = 3
 GOOGLE_HOSTS = ("share.google", "google.com", "www.google.com")
@@ -48,15 +54,35 @@ def wrapped_link(text: str) -> str | None:
     return None
 
 
+async def _yandex_page(url: str) -> Any:
+    # Yandex shows a captcha to a plain HTTP client and the page to a browser.
+    # The server's own address is tried first; on 24-25.11 it timed out for 10
+    # of 29 links, so a proxy is tried after it.
+    proxies = [*settings.proxies_ru, *settings.proxies]
+    routes: list[str | None] = [None]
+    if proxies:
+        routes.append(secrets.choice(proxies))
+    for attempt, proxy in enumerate(routes, start=1):
+        try:
+            async with AsyncSession(
+                impersonate="chrome",
+                timeout=YANDEX_TIMEOUT,
+                proxy=proxy,
+            ) as session:
+                return await session.get(url)
+        except RequestException as e:
+            logging.warning(
+                "Yandex Video page was not read (attempt %s of %s): %s",
+                attempt,
+                len(routes),
+                type(e).__name__,
+            )
+    return None
+
+
 async def _yandex_video_target(url: str) -> str | None:
-    # Yandex shows a captcha to a plain HTTP client and the page to a browser
-    try:
-        async with AsyncSession(
-            impersonate="chrome", timeout=UNWRAP_TIMEOUT
-        ) as session:
-            response = await session.get(url)
-    except RequestException as e:
-        logging.warning("Yandex Video page was not read: %s", type(e).__name__)
+    response = await _yandex_page(url)
+    if response is None:
         return None
     found = VIDEO_URL_RE.search(response.text)
     if not found:

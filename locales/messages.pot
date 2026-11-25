@@ -92,3 +92,6 @@ msgid "inline query preparing text"
 
 msgid "age restricted error"
 msgstr ""
+
+msgid "region blocked error"
+msgstr ""
