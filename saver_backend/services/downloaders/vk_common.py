@@ -9,19 +9,44 @@ import httpx
 from yt_dlp.utils import DownloadError
 
 from saver_backend.services.consts import MAX_FILE_SIZE_BYTES
+from saver_backend.services.downloaders.exceptions import HostedElsewhereError
+from saver_backend.services.downloaders.vk_ydl_patch import HOSTED_ELSEWHERE_MARK
 from saver_backend.services.downloaders.ydl_source import is_cookie_file
 
 # One folder for every VK source: cookies/vk/cookies*.txt
 VK_COOKIES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "cookies" / "vk"
 # The video opens only for a logged-in VK user
 SIGN_IN_TEXT = "only available to signed-in users"
+# VK refuses a guest and may let a logged-in user in. «Only available to
+# followers» is here too: the site's own player calls 9 of 12 such videos
+# «Signed-in users only» (prod links of 22-25.11).
+VK_LOGIN_HINTS = (
+    SIGN_IN_TEXT,
+    "only available to followers",
+)
+# What VK answers to an address in Russia about a video it hides only there.
+# Asked from the server's own address, 7 of 7 such videos from the prod
+# journal opened (25.11), the «creator has been blocked» ones among them.
+VK_RUSSIA_ONLY_HINTS = (
+    "creator has been blocked",
+    "not available in your country",
+)
 # Answers that mean the video is closed or gone, whoever asks
 VK_GONE_HINTS = (
     "access restricted",
     "creator has been blocked",
     "has been deleted",
-    "only available to followers",
+    "was deleted",
+    "removed at the request",
 )
+HOSTED_ELSEWHERE_RE = re.compile(re.escape(HOSTED_ELSEWHERE_MARK) + r"(https://\S+)")
+# yt-dlp followed a YouTube player inside the VK page and YouTube refused
+YOUTUBE_ERROR_RE = re.compile(r"\[youtube\] ([\w-]{11}):")
+# Sites whose videos VK only embeds and the bot has a source of its own for
+EMBEDDED_HOSTS = {
+    "Youtube": "https://youtu.be/{id}",
+    "Odnoklassniki": "https://ok.ru/videoembed/{id}",
+}
 TAG_RE = re.compile(r"<[^>]+>")
 
 # Plain https files come without a size. Short and small ones cannot reach
@@ -93,6 +118,37 @@ async def fill_plain_file_sizes(
     return info_dict
 
 
+def is_login_refusal(text: str) -> bool:
+    """Whether VK refused a guest and asks for an account."""
+    return any(hint in text.lower() for hint in VK_LOGIN_HINTS)
+
+
+def is_russia_only_refusal(text: str) -> bool:
+    """Whether the refusal may hold for addresses in Russia only."""
+    return any(hint in text.lower() for hint in VK_RUSSIA_ONLY_HINTS)
+
+
+def is_gone_refusal(text: str) -> bool:
+    """Whether the video is closed or gone for everybody."""
+    return any(hint in text.lower() for hint in VK_GONE_HINTS)
+
+
+def hosted_elsewhere(error_text: str) -> str | None:
+    """
+    Link to the site that really hosts a video VK only embeds.
+
+    :param error_text: Text of the yt-dlp error.
+    :return: Link to the video on its own site, None for a video of VK itself.
+    """
+    marked = HOSTED_ELSEWHERE_RE.search(error_text)
+    if marked:
+        return marked.group(1)
+    youtube = YOUTUBE_ERROR_RE.search(error_text)
+    if youtube:
+        return EMBEDDED_HOSTS["Youtube"].format(id=youtube.group(1))
+    return None
+
+
 def vk_cookie_file() -> Path | None:
     """
     Cookies of a logged-in VK account, when a person has put a file in place.
@@ -119,6 +175,7 @@ class VKAccessMixin:
     _telegram_bot_controller: Any
     _proxy: str | None
     _vk_account_used: bool = False
+    _vk_left_russia: bool = False
 
     def _use_vk_account(self) -> bool:
         """
@@ -136,6 +193,19 @@ class VKAccessMixin:
         self._yt_dlp = self._create_yt_dlp(  # type: ignore[attr-defined]
             {**self._yt_dlp.params, "cookiefile": str(cookie_file)},
         )
+        return True
+
+    def _leave_russia(self) -> bool:
+        """
+        Ask VK again from the server's own address, outside Russia.
+
+        :return: False when the request already goes without a proxy.
+        """
+        if self._vk_left_russia or not self._proxy:
+            return False
+        self._vk_left_russia = True
+        logging.info("VK hides the video from Russia, asking without a proxy")
+        self._switch_to_direct()  # type: ignore[attr-defined]
         return True
 
     def _prepare_info(self, info_dict: dict[str, Any]) -> dict[str, Any]:
@@ -158,19 +228,31 @@ class VKAccessMixin:
         Get video info; a closed video gets its own answer, a login is tried.
 
         :param url: URL of the video.
+        :raises HostedElsewhereError: The video lives on YouTube or ok.ru.
         :return: Dictionary with video information or None on failure.
         """
         try:
-            return await super().get_video_info(url)  # type: ignore[misc]
+            info_dict = await super().get_video_info(url)  # type: ignore[misc]
         except DownloadError as e:
-            text = str(e).lower()
-            if SIGN_IN_TEXT in text and self._use_vk_account():
+            text = str(e)
+            moved = hosted_elsewhere(text)
+            if moved:
+                raise HostedElsewhereError(moved) from e
+            if is_login_refusal(text) and self._use_vk_account():
                 return await self.get_video_info(url)
-            if any(hint in text for hint in VK_GONE_HINTS):
+            if is_russia_only_refusal(text) and self._leave_russia():
+                return await self.get_video_info(url)
+            login = is_login_refusal(text)
+            if login or is_gone_refusal(text):
                 logging.info("VK video is closed or gone: %s (%s)", url, e)
                 await self.delete_processing_message()  # type: ignore[attr-defined]
                 await self._telegram_bot_controller.send_content_not_found_error(
                     telegram_id=self._telegram_id,
+                    reason="login_required" if login else "not_found",
                 )
                 return None
             raise
+        template = EMBEDDED_HOSTS.get(str((info_dict or {}).get("extractor_key")))
+        if info_dict and template and info_dict.get("id"):
+            raise HostedElsewhereError(template.format(id=info_dict["id"]))
+        return info_dict

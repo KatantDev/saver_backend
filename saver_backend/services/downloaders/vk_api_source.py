@@ -16,6 +16,11 @@ from yt_dlp.utils import DownloadError
 
 from saver_backend.entities.enums import ContentTypeEnum, ProxyType, SourceEnum
 from saver_backend.services.downloaders.schema import AudioDTO, PhotoDTO, VideoDTO
+from saver_backend.services.downloaders.vk_common import (
+    is_gone_refusal,
+    is_login_refusal,
+    is_russia_only_refusal,
+)
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 from saver_backend.settings import settings
 
@@ -32,9 +37,20 @@ class VKAPIController(YtDlpController):
     SOURCE: ClassVar[SourceEnum] = SourceEnum.VK_API_YDL
     COOKIES: ClassVar[bool] = False
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
+    # What a post can carry that the bot sends
+    MEDIA_TYPES: ClassVar[frozenset[WallWallpostAttachmentType]] = frozenset(
+        {
+            WallWallpostAttachmentType.PHOTO,
+            WallWallpostAttachmentType.VIDEO,
+            WallWallpostAttachmentType.AUDIO,
+        },
+    )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        # Videos of the post VK does not give: closed, deleted, login only
+        self._closed_videos = 0
+        self._left_russia = False
 
         if not settings.vk_service_token:
             logging.error("VK_SERVICE_TOKEN is not set in .env")
@@ -176,19 +192,43 @@ class VKAPIController(YtDlpController):
             video_dto.thumbnail = self._get_thumbnail(file_id)
             return video_dto
         except DownloadError as e:
-            error_msg = str(e)
-            if (
-                "Видео доступно только подписчикам" in error_msg
-                or "Access restricted" in error_msg
-                or "Private video" in error_msg
-            ):
-                logging.warning("Video privacy error: %s", error_msg)
-                return None
-            logging.error("Failed to download video %s: %s", video_url, e)
-            return None
+            return await self._video_refused(video, video_url, e)
         except Exception:
             logging.exception("Unexpected error downloading video %s", video_url)
             return None
+
+    async def _video_refused(
+        self,
+        video: VideoVideo,
+        video_url: str,
+        error: DownloadError,
+    ) -> VideoDTO | None:
+        """
+        Deal with a video of the post that yt-dlp could not read.
+
+        :param video: The attachment.
+        :param video_url: Its link.
+        :param error: What yt-dlp said.
+        :return: The video when a second try from outside Russia got it.
+        """
+        error_msg = str(error)
+        if is_russia_only_refusal(error_msg) and self._proxy and not self._left_russia:
+            # Hidden from Russia only: the server's own address is outside
+            self._left_russia = True
+            logging.info("VK hides %s from Russia, asking directly", video_url)
+            self._switch_to_direct()
+            return await self._process_video_attachment(video)
+        if (
+            is_login_refusal(error_msg)
+            or is_gone_refusal(error_msg)
+            or "Видео доступно только подписчикам" in error_msg
+            or "Private video" in error_msg
+        ):
+            self._closed_videos += 1
+            logging.warning("Video privacy error: %s", error_msg)
+            return None
+        logging.error("Failed to download video %s: %s", video_url, error)
+        return None
 
     async def _parse_wall_attachments(
         self,
@@ -261,7 +301,7 @@ class VKAPIController(YtDlpController):
         # 3. Parse Attachments into DTOs
         media_group, audio_list = await self._parse_wall_attachments(attachments)
         if not media_group and not audio_list:
-            await self._send_error_message()
+            await self._answer_nothing_to_send(attachments)
             return
 
         self._process_percent(86)
@@ -280,6 +320,33 @@ class VKAPIController(YtDlpController):
 
         # 6. Cleanup
         self.cleanup_files(media_group)
+
+    async def _answer_nothing_to_send(
+        self,
+        attachments: List[WallWallpostAttachment],
+    ) -> None:
+        """
+        Say why the post gave nothing, instead of a bare «Error».
+
+        On prod on 22-25.11: posts with a closed or removed video (8) and
+        posts with nothing but text, links or an article (3).
+
+        :param attachments: Attachments of the post and of what it reposts.
+        """
+        if self._closed_videos:
+            await self.delete_processing_message()
+            await self._telegram_bot_controller.send_content_not_found_error(
+                telegram_id=self._telegram_id,
+            )
+            return
+        if not any(att.type in self.MEDIA_TYPES for att in attachments):
+            logging.info("VK post has no photo, video or audio")
+            await self.delete_processing_message()
+            await self._telegram_bot_controller.send_post_without_media(
+                telegram_id=self._telegram_id,
+            )
+            return
+        await self._send_error_message()
 
     async def _handle_single_photo(self, code: str) -> None:
         """Handle downloading of a direct photo link."""

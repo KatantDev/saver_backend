@@ -243,6 +243,27 @@ class FormatDTO(BaseModel):
         )
 
 
+def every_quality_is_oversized(info: dict[str, Any]) -> bool:
+    """
+    Whether the video has qualities and each one is over Telegram's limit.
+
+    A recording of 20-30 hours is over 2 GB even in 144p. The menu came out
+    empty and the bot said «no formats, try later» (3 on prod on 24-25.11).
+
+    :param info: The dictionary from yt_dlp.extract_info.
+    :return: True when sizes are known and none fits.
+    """
+    duration = info.get("duration")
+    sizes = []
+    for format_info in info.get("formats") or []:
+        if "none" in (format_info.get("vcodec"), format_info.get("acodec")):
+            continue
+        dto = FormatDTO.from_yt_dlp(format_info, duration)
+        if dto and dto.filesize:
+            sizes.append(dto.filesize)
+    return bool(sizes) and all(size > MAX_FILE_SIZE_BYTES for size in sizes)
+
+
 class VideoDTO(BaseContentDTO):
     """Data Transfer Object for Video."""
 

@@ -11,6 +11,9 @@ class VKClipsYdlController(VKAccessMixin, YtDlpController):
     SOURCE: ClassVar[SourceEnum] = SourceEnum.VK_CLIPS_YDL
     PROXY_TYPE: ClassVar[ProxyType] = ProxyType.RU
     COOKIES: ClassVar[bool] = False
+    # VK's file servers fail for minutes at a time («The downloaded file is
+    # empty», HTTP 500: 7 on prod on 24.11); the same video downloads later
+    RETRIES_ON_ERROR: ClassVar[int] = 1
     DIRECT_URL_DOWNLOAD: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

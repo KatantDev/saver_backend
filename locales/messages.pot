@@ -95,3 +95,9 @@ msgstr ""
 
 msgid "region blocked error"
 msgstr ""
+
+msgid "every quality too large"
+msgstr ""
+
+msgid "post without media"
+msgstr ""
