@@ -11,11 +11,6 @@ class TikTokYdlController(YtDlpController):
 
     SOURCE: ClassVar[SourceEnum] = SourceEnum.TIKTOK
     DIRECT_URL_DOWNLOAD: ClassVar[bool] = False
-    # This path works while tikwm.com is down, so it has to be patient: on the
-    # evening of 24.11 TikTok answered «No video formats found» for ordinary
-    # videos for an hour and 58 requests failed after one try each.
-    RETRIES_ON_ERROR: ClassVar[int] = 2
-    DIRECT_FALLBACK: ClassVar[bool] = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

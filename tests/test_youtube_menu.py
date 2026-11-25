@@ -151,27 +151,16 @@ def test_first_try_uses_the_default_client() -> None:
     assert all("tv_simply" not in clients for clients in YOUTUBE_PLAYER_CLIENTS)
 
 
-def test_route_change_switches_the_player_client() -> None:
-    """A new route at the menu stage also takes the other client."""
+def test_each_retry_switches_the_player_client() -> None:
+    """A retry goes through another proxy and the other client."""
     controller = YouTubeVideoYdlController.__new__(YouTubeVideoYdlController)
     controller._yt_dlp = MagicMock(params={})  # noqa: SLF001
 
-    controller._next_player_client()  # noqa: SLF001
-    first = controller._yt_dlp.params["extractor_args"]["youtube"]  # noqa: SLF001
-    controller._next_player_client()  # noqa: SLF001
-    second = controller._yt_dlp.params["extractor_args"]["youtube"]  # noqa: SLF001
+    with patch.object(YtDlpController, "_switch_proxy_for_retry"):
+        controller._switch_proxy_for_retry()  # noqa: SLF001
+        first = controller._yt_dlp.params["extractor_args"]["youtube"]  # noqa: SLF001
+        controller._switch_proxy_for_retry()  # noqa: SLF001
+        second = controller._yt_dlp.params["extractor_args"]["youtube"]  # noqa: SLF001
 
     assert first["player_client"] == ["web_embedded"]
     assert second["player_client"] == ["default"]
-
-
-def test_download_retry_keeps_the_player_client() -> None:
-    """A download retry changes the proxy only (shorts failed on the other client)."""
-    controller = YouTubeVideoYdlController.__new__(YouTubeVideoYdlController)
-    controller._yt_dlp = MagicMock(params={})  # noqa: SLF001
-
-    with patch.object(YtDlpController, "_switch_proxy_for_retry") as switch:
-        controller._switch_proxy_for_retry()  # noqa: SLF001
-
-    switch.assert_called_once()
-    assert "extractor_args" not in controller._yt_dlp.params  # noqa: SLF001

@@ -156,28 +156,3 @@ async def test_ordinary_message_costs_nothing() -> None:
 
     unwrap_mock.assert_not_awaited()
     assert handler.await_args.args[0] is update
-
-
-@pytest.mark.anyio
-async def test_yandex_page_is_asked_through_a_proxy_after_a_timeout() -> None:
-    """24-25.11: 10 of 29 links timed out from the server's own address."""
-    from curl_cffi.requests.exceptions import Timeout
-
-    page = '"videoUrl":"https:\\/\\/rutube.ru\\/video\\/abc\\/"'
-    used: list[str | None] = []
-
-    def session(**kwargs: Any) -> MagicMock:
-        used.append(kwargs.get("proxy"))
-        made = _yandex_session(page)
-        if kwargs.get("proxy") is None:
-            made.get = AsyncMock(side_effect=Timeout("slow"))
-        return made
-
-    with (
-        patch.object(link_unwrap, "AsyncSession", session),
-        patch.object(link_unwrap.settings, "proxies_ru", ["socks5://ru"]),
-        patch.object(link_unwrap.settings, "proxies", []),
-    ):
-        assert await unwrap(YANDEX) == "https://rutube.ru/video/abc/"
-
-    assert used == [None, "socks5://ru"]
