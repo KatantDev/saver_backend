@@ -29,6 +29,14 @@ class FileTooLargeError(DownloaderError):
         self.size = size
 
 
+class HostedElsewhereError(DownloaderError):
+    """The page only embeds a video that another site hosts."""
+
+    def __init__(self, url: str) -> None:
+        super().__init__(f"the video is hosted elsewhere: {url}")
+        self.url = url
+
+
 class TikTokYtDlpDownloaderError(YtDlpDownloaderError):
     """Exception for TikTok yt-dlp."""
 

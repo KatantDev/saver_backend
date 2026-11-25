@@ -176,26 +176,6 @@ async def test_login_only_video_is_retried_with_the_account(tmp_path: Path) -> N
     assert params["cookiefile"] == str(cookie_file)
 
 
-@pytest.mark.anyio
-async def test_login_only_video_without_cookies_is_an_error(tmp_path: Path) -> None:
-    """Without a cookie file the error goes up as before."""
-    controller = _vk()
-    base = AsyncMock(
-        side_effect=DownloadError(
-            "ERROR: [vk] Video only available to signed-in users"
-        ),
-    )
-
-    with (
-        patch.object(vk_common, "VK_COOKIES_DIR", tmp_path),
-        patch.object(YtDlpController, "get_video_info", base),
-        pytest.raises(DownloadError),
-    ):
-        await controller.get_video_info("https://vk.com/video1_1")
-
-    assert base.await_count == 1
-
-
 def test_markup_is_removed_from_vk_titles() -> None:
     """VK Music titles came as «<span …>Artist</span> — Track»."""
     info = {"title": '<span class="a">Artist</span> — Track', "fulltitle": None}

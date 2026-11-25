@@ -2,14 +2,16 @@ import asyncio
 import html
 import json
 import logging
+from typing import Any
 
 from taskiq import TaskiqDepends
 
-from saver_backend.entities.enums import ContentTypeEnum
+from saver_backend.entities.enums import ContentTypeEnum, SourceEnum
 from saver_backend.entities.resolution import Resolution
 from saver_backend.services import failure_log
 from saver_backend.services.cleanup.clear_old import CleanupService
 from saver_backend.services.downloaders.exceptions import (
+    HostedElsewhereError,
     TikTokYtDlpDownloaderError,
 )
 from saver_backend.services.downloaders.instagram_session import (
@@ -18,11 +20,15 @@ from saver_backend.services.downloaders.instagram_session import (
 )
 from saver_backend.services.downloaders.schema import (
     VideoDTO,
+    every_quality_is_oversized,
     is_live_error,
     is_live_stream,
 )
 from saver_backend.task_manager.state import DatabaseState, SaverState
 from saver_backend.tkq import broker
+
+# Sources with a quality menu that take over a video another site only embeds
+HANDED_OVER_SOURCES = frozenset({SourceEnum.YOUTUBE_VIDEO_YDL, SourceEnum.OK_YDL})
 
 
 async def _record_failure(
@@ -204,8 +210,79 @@ async def process_inline_query(
         await _record_failure(db, mark, resolution, telegram_id, "inline")
 
 
+async def _hand_over(
+    state: SaverState,
+    url: str,
+    resolution: Resolution,
+    telegram_id: int,
+    processing_message_id: int,
+) -> bool:
+    """
+    Pass a video VK only embeds to the source of the site that hosts it.
+
+    The request goes on with the same «processing» message, as if the user
+    had sent that link.
+
+    :param state: The application state.
+    :param url: Link to the video on its own site.
+    :param resolution: What the user sent.
+    :param telegram_id: The user's Telegram ID.
+    :param processing_message_id: The ID of the "processing" message.
+    :return: False when the bot has no source for that site.
+    """
+    target = state.source_resolver.resolve(url)
+    if target.source not in HANDED_OVER_SOURCES or target.source == resolution.source:
+        logging.error("No source for the embedded video %s", url)
+        return False
+    logging.info(
+        "%s is hosted elsewhere, handing over to %s; user_id=%s",
+        resolution.url,
+        target.url,
+        telegram_id,
+    )
+    await get_video_info.kiq(
+        resolution=target,
+        telegram_id=telegram_id,
+        processing_message_id=processing_message_id,
+    )
+    return True
+
+
+async def _answer_no_formats(
+    state: SaverState,
+    info_dict: dict[str, Any],
+    resolution: Resolution,
+    telegram_id: int,
+    processing_message_id: int,
+) -> None:
+    """
+    Say why the quality menu is empty: too long for Telegram, or no formats.
+
+    :param state: The application state.
+    :param info_dict: The dictionary from yt_dlp.extract_info.
+    :param resolution: What the user sent.
+    :param telegram_id: The user's Telegram ID.
+    :param processing_message_id: The ID of the "processing" message.
+    """
+    if every_quality_is_oversized(info_dict):
+        logging.info(
+            "Every quality of %s is over Telegram's limit; user_id=%s",
+            resolution.url,
+            telegram_id,
+        )
+        await state.telegram_bot_controller.edit_video_too_long(
+            telegram_id=telegram_id,
+            message_id=processing_message_id,
+        )
+        return
+    await state.telegram_bot_controller.edit_video_no_formats(
+        telegram_id=telegram_id,
+        message_id=processing_message_id,
+    )
+
+
 @broker.task()
-async def get_video_info(
+async def get_video_info(  # noqa: PLR0911
     resolution: Resolution,
     telegram_id: int,
     processing_message_id: int,
@@ -253,6 +330,12 @@ async def get_video_info(
         # Trying to get video info
         try:
             info_dict = await controller.get_video_info(url=resolution.url)
+        except HostedElsewhereError as moved:
+            if await _hand_over(
+                state, moved.url, resolution, telegram_id, processing_message_id
+            ):
+                return
+            info_dict = None
         except Exception as error:
             if is_live_error(error):
                 logging.info("Scheduled stream refused: %s; %s", resolution.url, error)
@@ -286,9 +369,8 @@ async def get_video_info(
         # Creating data transfer object from info dict
         video_dto = VideoDTO.from_yt_dlp(info=info_dict)
         if not video_dto.formats:
-            await state.telegram_bot_controller.edit_video_no_formats(
-                telegram_id=telegram_id,
-                message_id=processing_message_id,
+            await _answer_no_formats(
+                state, info_dict, resolution, telegram_id, processing_message_id
             )
             return
 

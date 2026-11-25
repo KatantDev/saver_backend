@@ -174,3 +174,9 @@ msgstr "This video is age-restricted: YouTube gives it only to signed-in account
 
 msgid "region blocked error"
 msgstr "YouTube does not give this video to the bot servers: it is closed for the countries they work from. It cannot be downloaded."
+
+msgid "every quality too large"
+msgstr "The video is too long: even the lowest quality is over 2 GB, and Telegram does not accept such files."
+
+msgid "post without media"
+msgstr "This post has no photos, videos or music: there is nothing to download."
