@@ -6,6 +6,7 @@ from yt_dlp import DownloadError
 from saver_backend.entities.enums import SourceEnum
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 from saver_backend.services.downloaders.youtube_video_ydl_source import (
+    YOUTUBE_CHUNK_SIZE,
     YOUTUBE_H264_FORMAT,
     YOUTUBE_PLAYER_CLIENTS,
     YouTubeClientRotationMixin,
@@ -33,6 +34,7 @@ class YouTubeShortsYdlController(YouTubeClientRotationMixin, YtDlpController):
             "merge_output_format": "mp4",
             "extractor_args": youtube_extractor_args(YOUTUBE_PLAYER_CLIENTS[0]),
             "remote_components": ["ejs:github"],
+            "http_chunk_size": YOUTUBE_CHUNK_SIZE,
         }
         self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
             format_spec=youtube_params["format"]
@@ -56,6 +58,8 @@ class YouTubeShortsYdlController(YouTubeClientRotationMixin, YtDlpController):
             # from the server (prod 21-23.11)
             if self._retry_from_server(e):
                 return await self.get_video_info(url)
+            if await self._answer_region_blocked(e, url):
+                return None
             if is_gone(e):
                 logging.info("YouTube short is closed or gone: %s (%s)", url, e)
                 await self.delete_processing_message()

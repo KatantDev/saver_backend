@@ -171,3 +171,6 @@ msgstr "The video is not ready yet. Repeat the request in a few seconds."
 
 msgid "age restricted error"
 msgstr "This video is age-restricted: YouTube gives it only to signed-in accounts, so it cannot be downloaded."
+
+msgid "region blocked error"
+msgstr "YouTube does not give this video to the bot servers: it is closed for the countries they work from. It cannot be downloaded."

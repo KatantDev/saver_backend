@@ -9,6 +9,7 @@ from yt_dlp.utils import DownloadError
 
 from saver_backend.services.downloaders import ydl_source
 from saver_backend.services.downloaders.schema import VideoDTO, is_live_stream
+from saver_backend.services.downloaders.tiktok_ydl_source import TikTokYdlController
 from saver_backend.services.downloaders.ydl_source import (
     MAX_CONNECTION_RETRIES,
     YtDlpController,
@@ -23,6 +24,7 @@ from saver_backend.services.downloaders.youtube_video_ydl_source import (
     is_age_restricted,
     is_bot_check,
     is_gone,
+    is_region_blocked,
     is_region_refusal,
 )
 
@@ -203,18 +205,6 @@ async def test_country_block_through_a_proxy_is_retried_from_the_server() -> Non
 
 
 @pytest.mark.anyio
-async def test_country_block_from_the_server_is_an_error() -> None:
-    """Blocked in the server's country too: the error goes up as before."""
-    controller = _youtube(YouTubeVideoYdlController, "")
-    controller._yt_dlp.extract_info = MagicMock(side_effect=GEO)
-
-    with pytest.raises(DownloadError):
-        await controller.get_video_info("https://youtu.be/afedl8HylCY")
-
-    assert controller._yt_dlp.extract_info.call_count == 1
-
-
-@pytest.mark.anyio
 async def test_private_video_is_answered_private_or_deleted() -> None:
     """A closed video gets its own answer instead of the general error."""
     controller = _youtube(YouTubeVideoYdlController, "")
@@ -272,20 +262,75 @@ async def test_short_gone_everywhere_is_not_found() -> None:
     send.assert_awaited_once()
 
 
-def test_client_is_kept_while_a_menu_quality_is_downloaded() -> None:
-    """The retry of a picked quality stays on the client that built the menu."""
-    controller = _youtube(YouTubeVideoYdlController, "socks5://a")
+@pytest.mark.parametrize("cls", [YouTubeVideoYdlController, YouTubeShortsYdlController])
+@pytest.mark.parametrize("selected", ["137+140-0", None])
+def test_client_is_kept_on_download_retries(cls: Any, selected: str | None) -> None:
+    """Another client has other format ids: shorts failed on the second attempt."""
+    controller = _youtube(cls, "socks5://a")
     controller._proxies = ["socks5://b"]
     controller._set_proxy = MagicMock()
     controller._next_player_client = MagicMock()
+    controller._selected_format_id = selected
 
-    controller._selected_format_id = "137+140-0"
     controller._switch_proxy_for_retry()
+
+    controller._set_proxy.assert_called_once()
     controller._next_player_client.assert_not_called()
 
-    controller._selected_format_id = None
-    controller._switch_proxy_for_retry()
-    controller._next_player_client.assert_called_once()
+
+NOT_AVAILABLE = DownloadError(
+    "ERROR: [youtube] 1V_jkAt7LXo: This video is not available"
+)
+
+
+def test_plain_unavailable_is_a_country_block_not_a_removed_video() -> None:
+    """24-25.11: 20 public videos were answered «private or deleted»."""
+    assert is_region_blocked(NOT_AVAILABLE)
+    assert is_region_blocked(GEO)
+    assert not is_gone(NOT_AVAILABLE)
+    assert not is_region_blocked(CLAIMED)
+    assert not is_region_blocked(PRIVATE)
+    assert not is_region_blocked(AGE)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("refusal", [NOT_AVAILABLE, GEO])
+async def test_video_closed_for_our_countries_gets_its_own_answer(
+    refusal: DownloadError,
+) -> None:
+    """Refused from the server too: the user is told why, once, without retries."""
+    controller = _youtube(YouTubeVideoYdlController, "")
+    controller._telegram_bot_controller.send_region_blocked_error = AsyncMock()
+    controller._yt_dlp.extract_info = MagicMock(side_effect=refusal)
+
+    result = await controller.get_video_info("https://youtu.be/1V_jkAt7LXo")
+
+    assert result is None
+    assert controller._yt_dlp.extract_info.call_count == 1
+    controller._telegram_bot_controller.send_region_blocked_error.assert_awaited_once()
+    send = controller._telegram_bot_controller.send_content_not_found_error
+    send.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_short_closed_for_our_countries_gets_its_own_answer() -> None:
+    """The same for shorts, after the try from the server."""
+    controller = _youtube(YouTubeShortsYdlController, "socks5://ru")
+    controller._telegram_bot_controller.send_region_blocked_error = AsyncMock()
+    base = AsyncMock(side_effect=[NOT_AVAILABLE, NOT_AVAILABLE])
+
+    with patch.object(YtDlpController, "get_video_info", base):
+        result = await controller.get_video_info("https://youtube.com/shorts/x")
+
+    assert result is None
+    assert base.await_count == 2
+    controller._telegram_bot_controller.send_region_blocked_error.assert_awaited_once()
+
+
+def test_tiktok_fallback_tries_other_routes() -> None:
+    """The path used while tikwm is down does not give up after one try."""
+    assert TikTokYdlController.RETRIES_ON_ERROR == 2
+    assert TikTokYdlController.DIRECT_FALLBACK is True
 
 
 def test_finished_broadcast_is_not_live() -> None:
