@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -90,14 +91,31 @@ GONE_HINTS = (
     "video unavailable",
     "has been removed",
     "has been terminated",
-    "video is not available",
 )
+# «This video is not available», with nothing after it, is a country block
+# without the list of countries: official channels of cartoons and films give
+# it from the server's address and through every proxy alike. On 24-25.11 it
+# was taken for a removed video and 20 users were told «private or deleted»
+# about public videos.
+PLAIN_UNAVAILABLE_RE = re.compile(r"this video is not available\s*$", re.IGNORECASE)
+# Size of one request for a part of the file. YouTube slows a long single
+# request down until it times out («Read timed out» after 10 retries, 23
+# downloads lost on the evening of 24.11); requests by parts are not slowed.
+YOUTUBE_CHUNK_SIZE = 10 * 1024 * 1024
 
 
 def is_region_refusal(error: BaseException) -> bool:
     """Whether the refusal may depend on the country of the address."""
     text = str(error).lower()
     return any(hint in text for hint in REGION_REFUSAL_HINTS)
+
+
+def is_region_blocked(error: BaseException) -> bool:
+    """Whether YouTube keeps the video from the countries our addresses are in."""
+    text = str(error).strip()
+    return "available in your country" in text.lower() or bool(
+        PLAIN_UNAVAILABLE_RE.search(text),
+    )
 
 
 def is_gone(error: BaseException) -> bool:
@@ -212,13 +230,28 @@ class YouTubeClientRotationMixin:
         self._yt_dlp.params["extractor_args"] = youtube_extractor_args(clients)
 
     def _switch_proxy_for_retry(self) -> None:
+        # The client stays: another one has other format ids («Requested
+        # format is not available» on the second attempt, for a menu quality
+        # and for shorts alike), and the usual reason of a failed download is
+        # a passing 403 or a timeout, not the client.
         super()._switch_proxy_for_retry()  # type: ignore[misc]
-        if getattr(self, "_selected_format_id", None):
-            # The quality was picked from the menu of this client; another
-            # client has other format ids, and the usual reason of a failed
-            # download is a passing 403, not the client.
-            return
-        self._next_player_client()
+
+    async def _answer_region_blocked(self, error: BaseException, url: str) -> bool:
+        """
+        Tell the user the video is closed for the countries of our addresses.
+
+        :param error: The refusal YouTube gave from the last route.
+        :param url: Link of the video.
+        :return: True when the user was answered.
+        """
+        if not is_region_blocked(error):
+            return False
+        logging.error("YouTube video is closed for our countries: %s (%s)", url, error)
+        await self.delete_processing_message()  # type: ignore[attr-defined]
+        await self._telegram_bot_controller.send_region_blocked_error(
+            telegram_id=self._telegram_id,  # type: ignore[attr-defined]
+        )
+        return True
 
     def _retry_from_server(self, error: BaseException) -> bool:
         """
@@ -370,6 +403,7 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
             "merge_output_format": "mp4",
             "extractor_args": youtube_extractor_args(YOUTUBE_PLAYER_CLIENTS[0]),
             "remote_components": ["ejs:github"],
+            "http_chunk_size": YOUTUBE_CHUNK_SIZE,
         }
         self._cookie_fallback = False
         self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
@@ -447,7 +481,10 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
 
         return info_dict
 
-    async def get_video_info(self, url: str) -> dict[str, Any] | None:
+    async def get_video_info(  # noqa: PLR0911 - one return per YouTube answer
+        self,
+        url: str,
+    ) -> dict[str, Any] | None:
         """
         Get video information without downloading.
 
@@ -499,6 +536,8 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
                     return await self.get_video_info(url=url)
             if self._retry_from_server(e):
                 return await self.get_video_info(url=url)
+            if await self._answer_region_blocked(e, url):
+                return None
             if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e) or is_gone(e):
                 logging.info("YouTube video is closed or gone: %s (%s)", url, e)
                 await self.delete_processing_message()

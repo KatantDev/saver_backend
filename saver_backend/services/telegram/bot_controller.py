@@ -1580,6 +1580,24 @@ class TelegramBotController:
         )
         await self._send(coro)
 
+    async def send_region_blocked_error(
+        self,
+        telegram_id: int,
+        language: str | None = None,
+    ) -> None:
+        """
+        Tell the user the site keeps the video from the bot's servers.
+
+        :param telegram_id: Telegram ID of the user.
+        :param language: Language for the message.
+        """
+        mark_failed("region_blocked")
+        coro = self._bot.send_message(
+            chat_id=telegram_id,
+            text=_("region blocked error", locale=language or self.language),
+        )
+        await self._send(coro)
+
     async def send_age_restricted_error(
         self,
         telegram_id: int,
