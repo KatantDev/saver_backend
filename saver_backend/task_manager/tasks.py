@@ -131,8 +131,10 @@ async def save_video(
 
 
 # Telegram refuses an inline answer that comes later than about ten seconds
-# after the query; before that the user is told to repeat the query
-INLINE_ANSWER_DEADLINE = 7
+# after the query; before that the user is told to repeat the query. By the
+# prod log, answers were accepted up to the ninth second, so 7 seconds turned
+# away requests that would have made it (32 a day).
+INLINE_ANSWER_DEADLINE = 8.5
 
 
 @broker.task(

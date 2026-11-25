@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -90,14 +91,30 @@ GONE_HINTS = (
     "video unavailable",
     "has been removed",
     "has been terminated",
-    "video is not available",
 )
+# «This video is not available», with nothing after it, is not about the video:
+# YouTube gives it to a session it does not like, and the same video opens a
+# moment later. On 24-25.11 it was taken for a removed video and 20 users were
+# told «private or deleted» about public videos.
+PASSING_REFUSAL_RE = re.compile(r"this video is not available\s*$", re.IGNORECASE)
+# Fresh sessions tried for such a refusal
+MAX_PASSING_REFUSAL_RETRIES = 2
+PASSING_REFUSAL_PAUSE = 1.0
+# Size of one request for a part of the file. YouTube slows a long single
+# request down until it times out («Read timed out» after 10 retries, 23
+# downloads lost on the evening of 24.11); requests by parts are not slowed.
+YOUTUBE_CHUNK_SIZE = 10 * 1024 * 1024
 
 
 def is_region_refusal(error: BaseException) -> bool:
     """Whether the refusal may depend on the country of the address."""
     text = str(error).lower()
     return any(hint in text for hint in REGION_REFUSAL_HINTS)
+
+
+def is_passing_refusal(error: BaseException) -> bool:
+    """Whether YouTube refused this session, not the video."""
+    return bool(PASSING_REFUSAL_RE.search(str(error).strip()))
 
 
 def is_gone(error: BaseException) -> bool:
@@ -211,14 +228,37 @@ class YouTubeClientRotationMixin:
         clients = YOUTUBE_PLAYER_CLIENTS[self._client_index]
         self._yt_dlp.params["extractor_args"] = youtube_extractor_args(clients)
 
+    _passing_refusals: int = 0
+
     def _switch_proxy_for_retry(self) -> None:
+        # The client stays: another one has other format ids («Requested
+        # format is not available» on the second attempt, for a menu quality
+        # and for shorts alike), and the usual reason of a failed download is
+        # a passing 403 or a timeout, not the client.
         super()._switch_proxy_for_retry()  # type: ignore[misc]
-        if getattr(self, "_selected_format_id", None):
-            # The quality was picked from the menu of this client; another
-            # client has other format ids, and the usual reason of a failed
-            # download is a passing 403, not the client.
-            return
+
+    async def _retry_passing_refusal(self, error: BaseException) -> bool:
+        """
+        Start a fresh session when YouTube refused this one.
+
+        :param error: The refusal.
+        :return: True when the request should be repeated.
+        """
+        if not is_passing_refusal(error):
+            return False
+        if self._passing_refusals >= MAX_PASSING_REFUSAL_RETRIES:
+            return False
+        self._passing_refusals += 1
+        logging.warning(
+            "YouTube refused the session (%s), fresh session %s of %s",
+            error,
+            self._passing_refusals,
+            MAX_PASSING_REFUSAL_RETRIES,
+        )
         self._next_player_client()
+        self._yt_dlp = self._create_yt_dlp(self._yt_dlp.params)  # type: ignore[attr-defined]
+        await asyncio.sleep(PASSING_REFUSAL_PAUSE)
+        return True
 
     def _retry_from_server(self, error: BaseException) -> bool:
         """
@@ -370,6 +410,7 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
             "merge_output_format": "mp4",
             "extractor_args": youtube_extractor_args(YOUTUBE_PLAYER_CLIENTS[0]),
             "remote_components": ["ejs:github"],
+            "http_chunk_size": YOUTUBE_CHUNK_SIZE,
         }
         self._cookie_fallback = False
         self._yt_dlp.format_selector = self._yt_dlp.build_format_selector(
@@ -447,7 +488,10 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
 
         return info_dict
 
-    async def get_video_info(self, url: str) -> dict[str, Any] | None:
+    async def get_video_info(  # noqa: PLR0911 - one return per YouTube answer
+        self,
+        url: str,
+    ) -> dict[str, Any] | None:
         """
         Get video information without downloading.
 
@@ -498,6 +542,8 @@ class YouTubeVideoYdlController(YouTubeClientRotationMixin, YtDlpController):
                 if self._next_route():
                     return await self.get_video_info(url=url)
             if self._retry_from_server(e):
+                return await self.get_video_info(url=url)
+            if await self._retry_passing_refusal(e):
                 return await self.get_video_info(url=url)
             if "Unsupported URL" in str(e) or "HTTP Error 404" in str(e) or is_gone(e):
                 logging.info("YouTube video is closed or gone: %s (%s)", url, e)
