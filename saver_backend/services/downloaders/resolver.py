@@ -858,6 +858,8 @@ class OkDetector(Detector):
     )
     REGEX: ClassVar[dict[str, re.Pattern[str]]] = {
         "video": re.compile(r"^/video/(?P<code>\d+)"),
+        # The player other sites embed; a video VK embeds opens only this way
+        "embed": re.compile(r"^/videoembed/(?P<code>\d+)"),
     }
 
     def match(self, url: str) -> Optional[Resolution]:

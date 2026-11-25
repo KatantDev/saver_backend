@@ -87,6 +87,38 @@ async def test_page_without_player_is_asked_again() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "ERROR: [Odnoklassniki] 1862550424188: The video is blocked",
+        (
+            "ERROR: [Odnoklassniki] 3577707498219: The author of this video"
+            " has not been found or is blocked"
+        ),
+    ],
+)
+async def test_blocked_video_is_private_or_deleted(text: str) -> None:
+    """ok.ru says the video is gone: one answer, no five tries for a player."""
+    source = MagicMock()
+    source.SOURCE = OkYdlController.SOURCE
+    source._telegram_id = 1  # noqa: SLF001
+    source.delete_processing_message = AsyncMock()
+    send = AsyncMock()
+    source._telegram_bot_controller.send_content_not_found_error = send  # noqa: SLF001
+
+    with patch.object(
+        YtDlpController,
+        "get_video_info",
+        AsyncMock(side_effect=DownloadError(text)),
+    ) as read:
+        info = await OkYdlController.get_video_info(source, URL)
+
+    assert info is None
+    assert read.await_count == 1
+    send.assert_awaited_once()
+
+
+@pytest.mark.anyio
 async def test_other_errors_and_the_last_attempt_are_not_hidden() -> None:
     """A different error is raised at once; the third player error too."""
     source = MagicMock()

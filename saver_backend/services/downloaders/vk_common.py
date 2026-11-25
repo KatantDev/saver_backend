@@ -45,7 +45,7 @@ YOUTUBE_ERROR_RE = re.compile(r"\[youtube\] ([\w-]{11}):")
 # Sites whose videos VK only embeds and the bot has a source of its own for
 EMBEDDED_HOSTS = {
     "Youtube": "https://youtu.be/{id}",
-    "Odnoklassniki": "https://ok.ru/video/{id}",
+    "Odnoklassniki": "https://ok.ru/videoembed/{id}",
 }
 TAG_RE = re.compile(r"<[^>]+>")
 
