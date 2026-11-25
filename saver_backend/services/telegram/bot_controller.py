@@ -223,6 +223,37 @@ def _cover_is_to_blame(cover: Any, error: TelegramBadRequest) -> bool:
     return "IMAGE_PROCESS_FAILED" in (error.message or "")
 
 
+# How Telegram says it could not download a link given instead of a file
+TELEGRAM_FETCH_FAILURES = (
+    "webpage_curl_failed",
+    "webpage_media_empty",
+    "failed to get http url content",
+    "wrong type of the web page content",
+)
+
+
+def _telegram_could_not_fetch(error: TelegramBadRequest) -> bool:
+    """Whether Telegram failed to download a link it was given as a file."""
+    message = (error.message or "").lower()
+    return any(text in message for text in TELEGRAM_FETCH_FAILURES)
+
+
+def _web_link(file: PhotoDTO | VideoDTO) -> str | None:
+    """Web link the file goes to Telegram by; None for a local file or a file id."""
+    link = file.media_url if isinstance(file, PhotoDTO) else file.direct_download_url
+    return link if link and link.startswith("http") else None
+
+
+def _has_links(chunk: Sequence[PhotoDTO | VideoDTO]) -> bool:
+    """Whether a file of the chunk goes to Telegram as a web link."""
+    return any(_web_link(file) for file in chunk)
+
+
+async def _raise(error: Exception) -> None:
+    """Raise inside a coroutine, so the common send wrapper reports the error."""
+    raise error
+
+
 async def _send_video_cover_optional(
     bot: Bot,
     video_input: FSInputFile | URLInputFile,
@@ -802,21 +833,62 @@ class TelegramBotController:
         """
         Build a MediaGroup from a chunk of files and send it.
 
+        Links go to Telegram as they are. When Telegram cannot fetch one of
+        them (WEBPAGE_CURL_FAILED on a VK photo, prod 25.11), the same files
+        are downloaded by the bot and uploaded.
+
         :param chunk: A list of PhotoDTO or VideoDTO objects (max 10).
         :param chat_id: The chat ID to send the media group to.
         :param caption: The caption for the media group (if any).
         """
+        media = self._media_group(chunk, caption, upload_links=False)
+        if not media:
+            return
+        try:
+            await self._bot.send_media_group(chat_id=chat_id, media=media)
+        except TelegramBadRequest as e:
+            if not _telegram_could_not_fetch(e) or not _has_links(chunk):
+                await self._send(_raise(e))
+                return
+            logging.info("Telegram could not fetch a link of the group (%s)", e)
+        except Exception as e:
+            await self._send(_raise(e))
+            return
+        else:
+            return
+        media = self._media_group(chunk, caption, upload_links=True)
+        await self._send(self._bot.send_media_group(chat_id=chat_id, media=media))
+
+    @staticmethod
+    def _media_group(
+        chunk: Sequence[PhotoDTO | VideoDTO],
+        caption: str | None,
+        upload_links: bool,
+    ) -> list[MediaUnion]:
+        """
+        Put files of one chunk into a media group.
+
+        :param chunk: A list of PhotoDTO or VideoDTO objects (max 10).
+        :param caption: The caption for the media group (if any).
+        :param upload_links: Download links here and upload the files instead
+            of leaving the download to Telegram.
+        :return: Items for send_media_group, empty when nothing can be sent.
+        """
         media_group = MediaGroupBuilder(caption=caption)
         for file in chunk:
+            link = (
+                file.media_url
+                if isinstance(file, PhotoDTO)
+                else file.direct_download_url
+            )
+            web_link = _web_link(file)
             media_input: str | FSInputFile | URLInputFile | None = None
-            if isinstance(file, PhotoDTO):
-                media_input = file.media_url or (
-                    FSInputFile(path=file.path) if file.path else None
-                )
-            elif isinstance(file, VideoDTO):
-                media_input = file.direct_download_url or (
-                    FSInputFile(path=file.path) if file.path else None
-                )
+            if web_link and upload_links:
+                media_input = URLInputFile(url=web_link, timeout=60)
+            elif link:
+                media_input = link
+            elif file.path:
+                media_input = FSInputFile(path=file.path)
 
             if not media_input:
                 continue
@@ -834,13 +906,7 @@ class TelegramBotController:
                     ),
                     supports_streaming=True,
                 )
-
-        if media_group.build():
-            coro = self._bot.send_media_group(
-                chat_id=chat_id,
-                media=cast(list[MediaUnion], media_group.build()),
-            )
-            await self._send(coro)
+        return cast(list[MediaUnion], media_group.build())
 
     async def send_finish_downloading_group(
         self,
@@ -1566,14 +1632,17 @@ class TelegramBotController:
         self,
         telegram_id: int,
         language: str | None = None,
+        reason: str = "not_found",
     ) -> None:
         """
         Send a message indicating the content is private, deleted or not found.
 
         :param telegram_id: Telegram ID of the user.
         :param language: Language for the message.
+        :param reason: Why, for the failure journal: «login_required» tells
+            closed-for-guests content from deleted content.
         """
-        mark_failed("not_found")
+        mark_failed(reason)
         coro = self._bot.send_message(
             chat_id=telegram_id,
             text=_("content private or not found", locale=language or self.language),
@@ -1721,6 +1790,45 @@ class TelegramBotController:
             message_id=message_id,
             chat_id=telegram_id,
             text=_("video info without formats", locale=language or self.language),
+        )
+        await self._send(coro)
+
+    async def edit_video_too_long(
+        self,
+        telegram_id: int,
+        message_id: int,
+        language: str | None = None,
+    ) -> None:
+        """
+        Tell the user every quality of the video is over Telegram's limit.
+
+        :param telegram_id: Telegram ID of the user.
+        :param message_id: Message ID.
+        :param language: Language for message.
+        """
+        mark_failed("file_too_large")
+        coro = self._bot.edit_message_text(
+            message_id=message_id,
+            chat_id=telegram_id,
+            text=_("every quality too large", locale=language or self.language),
+        )
+        await self._send(coro)
+
+    async def send_post_without_media(
+        self,
+        telegram_id: int,
+        language: str | None = None,
+    ) -> None:
+        """
+        Tell the user the post has nothing to download: only text or links.
+
+        :param telegram_id: Telegram ID of the user.
+        :param language: Language for the message.
+        """
+        mark_failed("no_media")
+        coro = self._bot.send_message(
+            chat_id=telegram_id,
+            text=_("post without media", locale=language or self.language),
         )
         await self._send(coro)
 

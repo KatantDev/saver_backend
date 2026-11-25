@@ -577,6 +577,7 @@ class VKVideoDetector(Detector):
     _CODE_RE: ClassVar[re.Pattern[str]] = re.compile(r"video-?\d+_\d+")
     # A finished broadcast keeps its «live» link and is an ordinary video
     _LIVE_RE: ClassVar[re.Pattern[str]] = re.compile(r"^/live(-?\d+_\d+)/?$")
+    _EMBED_OWNER_RE: ClassVar[re.Pattern[str]] = re.compile(r"^-?\d+$")
 
     def match(self, url: str) -> Optional[Resolution]:
         if not self._host_in(url, *self.HOSTS):
@@ -593,6 +594,13 @@ class VKVideoDetector(Detector):
         live = self._LIVE_RE.match(parsed.path)
         if live:
             url = f"{parsed.scheme}://{parsed.netloc}/video{live.group(1)}"
+        if parsed.path == "/video_ext.php":
+            # Link to the player from a site that embeds the video
+            query = parse_qs(parsed.query)
+            owner = (query.get("oid") or [""])[0]
+            video = (query.get("id") or [""])[0]
+            if self._EMBED_OWNER_RE.match(owner) and video.isdigit():
+                url = f"{parsed.scheme}://{parsed.netloc}/video{owner}_{video}"
         return _with_access_key(self._match_regex(url), parsed.query, "list")
 
 
