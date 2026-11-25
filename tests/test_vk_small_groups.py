@@ -22,7 +22,7 @@ from saver_backend.services.downloaders.vk_common import hosted_elsewhere
 from saver_backend.services.downloaders.vk_video_ydl_source import VKVideoYdlController
 from saver_backend.services.downloaders.vk_ydl_patch import (
     HOSTED_ELSEWHERE_MARK,
-    embedded_ok_video,
+    embedded_video,
 )
 from saver_backend.services.downloaders.ydl_source import YtDlpController
 from saver_backend.services.telegram.bot_controller import TelegramBotController
@@ -185,7 +185,7 @@ async def test_embedded_video_is_handed_to_its_own_site() -> None:
     ("extractor", "expected"),
     [
         ("Youtube", "https://youtu.be/abc"),
-        ("Odnoklassniki", "https://ok.ru/video/abc"),
+        ("Odnoklassniki", "https://ok.ru/videoembed/abc"),
     ],
 )
 async def test_embedded_video_read_through_vk_is_handed_over_too(
@@ -221,7 +221,18 @@ def test_ok_video_behind_a_page_without_a_player_is_found() -> None:
     frame = '<iframe src="https:\\/\\/ok.ru\\/videoembed\\/3577707498219?autoplay=1">'
     payload = ["0", frame, {"mvData": {"title": "t"}, "player_unavailable": 0}]
 
-    assert embedded_ok_video(payload) == "https://ok.ru/video/3577707498219"
+    assert embedded_video(payload) == "https://ok.ru/videoembed/3577707498219"
+
+
+def test_youtube_video_behind_a_vk_page_is_found() -> None:
+    """VK marks the player as YouTube's and gives the id of the video."""
+    player = {
+        "type": "youtube",
+        "params": [{"extra": "21", "extra_data": "if7RxBhgEj4"}],
+    }
+    payload = ["0", "<div></div>", {"mvData": {"title": "t"}, "player": player}]
+
+    assert embedded_video(payload) == "https://youtu.be/if7RxBhgEj4"
 
 
 @pytest.mark.parametrize(
@@ -233,6 +244,15 @@ def test_ok_video_behind_a_page_without_a_player_is_found() -> None:
             "see https://ok.ru/videoembed/1234567",
             {"mvData": {}, "player": {"params": [{"hls": "https://vk/x.m3u8"}]}},
         ],
+        # VK's own player: «extra_data» there is a channel, not a YouTube id
+        [
+            "0",
+            "<div></div>",
+            {
+                "mvData": {},
+                "player": {"type": "vk", "params": [{"extra_data": "channel1234"}]},
+            },
+        ],
         # not an answer to «show this video»
         ["0", "ok.ru/videoembed/1234567", {"playlist": []}],
         ["0", "ok.ru/videoembed/1234567"],
@@ -243,7 +263,7 @@ def test_ok_video_behind_a_page_without_a_player_is_found() -> None:
 )
 def test_other_vk_answers_are_not_taken_for_an_embed(payload: Any) -> None:
     """Only a page without a player and with an ok.ru frame is an embed."""
-    assert embedded_ok_video(payload) is None
+    assert embedded_video(payload) is None
 
 
 def _format(height: int, kbps: int, protocol: str = "m3u8_native") -> dict[str, Any]:
@@ -328,6 +348,15 @@ def test_link_to_the_vk_player_is_a_video(url: str, code: str) -> None:
 def test_player_link_without_a_video_is_not_supported(url: str) -> None:
     """A broken player link is refused at once."""
     assert SourceResolver().resolve(url).source != SourceEnum.VK_VIDEO_YDL
+
+
+def test_ok_player_link_is_a_video() -> None:
+    """The link a VK page embeds: ok.ru opens such a video only in the player."""
+    resolution = SourceResolver().resolve("https://ok.ru/videoembed/3577707498219")
+
+    assert resolution.source == SourceEnum.OK_YDL
+    assert resolution.metadata["code"] == "3577707498219"
+    assert resolution.url == "https://ok.ru/videoembed/3577707498219"
 
 
 def _wall() -> Any:

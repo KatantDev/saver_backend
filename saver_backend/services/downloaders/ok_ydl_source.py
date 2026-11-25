@@ -13,6 +13,11 @@ from saver_backend.services.downloaders.ydl_source import YtDlpController
 # About one fresh session in ten lands on a login form instead of the video
 # and keeps getting it, so a few more sessions are tried (7 of 60 on prod).
 PLAYER_ERROR = "Unable to extract player"
+# What ok.ru says about a video nobody can watch any more
+OK_GONE_HINTS = (
+    "the video is blocked",
+    "has not been found or is blocked",
+)
 PLAYER_ATTEMPTS = 5
 PLAYER_RETRY_PAUSE = 1.0
 
@@ -78,6 +83,13 @@ class OkYdlController(YtDlpController):
             try:
                 return await YtDlpController.get_video_info(self, url)
             except DownloadError as e:
+                if any(hint in str(e).lower() for hint in OK_GONE_HINTS):
+                    logging.info("ok.ru video is blocked or gone: %s (%s)", url, e)
+                    await self.delete_processing_message()
+                    await self._telegram_bot_controller.send_content_not_found_error(
+                        telegram_id=self._telegram_id,
+                    )
+                    return None
                 if PLAYER_ERROR not in str(e) or attempt == PLAYER_ATTEMPTS:
                     raise
                 logging.warning(
