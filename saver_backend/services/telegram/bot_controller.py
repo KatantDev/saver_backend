@@ -202,6 +202,17 @@ async def _download_to_temp_file(url: str, timeout: float = 600) -> Path:
     return path
 
 
+# Least seconds between two progress edits in one chat, whatever the number
+# of downloads going on in it
+PROGRESS_EDIT_INTERVAL = 1.5
+PROGRESS_CHATS_REMEMBERED = 5000
+
+
+# Seconds Telegram gets to fetch a video sent by link before the bot downloads
+# and uploads the file itself; 99 of 100 such sends end within 30 seconds
+URL_FETCH_TIMEOUT = 90
+
+
 # How long a closed inline query is remembered; its download ends much sooner
 INLINE_CLOSED_MEMORY_SECONDS = 15 * 60
 
@@ -229,6 +240,8 @@ TELEGRAM_FETCH_FAILURES = (
     "webpage_media_empty",
     "failed to get http url content",
     "wrong type of the web page content",
+    # A story or highlight whose link Telegram could not open (prod 25.11)
+    "wrong file identifier/http url specified",
 )
 
 
@@ -304,7 +317,10 @@ class TelegramBotController:
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
             timeout=180,
         )
-        self._session.middleware(RetryAfterMiddleware())
+        self._flood_control = RetryAfterMiddleware()
+        # chat id -> monotonic time of its last progress edit
+        self._progress_edited_at: dict[int, float] = {}
+        self._session.middleware(self._flood_control)
         self._session.middleware(DeliveryMiddleware())
         self._bot = Bot(
             session=self._session,
@@ -659,6 +675,12 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param percent: Percent of the video.
         """
+        if self._flood_control.pause_left(telegram_id):
+            # Telegram asked to wait in this chat: the progress line is not
+            # worth a request that would push the file itself further back
+            return
+        if not self._progress_edit_is_due(telegram_id):
+            return
         try:
             await self._bot.edit_message_text(
                 chat_id=telegram_id,
@@ -672,6 +694,26 @@ class TelegramBotController:
             # replaced already. Not logged as an error, otherwise this text
             # replaces the real reason of a failed request in the journal.
             logging.debug("Progress message was not updated: %s", e)
+
+    def _progress_edit_is_due(self, telegram_id: int) -> bool:
+        """
+        Whether the chat may get one more progress edit now.
+
+        Flood control counts requests per chat. Several downloads of one user
+        edit their progress lines at the same moments (eight at once on prod on
+        25.11), Telegram pauses the chat and then refuses the files too.
+
+        :param telegram_id: Chat the progress line is in.
+        :return: False when the chat got a progress edit a moment ago.
+        """
+        now = time.monotonic()
+        last = self._progress_edited_at.get(telegram_id)
+        if last is not None and now - last < PROGRESS_EDIT_INTERVAL:
+            return False
+        if len(self._progress_edited_at) > PROGRESS_CHATS_REMEMBERED:
+            self._progress_edited_at.clear()
+        self._progress_edited_at[telegram_id] = now
+        return True
 
     def _inline_is_closed(self, inline_query_id: str) -> bool:
         """
@@ -1367,7 +1409,20 @@ class TelegramBotController:
             if sent is not None:
                 return sent
         try:
-            return await self._bot.send_video(video=video_input, **kwargs)
+            return await self._bot.send_video(
+                video=video_input,
+                **kwargs,
+                # A link is fetched by Telegram itself, normally in seconds
+                request_timeout=(
+                    URL_FETCH_TIMEOUT if isinstance(video_input, str) else None
+                ),
+            )
+        except TelegramNetworkError as e:
+            # Telegram hung on the link: a TikTok video waited 10 minutes for
+            # an answer on prod on 25.11 while the same file downloads in seconds
+            if not isinstance(video_input, str) or not video.direct_download_url:
+                raise
+            logging.warning("No answer for a video sent by link (%s)", e)
         except TelegramBadRequest as e:
             if not isinstance(video_input, str) and _cover_is_to_blame(
                 kwargs.get("cover"),
