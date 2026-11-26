@@ -21,6 +21,7 @@ def _controller() -> TelegramBotController:
     controller._bot.default.parse_mode = "HTML"  # noqa: SLF001
     controller._closed_inline_queries = {}  # noqa: SLF001
     controller._flood_control = RetryAfterMiddleware()  # noqa: SLF001
+    controller._progress_edited_at = {}  # noqa: SLF001
     return controller
 
 

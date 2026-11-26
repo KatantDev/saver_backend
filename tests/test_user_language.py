@@ -99,6 +99,7 @@ async def test_download_progress_is_translated() -> None:
     controller.language = "ru"
     controller._send = AsyncMock()  # noqa: SLF001
     controller._flood_control.pause_left.return_value = 0.0  # noqa: SLF001
+    controller._progress_edit_is_due.return_value = True  # noqa: SLF001
     seen: list[tuple[str, str | None]] = []
 
     def fake_gettext(key: str, locale: str | None = None) -> str:

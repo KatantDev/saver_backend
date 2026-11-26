@@ -12,6 +12,7 @@ from saver_backend.services.downloaders.instagram_indown_source import (
 from saver_backend.services.downloaders.schema import VideoDTO
 from saver_backend.services.telegram import bot_controller as bot_controller_module
 from saver_backend.services.telegram.bot_controller import (
+    PROGRESS_EDIT_INTERVAL,
     URL_FETCH_TIMEOUT,
     TelegramBotController,
     _telegram_could_not_fetch,
@@ -140,9 +141,24 @@ async def test_progress_line_is_skipped_while_the_chat_is_paused() -> None:
     controller._bot.edit_message_text.assert_not_awaited()  # noqa: SLF001
 
     controller._flood_control.pause_left.return_value = 0.0  # noqa: SLF001
+    controller._progress_edit_is_due.return_value = True  # noqa: SLF001
     with patch.object(bot_controller_module, "_", lambda text, **_kwargs: text):
         await TelegramBotController.send_update_downloading(controller, 1, 2, 50)
     controller._bot.edit_message_text.assert_awaited_once()  # noqa: SLF001
+
+
+def test_progress_edits_of_one_chat_are_spaced() -> None:
+    """Eight downloads of one user edited their progress lines at once on prod."""
+    controller = MagicMock()
+    controller._progress_edited_at = {}  # noqa: SLF001
+    due = TelegramBotController._progress_edit_is_due  # noqa: SLF001
+
+    assert due(controller, 1)
+    assert not due(controller, 1)
+    assert due(controller, 2)
+
+    controller._progress_edited_at[1] -= PROGRESS_EDIT_INTERVAL  # noqa: SLF001
+    assert due(controller, 1)
 
 
 def test_wrong_http_url_counts_as_a_link_telegram_could_not_open() -> None:

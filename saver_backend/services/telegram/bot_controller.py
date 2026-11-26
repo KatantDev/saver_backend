@@ -202,6 +202,12 @@ async def _download_to_temp_file(url: str, timeout: float = 600) -> Path:
     return path
 
 
+# Least seconds between two progress edits in one chat, whatever the number
+# of downloads going on in it
+PROGRESS_EDIT_INTERVAL = 1.5
+PROGRESS_CHATS_REMEMBERED = 5000
+
+
 # Seconds Telegram gets to fetch a video sent by link before the bot downloads
 # and uploads the file itself; 99 of 100 such sends end within 30 seconds
 URL_FETCH_TIMEOUT = 90
@@ -312,6 +318,8 @@ class TelegramBotController:
             timeout=180,
         )
         self._flood_control = RetryAfterMiddleware()
+        # chat id -> monotonic time of its last progress edit
+        self._progress_edited_at: dict[int, float] = {}
         self._session.middleware(self._flood_control)
         self._session.middleware(DeliveryMiddleware())
         self._bot = Bot(
@@ -671,6 +679,8 @@ class TelegramBotController:
             # Telegram asked to wait in this chat: the progress line is not
             # worth a request that would push the file itself further back
             return
+        if not self._progress_edit_is_due(telegram_id):
+            return
         try:
             await self._bot.edit_message_text(
                 chat_id=telegram_id,
@@ -684,6 +694,26 @@ class TelegramBotController:
             # replaced already. Not logged as an error, otherwise this text
             # replaces the real reason of a failed request in the journal.
             logging.debug("Progress message was not updated: %s", e)
+
+    def _progress_edit_is_due(self, telegram_id: int) -> bool:
+        """
+        Whether the chat may get one more progress edit now.
+
+        Flood control counts requests per chat. Several downloads of one user
+        edit their progress lines at the same moments (eight at once on prod on
+        25.11), Telegram pauses the chat and then refuses the files too.
+
+        :param telegram_id: Chat the progress line is in.
+        :return: False when the chat got a progress edit a moment ago.
+        """
+        now = time.monotonic()
+        last = self._progress_edited_at.get(telegram_id)
+        if last is not None and now - last < PROGRESS_EDIT_INTERVAL:
+            return False
+        if len(self._progress_edited_at) > PROGRESS_CHATS_REMEMBERED:
+            self._progress_edited_at.clear()
+        self._progress_edited_at[telegram_id] = now
+        return True
 
     def _inline_is_closed(self, inline_query_id: str) -> bool:
         """
