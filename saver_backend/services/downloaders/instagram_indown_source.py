@@ -55,6 +55,27 @@ INDOWN_MAX_ATTEMPTS = 6
 INDOWN_SPENT_ATTEMPTS = 3
 
 
+# Links to a cache inside some provider's network, e.g.
+# instagram.fplv1-2.fna.fbcdn.net. From the server many of them do not answer
+# at all: 21-38 files a day failed to download on prod on 23-25.11 and reels
+# ended with «Request timeout». The same path opens on the main host.
+PROVIDER_CACHE_RE = re.compile(r"^instagram\.[a-z0-9-]+\.fna\.fbcdn\.net$")
+MAIN_CDN_HOST = "scontent.cdninstagram.com"
+
+
+def main_cdn_link(url: str) -> str:
+    """
+    Point a link to a provider's cache at Instagram's main file host.
+
+    :param url: Direct link to a photo or a video.
+    :return: The same link on the main host; other links as they are.
+    """
+    parsed = urlparse(url)
+    if not PROVIDER_CACHE_RE.match((parsed.hostname or "").lower()):
+        return url
+    return parsed._replace(netloc=MAIN_CDN_HOST).geturl()
+
+
 def _proxy_key(proxy: str | None) -> str:
     """Short hash of a proxy, so the shared state never keeps its address."""
     return hashlib.sha1((proxy or "direct").encode()).hexdigest()[:12]  # noqa: S324
@@ -293,12 +314,12 @@ class InstagramInDownController(BaseSourceController):
                 parsed = urlparse(url)
                 qs = parse_qs(parsed.query)
                 if "url" in qs:
-                    return qs["url"][0]
+                    return main_cdn_link(qs["url"][0])
             except Exception:
                 logging.warning(f"Failed to parse proxy URL: {url}")
                 return None
             return None
-        return url
+        return main_cdn_link(url)
 
     def _extract_source_id(self, url: str) -> str:
         """Extract generic ID from URL for cache keys."""
