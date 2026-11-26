@@ -10,6 +10,7 @@ from saver_backend.services.telegram.bot_controller import (
     TelegramBotController,
     _cover_is_to_blame,
 )
+from saver_backend.services.telegram.retry_after import RetryAfterMiddleware
 
 
 def _controller() -> TelegramBotController:
@@ -19,6 +20,7 @@ def _controller() -> TelegramBotController:
     controller._bot.edit_message_text = AsyncMock()  # noqa: SLF001
     controller._bot.default.parse_mode = "HTML"  # noqa: SLF001
     controller._closed_inline_queries = {}  # noqa: SLF001
+    controller._flood_control = RetryAfterMiddleware()  # noqa: SLF001
     return controller
 
 

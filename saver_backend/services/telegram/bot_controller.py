@@ -202,6 +202,11 @@ async def _download_to_temp_file(url: str, timeout: float = 600) -> Path:
     return path
 
 
+# Seconds Telegram gets to fetch a video sent by link before the bot downloads
+# and uploads the file itself; 99 of 100 such sends end within 30 seconds
+URL_FETCH_TIMEOUT = 90
+
+
 # How long a closed inline query is remembered; its download ends much sooner
 INLINE_CLOSED_MEMORY_SECONDS = 15 * 60
 
@@ -229,6 +234,8 @@ TELEGRAM_FETCH_FAILURES = (
     "webpage_media_empty",
     "failed to get http url content",
     "wrong type of the web page content",
+    # A story or highlight whose link Telegram could not open (prod 25.11)
+    "wrong file identifier/http url specified",
 )
 
 
@@ -304,7 +311,8 @@ class TelegramBotController:
             api=TelegramAPIServer.from_base(base=settings.telegram_bot_api_url),
             timeout=180,
         )
-        self._session.middleware(RetryAfterMiddleware())
+        self._flood_control = RetryAfterMiddleware()
+        self._session.middleware(self._flood_control)
         self._session.middleware(DeliveryMiddleware())
         self._bot = Bot(
             session=self._session,
@@ -659,6 +667,10 @@ class TelegramBotController:
         :param message_id: Message ID.
         :param percent: Percent of the video.
         """
+        if self._flood_control.pause_left(telegram_id):
+            # Telegram asked to wait in this chat: the progress line is not
+            # worth a request that would push the file itself further back
+            return
         try:
             await self._bot.edit_message_text(
                 chat_id=telegram_id,
@@ -1367,7 +1379,20 @@ class TelegramBotController:
             if sent is not None:
                 return sent
         try:
-            return await self._bot.send_video(video=video_input, **kwargs)
+            return await self._bot.send_video(
+                video=video_input,
+                **kwargs,
+                # A link is fetched by Telegram itself, normally in seconds
+                request_timeout=(
+                    URL_FETCH_TIMEOUT if isinstance(video_input, str) else None
+                ),
+            )
+        except TelegramNetworkError as e:
+            # Telegram hung on the link: a TikTok video waited 10 minutes for
+            # an answer on prod on 25.11 while the same file downloads in seconds
+            if not isinstance(video_input, str) or not video.direct_download_url:
+                raise
+            logging.warning("No answer for a video sent by link (%s)", e)
         except TelegramBadRequest as e:
             if not isinstance(video_input, str) and _cover_is_to_blame(
                 kwargs.get("cover"),
