@@ -4,6 +4,7 @@ from aiogram.utils.i18n import I18n
 from fastapi import FastAPI
 
 from saver_backend.services.telegram.bot_controller import TelegramBotController
+from saver_backend.services.telegram.startup_check import get_bot_user
 from saver_backend.telegram_bot.handlers import setup_handlers
 
 
@@ -15,7 +16,7 @@ async def init_telegram_bot_controller(app: FastAPI, i18n: I18n) -> None:
     :param i18n: I18n context.
     """
     telegram_bot_controller = TelegramBotController(i18n=i18n)
-    me = await telegram_bot_controller.bot.get_me()
+    me = await get_bot_user(telegram_bot_controller.bot, "api")
     logging.info(f"Bot {me.username} ({me.full_name}) started.")
 
     telegram_bot_controller.setup_middlewares(
