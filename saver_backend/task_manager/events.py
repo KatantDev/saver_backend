@@ -7,6 +7,7 @@ from saver_backend.db.lifespan import init_db, shutdown_db
 from saver_backend.services.downloaders.instagram_session import request_session_check
 from saver_backend.services.error_journal import start_error_journal, stop_error_journal
 from saver_backend.services.telegram.bot_controller import TelegramBotController
+from saver_backend.services.telegram.startup_check import get_bot_user
 from saver_backend.tkq import broker
 
 logging.basicConfig(level=logging.INFO)
@@ -29,7 +30,7 @@ async def startup(state: TaskiqState) -> None:
     state.i18n = i18n
 
     telegram_bot_controller = TelegramBotController(i18n=i18n)
-    me = await telegram_bot_controller.bot.get_me()
+    me = await get_bot_user(telegram_bot_controller.bot, "worker")
     state.telegram_bot_controller = telegram_bot_controller
     logging.info(f"Bot {me.username} ({me.full_name}) started.")
 
