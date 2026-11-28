@@ -353,6 +353,9 @@ class VideoDTO(BaseContentDTO):
         """
         if is_placeholder_title(self.title, self.url):
             return f"{html_text(self.url)}\n"
+        return self._titled_html()
+
+    def _titled_html(self) -> str:
         if self.quality is not None and self.quality not in ["best", "default"]:
             qualities = {}
             for key, formats in self.unique_formats.items():
