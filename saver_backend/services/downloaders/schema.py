@@ -65,6 +65,24 @@ def is_live_error(error: BaseException) -> bool:
 # description with hashtags). The rest of the caption (link, channel, signature)
 # needs under 200.
 MAX_CAPTION_TITLE_LENGTH = 800
+# yt-dlp has no title for an Instagram post and makes one up from the author:
+# «Video by name», «Post by name», «Story by name». Since posts are read
+# through yt-dlp (24.11) captions showed it; the caption is the link instead,
+# as before (Bulat 28.11)
+INSTAGRAM_PLACEHOLDER_TITLE_RE = re.compile(r"^(?:Video|Post|Story) by [\w.]+$")
+
+
+def is_placeholder_title(title: str | None, url: str | None) -> bool:
+    """
+    Tell a title yt-dlp made up for an Instagram post.
+
+    :param title: Title of the content.
+    :param url: Link the user sent.
+    :return: True for «Video by name» and the like on an Instagram link.
+    """
+    if not title or "instagram" not in (url or ""):
+        return False
+    return INSTAGRAM_PLACEHOLDER_TITLE_RE.match(title.strip()) is not None
 
 
 def caption_title(title: str | None) -> str:
@@ -333,6 +351,8 @@ class VideoDTO(BaseContentDTO):
 
         :return: html string
         """
+        if is_placeholder_title(self.title, self.url):
+            return f"{html_text(self.url)}\n"
         if self.quality is not None and self.quality not in ["best", "default"]:
             qualities = {}
             for key, formats in self.unique_formats.items():
