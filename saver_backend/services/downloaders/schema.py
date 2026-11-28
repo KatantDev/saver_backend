@@ -98,6 +98,24 @@ def caption_title(title: str | None) -> str:
     return title[: MAX_CAPTION_TITLE_LENGTH - 1].rstrip() + "…"
 
 
+def caption_description(description: str | None) -> str:
+    """
+    Text of the post under the link, folded after a few lines.
+
+    Bulat 28.11: people keep the text of a post too (a recipe, say). A long one
+    is folded so the caption does not turn into an essay under the video;
+    the user opens it with a tap.
+
+    :param description: Text of the post as the site gives it.
+    :return: HTML for the caption, empty when the post has no text.
+    """
+    text = (description or "").strip()
+    if not text:
+        return ""
+    # Cut first, then escape: Telegram counts the limit on the shown text
+    return f"<blockquote expandable>{html_text(caption_title(text))}</blockquote>\n"
+
+
 def html_text(text: str | None) -> str:
     """
     Text made safe for a message sent in HTML mode.
@@ -118,6 +136,8 @@ class BaseContentDTO(BaseModel):
     source_id: str | None = None
     url: str | None = None
     title: str | None = None
+    # Text of the post, shown under the link where the title says nothing
+    description: str | None = None
     quality: str | None = "best"
 
     @property
@@ -292,7 +312,6 @@ class VideoDTO(BaseContentDTO):
     channel: str | None = None
     channel_id: str | None = None
     channel_url: str | None = None
-    description: str | None = None
 
     duration: int | None = None
     width: int | None = None
@@ -352,7 +371,7 @@ class VideoDTO(BaseContentDTO):
         :return: html string
         """
         if is_placeholder_title(self.title, self.url):
-            return f"{html_text(self.url)}\n"
+            return f"{html_text(self.url)}\n{caption_description(self.description)}"
         return self._titled_html()
 
     def _titled_html(self) -> str:
