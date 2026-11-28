@@ -51,6 +51,7 @@ from saver_backend.services.downloaders.schema import (
     AudioDTO,
     PhotoDTO,
     VideoDTO,
+    caption_description,
 )
 from saver_backend.services.failure_log import mark_failed
 from saver_backend.services.i18n import gettext as _
@@ -956,6 +957,7 @@ class TelegramBotController:
         telegram_id: int,
         message_id: int | None = None,
         language: str | None = None,
+        description: str | None = None,
     ) -> None:
         """
         Send finish downloading group message.
@@ -964,6 +966,7 @@ class TelegramBotController:
         :param telegram_id: Telegram ID of the user.
         :param message_id: Message ID.
         :param language: Language code.
+        :param description: Text of the post, shown under the link.
         """
         chunk_size = 10
         total_files = len(files)
@@ -971,7 +974,7 @@ class TelegramBotController:
         caption = _(
             "result direct message",
             locale=language or self.language,
-        ).format(url=files[0].url, title="")
+        ).format(url=files[0].url, title=caption_description(description))
 
         for i in range(0, total_files, chunk_size):
             chunk = files[i : i + chunk_size]
@@ -1161,7 +1164,7 @@ class TelegramBotController:
             caption=_(
                 "result direct message",
                 locale=language or self.language,
-            ).format(url=photo.url, title=""),
+            ).format(url=photo.url, title=caption_description(photo.description)),
         )
         await self._send(coro)
         if message_id is not None:

@@ -136,6 +136,8 @@ class InstagramYdlController(YtDlpController):
     ) -> list[PhotoDTO | VideoDTO]:
         entries = info.get("entries")
         items = list(entries) if entries is not None else [info]
+        # Text of the post; items of a carousel do not carry it
+        description = info.get("description") or None
         media: list[PhotoDTO | VideoDTO] = []
         for item in items:
             if not isinstance(item, dict):
@@ -143,7 +145,9 @@ class InstagramYdlController(YtDlpController):
             if item.get("formats"):
                 # items of a carousel come without the fields of the post
                 shared = {key: info[key] for key in POST_FIELDS if key in info}
-                media.append(self._video_from_item({**shared, **item}, url))
+                video = self._video_from_item({**shared, **item}, url)
+                video.description = description
+                media.append(video)
                 continue
             picture = full_size_picture(item.get("thumbnails") or [])
             if picture:
@@ -152,6 +156,7 @@ class InstagramYdlController(YtDlpController):
                         url=url,
                         source_id=str(item.get("id") or info.get("id") or ""),
                         media_url=picture,
+                        description=description,
                     ),
                 )
         return media
