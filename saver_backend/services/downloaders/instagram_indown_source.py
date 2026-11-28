@@ -980,6 +980,7 @@ class InstagramInDownController(BaseSourceController):
                 files=media_items,
                 telegram_id=self._telegram_id,
                 message_id=self._message_id,
+                description=media_items[0].description,
             )
             await self._create_history_entry()
 
